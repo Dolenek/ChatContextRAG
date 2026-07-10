@@ -73,6 +73,14 @@ function registerIpcHandlers() {
     discordController.hide();
     return result;
   });
+  ipcMain.handle("discord:scan:start", () => discordController.startChannelScan(
+    (messages) => postJson("/messages/import", { messages }),
+    (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
+  ));
+  ipcMain.handle("discord:scan:stop", () => {
+    discordController.stopChannelScan();
+    return { stopping: true };
+  });
   ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
   ipcMain.handle("database:overview", (_event, pagination) => {
     const parameters = new URLSearchParams(pagination);

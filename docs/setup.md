@@ -59,6 +59,8 @@ Electron starts FastAPI automatically on `127.0.0.1:8765`. To run only the API d
 
 The app normalizes and chunks up to four visible messages, sends chunk text to the OpenAI embeddings API, and upserts vectors plus source metadata into PostgreSQL. It does not fetch Discord server history or use a Discord bot.
 
+To import channel history automatically, open a channel and choose **Procházet do databáze**. The app scrolls upward and writes new messages continuously. Choose **Zastavit** to interrupt it. Discord messages traversed this way are sent to OpenAI for embedding. Re-running the traversal skips source message IDs already stored in the database.
+
 ## Verification
 
 Run isolated tests without consuming OpenAI API credits:

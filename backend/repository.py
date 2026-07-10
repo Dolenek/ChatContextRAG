@@ -1,4 +1,4 @@
-from typing import Iterable, List, Protocol, Sequence
+from typing import Iterable, List, Protocol, Sequence, Set
 
 from backend.models import DatabaseOverview
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
@@ -17,4 +17,7 @@ class VectorRepository(Protocol):
         ...
 
     def delete_all(self) -> int:
+        ...
+
+    def existing_source_message_ids(self, external_ids: Sequence[str]) -> Set[str]:
         ...

@@ -15,6 +15,11 @@ class FakeEmbeddingProvider:
 
 
 class FakeVectorRepository:
+    existing_ids = set()
+
+    def existing_source_message_ids(self, external_ids):
+        return self.existing_ids.intersection(external_ids)
+
     def upsert_chunks(self, chunks):
         self.chunks = list(chunks)
         return len(self.chunks)
@@ -42,3 +47,21 @@ def test_ingestion_normalizes_chunks_and_embeds_conversation() -> None:
     assert result.chunk_count == 1
     assert "Ada: Ahoj světe" in embedding_provider.received_texts[0]
     assert repository.chunks[0].chunk.source_message_ids == ["1", "2"]
+
+
+def test_ingestion_skips_already_stored_messages() -> None:
+    embedding_provider = FakeEmbeddingProvider()
+    repository = FakeVectorRepository()
+    repository.existing_ids = {"1"}
+    service = MessageIngestionService(
+        DiscordMessageNormalizer(), ConversationAwareChunker(), embedding_provider, repository
+    )
+    messages = [
+        DiscordMessageInput(external_id="1", author="Ada", content="Starší"),
+        DiscordMessageInput(external_id="2", author="Bob", content="Nová zpráva"),
+    ]
+
+    result = service.ingest(ImportRequest(messages=messages))
+
+    assert result.imported_count == 1
+    assert repository.chunks[0].chunk.source_message_ids == ["2"]

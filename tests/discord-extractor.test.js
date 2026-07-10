@@ -1,7 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildDiscordExtractionScript } = require("../electron/discord-extractor");
+const {
+  buildDiscordExtractionScript, buildDiscordScanObservationScript,
+  buildDiscordScrollUpScript,
+} = require("../electron/discord-extractor");
 
 test("extraction script targets Discord message identifiers and limits output", () => {
   const script = buildDiscordExtractionScript();
@@ -9,4 +12,13 @@ test("extraction script targets Discord message identifiers and limits output", 
   assert.match(script, /slice\(-4\)/);
   assert.match(script, /message-username-/);
   assert.match(script, /embedFull/);
+});
+
+test("scan script discovers the scroll container without Discord class hashes", () => {
+  const observation = buildDiscordScanObservationScript();
+  const scroll = buildDiscordScrollUpScript();
+  assert.match(observation, /scrollHeight/);
+  assert.match(observation, /overflowY/);
+  assert.match(scroll, /scrollTop/);
+  assert.doesNotMatch(observation, /scroller__\w+/);
 });

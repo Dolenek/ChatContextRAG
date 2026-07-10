@@ -25,7 +25,14 @@ class MessageIngestionService:
 
     def ingest(self, request: ImportRequest) -> ImportResponse:
         normalized_messages = self.normalizer.normalize(request.messages)
-        chunks = self.chunker.chunk(normalized_messages)
+        external_ids = [message.external_id for message in normalized_messages]
+        existing_ids = self.repository.existing_source_message_ids(external_ids)
+        new_messages = [
+            message for message in normalized_messages if message.external_id not in existing_ids
+        ]
+        if not new_messages:
+            return ImportResponse(imported_count=0, chunk_count=0, messages=request.messages)
+        chunks = self.chunker.chunk(new_messages)
         embeddings = self.embedding_provider.embed_texts([chunk.content for chunk in chunks])
         if len(embeddings) != len(chunks):
             raise RuntimeError("Embedding provider returned an unexpected result count")
@@ -35,7 +42,7 @@ class MessageIngestionService:
         ]
         stored_count = self.repository.upsert_chunks(embedded_chunks)
         return ImportResponse(
-            imported_count=len(request.messages),
+            imported_count=len(new_messages),
             chunk_count=stored_count,
             messages=request.messages,
         )

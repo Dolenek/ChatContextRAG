@@ -1,5 +1,5 @@
 import threading
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Set
 
 import numpy as np
 import psycopg
@@ -60,6 +60,24 @@ class PostgresVectorRepository(VectorRepository):
                 return result.rowcount
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL database clear failed.") from error
+
+    def existing_source_message_ids(self, external_ids: Sequence[str]) -> Set[str]:
+        if not external_ids:
+            return set()
+        self._ensure_schema()
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT DISTINCT source_id FROM conversation_chunks,
+                    LATERAL UNNEST(source_message_ids) AS source_id
+                    WHERE source_id = ANY(%s)
+                    """,
+                    (list(external_ids),),
+                ).fetchall()
+        except psycopg.Error as error:
+            raise ExternalIntegrationError("PostgreSQL deduplication query failed.") from error
+        return {row[0] for row in rows}
 
     def _ensure_schema(self) -> None:
         if self._initialized:

@@ -1,5 +1,6 @@
 const { BrowserView, session } = require("electron");
 const { buildDiscordExtractionScript } = require("./discord-extractor");
+const { DiscordChannelScanner } = require("./discord-channel-scanner");
 
 const TOOLBAR_HEIGHT = 72;
 
@@ -7,6 +8,7 @@ class DiscordViewController {
   constructor(mainWindow) {
     this.mainWindow = mainWindow;
     this.discordView = null;
+    this.channelScanner = null;
   }
 
   async open() {
@@ -27,6 +29,7 @@ class DiscordViewController {
         sandbox: true,
       },
     });
+    this.channelScanner = new DiscordChannelScanner(view.webContents);
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (url.startsWith("https://discord.com/")) view.webContents.loadURL(url);
       return { action: "deny" };
@@ -51,7 +54,17 @@ class DiscordViewController {
     return messages;
   }
 
+  startChannelScan(importMessages, reportProgress) {
+    if (!this.channelScanner) throw new Error("Discord není otevřený.");
+    return this.channelScanner.start(importMessages, reportProgress);
+  }
+
+  stopChannelScan() {
+    this.channelScanner?.stop();
+  }
+
   hide() {
+    this.stopChannelScan();
     this.mainWindow.setBrowserView(null);
   }
 }

@@ -9,6 +9,7 @@ const toast = document.querySelector("#toast");
 const conversationHistory = [];
 const overviewPageSize = 50;
 let overviewOffset = 0;
+let channelScanRunning = false;
 
 function showScreen(screenName) {
   Object.entries(screens).forEach(([name, element]) => {
@@ -38,6 +39,46 @@ async function captureDiscordMessages() {
   } finally {
     setCaptureBusy(false);
   }
+}
+
+async function toggleChannelScan() {
+  if (channelScanRunning) {
+    document.querySelector("#scan-progress").textContent = "Zastavuji procházení…";
+    await window.chatContext.stopDiscordScan();
+    return;
+  }
+  channelScanRunning = true;
+  updateScanButton();
+  try {
+    const summary = await window.chatContext.startDiscordScan();
+    showToast(scanCompletionMessage(summary));
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    channelScanRunning = false;
+    updateScanButton();
+  }
+}
+
+function renderScanProgress(progress) {
+  const status = document.querySelector("#scan-progress");
+  const waitingStates = ["waiting", "retrying", "waiting-channel"];
+  const suffix = waitingStates.includes(progress.state)
+    ? ` · čekám a zkouším dál${progress.lastError ? `: ${progress.lastError}` : "…"}`
+    : "";
+  status.textContent = `Nalezeno ${progress.discoveredMessages} · nově uloženo ${progress.importedMessages} · chunky ${progress.storedChunks}${suffix}`;
+}
+
+function updateScanButton() {
+  const button = document.querySelector("#scan-channel-button");
+  button.textContent = channelScanRunning ? "Zastavit" : "Procházet do databáze";
+  button.classList.toggle("scanning", channelScanRunning);
+  document.querySelector("#capture-button").disabled = channelScanRunning;
+}
+
+function scanCompletionMessage(summary) {
+  const prefix = summary.state === "completed" ? "Kanál byl projit až na začátek." : "Procházení skončilo.";
+  return `${prefix} Nově uloženo ${summary.importedMessages} zpráv v ${summary.storedChunks} chunkech.`;
 }
 
 function setCaptureBusy(isBusy) {
@@ -240,6 +281,7 @@ function escapeHtml(value) {
 
 document.querySelector("#open-discord-button").addEventListener("click", openDiscord);
 document.querySelector("#capture-button").addEventListener("click", captureDiscordMessages);
+document.querySelector("#scan-channel-button").addEventListener("click", toggleChannelScan);
 document.querySelector("#open-chat-button").addEventListener("click", () => showScreen("chat"));
 document.querySelector("#open-overview-button").addEventListener("click", openDatabaseOverview);
 document.querySelector("#chat-after-import-button").addEventListener("click", () => showScreen("chat"));
@@ -257,3 +299,5 @@ document.querySelector("#home-button").addEventListener("click", async () => {
   await window.chatContext.hideDiscord();
   showScreen("home");
 });
+
+window.chatContext.onDiscordScanProgress(renderScanProgress);

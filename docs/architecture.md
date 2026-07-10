@@ -24,6 +24,14 @@ The normalizer preserves message order and identity while removing formatting no
 
 `OpenAIEmbeddingProvider` batches chunk texts according to `OPENAI_EMBEDDING_BATCH_SIZE`. The default embedding configuration is `text-embedding-3-small` with 1,536 dimensions, matching the vector column. See the [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings).
 
+### Automatic channel traversal
+
+The Electron toolbar can traverse the currently selected Discord channel toward its oldest message. Each step extracts up to 100 rendered `chat-messages-*` items, persists the batch, finds the scrollable ancestor dynamically, moves upward by 85% of the viewport, and waits for Discord virtualization. A batch is marked as seen only after successful storage, so transient OpenAI or PostgreSQL failures are retried without losing messages.
+
+Traversal has no step or inactivity limit. Slow loading, unchanged virtualized views, API failures, and temporary navigation away from the selected channel put it into a waiting/retry state. It ends only when the user stops it or the same oldest message remains at scroll position zero for 12 consecutive checks, confirming the actual beginning of the channel.
+
+The backend checks source message IDs already present in pgvector before embedding, so repeated traversals do not spend API calls or create chunks for previously stored messages.
+
 ## Vector storage and retrieval
 
 `PostgresVectorRepository` creates the `vector` extension and a `conversation_chunks` table on first use. Each row contains normalized content, authors, source Discord message IDs, channel, time range, embedding model, JSON metadata, and the vector itself.

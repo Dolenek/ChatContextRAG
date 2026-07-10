@@ -13,7 +13,7 @@ class DiscordMessageInput(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    messages: List[DiscordMessageInput] = Field(min_length=1, max_length=4)
+    messages: List[DiscordMessageInput] = Field(min_length=1, max_length=100)
 
 
 class ImportResponse(BaseModel):
