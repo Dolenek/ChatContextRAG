@@ -1,7 +1,9 @@
 from typing import List
 
 from backend.chunking import ConversationAwareChunker
-from backend.models import ChatRequest, ChatResponse, ChatSource, ImportRequest, ImportResponse
+from backend.models import (
+    ChatRequest, ChatResponse, ChatSource, DatabaseOverview, ImportRequest, ImportResponse,
+)
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
 from backend.repository import VectorRepository
@@ -68,3 +70,14 @@ class DatabaseChatService:
             )
             for chunk in chunks
         ]
+
+
+class DatabaseOverviewService:
+    def __init__(self, repository: VectorRepository) -> None:
+        self.repository = repository
+
+    def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
+        return self.repository.get_overview(limit, offset)
+
+    def clear_database(self) -> int:
+        return self.repository.delete_all()

@@ -6,7 +6,9 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
+from backend.models import DatabaseOverview
 from backend.openai_gateway import ExternalIntegrationError
+from backend.postgres_overview_reader import PostgresOverviewReader
 from backend.repository import VectorRepository
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
@@ -19,6 +21,7 @@ class PostgresVectorRepository(VectorRepository):
         self.dimensions = dimensions
         self._initialized = False
         self._initialization_lock = threading.Lock()
+        self.overview_reader = PostgresOverviewReader(database_dsn)
 
     def upsert_chunks(self, chunks: Iterable[EmbeddedChunk]) -> int:
         chunk_list = list(chunks)
@@ -44,6 +47,19 @@ class PostgresVectorRepository(VectorRepository):
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL vector search failed.") from error
         return [self._to_retrieved_chunk(row) for row in rows]
+
+    def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
+        self._ensure_schema()
+        return self.overview_reader.get_overview(limit, offset)
+
+    def delete_all(self) -> int:
+        self._ensure_schema()
+        try:
+            with self._connect() as connection:
+                result = connection.execute("DELETE FROM conversation_chunks")
+                return result.rowcount
+        except psycopg.Error as error:
+            raise ExternalIntegrationError("PostgreSQL database clear failed.") from error
 
     def _ensure_schema(self) -> None:
         if self._initialized:

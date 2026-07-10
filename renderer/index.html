@@ -33,8 +33,13 @@
             <span><strong>Povídat s databází</strong><small>Ptejte se na uložené konverzace</small></span>
             <span class="arrow">→</span>
           </button>
+          <button id="open-overview-button" class="action-card overview-card" type="button">
+            <span class="card-icon">▦</span>
+            <span><strong>Zobrazit databázi</strong><small>Statistiky, zdroje a uložené chunky</small></span>
+            <span class="arrow">→</span>
+          </button>
         </div>
-        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Bez Discord bota</span><span>● SQLite úložiště</span></div>
+        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Bez Discord bota</span><span>● PostgreSQL + pgvector</span></div>
       </section>
 
       <section id="result-screen" class="screen panel-screen hidden">
@@ -48,7 +53,33 @@
         <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
         <form id="chat-form" class="chat-form"><input id="question-input" type="text" minlength="2" placeholder="Zeptejte se databáze…" autocomplete="off" required /><button type="submit" aria-label="Odeslat">↑</button></form>
       </section>
+
+      <section id="overview-screen" class="screen overview-screen hidden">
+        <div class="overview-heading">
+          <div><div class="eyebrow">PŘEHLED DATABÁZE</div><h2>Co je uložené?</h2><p>Souhrn zdrojů, metadat a vektorových chunků.</p></div>
+          <div class="overview-actions"><button id="refresh-overview-button" class="secondary-button" type="button">Obnovit</button><button id="open-clear-database-button" class="danger-button" type="button">Vymazat databázi</button></div>
+        </div>
+        <div id="overview-stats" class="stats-grid"></div>
+        <div class="overview-breakdowns">
+          <section><h3>Kanály</h3><div id="channel-counts" class="count-list"></div></section>
+          <section><h3>Autoři</h3><div id="author-counts" class="count-list"></div></section>
+          <section><h3>Embedding modely</h3><div id="model-counts" class="count-list"></div></section>
+        </div>
+        <div class="chunks-heading"><div><h3>Uložené chunky</h3><p id="chunk-range"></p></div></div>
+        <div id="database-chunks" class="database-chunks"></div>
+        <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
+      </section>
     </main>
+    <div id="clear-database-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
+      <section class="danger-dialog">
+        <div class="danger-icon">!</div>
+        <h2 id="clear-dialog-title">Vymazat celou databázi?</h2>
+        <p>Tato akce nevratně odstraní všechny chunky, vektory a metadata. Discord přihlášení zůstane zachované.</p>
+        <label for="clear-confirmation-input">Pro potvrzení napište <strong>VYMAZAT</strong></label>
+        <input id="clear-confirmation-input" type="text" autocomplete="off" placeholder="VYMAZAT" />
+        <div class="dialog-actions"><button id="cancel-clear-button" class="secondary-button" type="button">Zrušit</button><button id="confirm-clear-button" class="danger-button" type="button" disabled>Trvale vymazat</button></div>
+      </section>
+    </div>
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="app.js"></script>
   </body>

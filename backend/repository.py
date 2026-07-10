@@ -1,5 +1,6 @@
 from typing import Iterable, List, Protocol, Sequence
 
+from backend.models import DatabaseOverview
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
 
@@ -10,4 +11,10 @@ class VectorRepository(Protocol):
     def search_similar(
         self, query_embedding: Sequence[float], limit: int = 5
     ) -> List[RetrievedChunk]:
+        ...
+
+    def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
+        ...
+
+    def delete_all(self) -> int:
         ...

@@ -42,6 +42,28 @@ async function postJson(endpoint, body) {
   return responseBody;
 }
 
+async function getJson(endpoint) {
+  const response = await fetch(`${BACKEND_URL}${endpoint}`);
+  const responseBody = await response.json();
+  if (!response.ok) {
+    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
+  }
+  return responseBody;
+}
+
+async function deleteJson(endpoint, body) {
+  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await response.json();
+  if (!response.ok) {
+    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
+  }
+  return responseBody;
+}
+
 function registerIpcHandlers() {
   ipcMain.handle("discord:open", async () => discordController.open());
   ipcMain.handle("discord:hide", () => discordController.hide());
@@ -52,6 +74,11 @@ function registerIpcHandlers() {
     return result;
   });
   ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
+  ipcMain.handle("database:overview", (_event, pagination) => {
+    const parameters = new URLSearchParams(pagination);
+    return getJson(`/database/overview?${parameters}`);
+  });
+  ipcMain.handle("database:clear", (_event, request) => deleteJson("/database", request));
 }
 
 app.whenReady().then(async () => {

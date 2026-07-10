@@ -1,11 +1,14 @@
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.chunking import ConversationAwareChunker
-from backend.models import ChatRequest, ChatResponse, HealthResponse, ImportRequest, ImportResponse
+from backend.models import (
+    ChatRequest, ChatResponse, ClearDatabaseRequest, ClearDatabaseResponse,
+    DatabaseOverview, HealthResponse, ImportRequest, ImportResponse,
+)
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import (
     ExternalIntegrationError,
@@ -14,13 +17,14 @@ from backend.openai_gateway import (
     OpenAIEmbeddingProvider,
 )
 from backend.postgres_repository import PostgresVectorRepository
-from backend.services import DatabaseChatService, MessageIngestionService
+from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
 from backend.settings import ApplicationSettings
 
 
 def create_app(
     ingestion_service: Optional[MessageIngestionService] = None,
     chat_service: Optional[DatabaseChatService] = None,
+    overview_service: Optional[DatabaseOverviewService] = None,
 ) -> FastAPI:
     application = FastAPI(title="Chat Context RAG API", version="0.2.0")
     application.add_middleware(
@@ -29,7 +33,9 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
-    active_ingestion, active_chat = _resolve_services(ingestion_service, chat_service)
+    active_ingestion, active_chat, active_overview = _resolve_services(
+        ingestion_service, chat_service, overview_service
+    )
 
     @application.exception_handler(ExternalIntegrationError)
     async def integration_error_handler(
@@ -55,15 +61,28 @@ def create_app(
     def chat(request: ChatRequest) -> ChatResponse:
         return active_chat.answer(request)
 
+    @application.get("/database/overview", response_model=DatabaseOverview)
+    def database_overview(
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+    ) -> DatabaseOverview:
+        return active_overview.get_overview(limit, offset)
+
+    @application.delete("/database", response_model=ClearDatabaseResponse)
+    def clear_database(_request: ClearDatabaseRequest) -> ClearDatabaseResponse:
+        deleted_chunks = active_overview.clear_database()
+        return ClearDatabaseResponse(deleted_chunks=deleted_chunks)
+
     return application
 
 
 def _resolve_services(
     ingestion_service: Optional[MessageIngestionService],
     chat_service: Optional[DatabaseChatService],
+    overview_service: Optional[DatabaseOverviewService],
 ) -> tuple:
-    if ingestion_service and chat_service:
-        return ingestion_service, chat_service
+    if ingestion_service and chat_service and overview_service:
+        return ingestion_service, chat_service, overview_service
     return _build_default_services()
 
 
@@ -79,7 +98,8 @@ def _build_default_services() -> tuple:
     ingestion = MessageIngestionService(
         DiscordMessageNormalizer(), ConversationAwareChunker(), embedding_provider, repository,
     )
-    return ingestion, DatabaseChatService(repository, embedding_provider, chat_provider)
+    chat = DatabaseChatService(repository, embedding_provider, chat_provider)
+    return ingestion, chat, DatabaseOverviewService(repository)
 
 
 app = create_app()

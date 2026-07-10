@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
-from backend.models import ChatResponse, ChatSource, ImportResponse
+from backend.models import ChatResponse, ChatSource, DatabaseOverview, ImportResponse
 
 
 class FakeIngestionService:
@@ -24,8 +24,24 @@ class FakeChatService:
         )
 
 
+class FakeOverviewService:
+    deleted_chunks = 0
+
+    def get_overview(self, limit, offset):
+        return DatabaseOverview(
+            total_chunks=0, total_source_messages=0, total_channels=0, total_authors=0,
+            oldest_message_at=None, newest_message_at=None, channels=[], authors=[],
+            embedding_models=[], chunks=[], limit=limit, offset=offset, has_more=False,
+        )
+
+    def clear_database(self):
+        return self.deleted_chunks
+
+
 def test_import_and_chat() -> None:
-    client = TestClient(create_app(FakeIngestionService(), FakeChatService()))
+    client = TestClient(
+        create_app(FakeIngestionService(), FakeChatService(), FakeOverviewService())
+    )
     message = {
         "external_id": "123", "author": "Ada", "content": "Termín je v pátek.",
         "timestamp": "2026-07-10T10:00:00Z", "channel": "projekt",
@@ -40,3 +56,16 @@ def test_import_and_chat() -> None:
     assert import_response.json()["chunk_count"] == 1
     assert chat_response.status_code == 200
     assert "pátek" in chat_response.json()["answer"]
+
+    overview_response = client.get("/database/overview?limit=25&offset=0")
+    assert overview_response.status_code == 200
+    assert overview_response.json()["total_chunks"] == 0
+
+    invalid_clear_response = client.request(
+        "DELETE", "/database", json={"confirmation": "NE"}
+    )
+    valid_clear_response = client.request(
+        "DELETE", "/database", json={"confirmation": "VYMAZAT"}
+    )
+    assert invalid_clear_response.status_code == 422
+    assert valid_clear_response.status_code == 200

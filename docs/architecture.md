@@ -36,6 +36,12 @@ For each question, FastAPI embeds the question, retrieves the five closest chunk
 
 The default generation model is `gpt-5.6-luna` with low reasoning effort. It can be replaced through `OPENAI_CHAT_MODEL`. The implementation uses the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text).
 
+## Database overview
+
+`GET /database/overview` is a read-only, paginated inspection endpoint. It reports chunk and source-message totals, distinct channels and authors, message date range, channel/author/model distributions, and stored chunk content with source identifiers. The Electron overview screen loads 50 chunks at a time and does not call the OpenAI API.
+
+`DELETE /database` removes every conversation chunk and vector while leaving the schema and Discord login partition intact. Both the API and Electron confirmation dialog require the exact `VYMAZAT` confirmation token.
+
 ## Configuration and secrets
 
 FastAPI loads configuration from `.env` through `ApplicationSettings`. `.env` is ignored and all API credentials and database passwords belong there. `.env.example` contains only variable names and safe placeholders.

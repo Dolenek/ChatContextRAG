@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -47,3 +47,45 @@ class ChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class DatabaseCount(BaseModel):
+    label: str
+    count: int
+
+
+class DatabaseChunkView(BaseModel):
+    chunk_id: str
+    content: str
+    authors: List[str]
+    source_message_ids: List[str]
+    channel: Optional[str]
+    started_at: Optional[datetime]
+    ended_at: Optional[datetime]
+    embedding_model: str
+    metadata: Dict[str, object]
+    updated_at: datetime
+
+
+class DatabaseOverview(BaseModel):
+    total_chunks: int
+    total_source_messages: int
+    total_channels: int
+    total_authors: int
+    oldest_message_at: Optional[datetime]
+    newest_message_at: Optional[datetime]
+    channels: List[DatabaseCount]
+    authors: List[DatabaseCount]
+    embedding_models: List[DatabaseCount]
+    chunks: List[DatabaseChunkView]
+    limit: int
+    offset: int
+    has_more: bool
+
+
+class ClearDatabaseRequest(BaseModel):
+    confirmation: Literal["VYMAZAT"]
+
+
+class ClearDatabaseResponse(BaseModel):
+    deleted_chunks: int
