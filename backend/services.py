@@ -1,34 +1,70 @@
-import re
 from typing import List
 
-from backend.models import ChatResponse
-from backend.repository import MessageRepository
+from backend.chunking import ConversationAwareChunker
+from backend.models import ChatRequest, ChatResponse, ChatSource, ImportRequest, ImportResponse
+from backend.normalization import DiscordMessageNormalizer
+from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
+from backend.repository import VectorRepository
+from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
 
-STOP_WORDS = {
-    "a", "aby", "co", "do", "je", "jak", "jako", "k", "kdo", "na", "nebo",
-    "o", "od", "pro", "se", "s", "ta", "tak", "to", "ve", "v", "z", "že",
-}
+class MessageIngestionService:
+    def __init__(
+        self,
+        normalizer: DiscordMessageNormalizer,
+        chunker: ConversationAwareChunker,
+        embedding_provider: EmbeddingProvider,
+        repository: VectorRepository,
+    ) -> None:
+        self.normalizer = normalizer
+        self.chunker = chunker
+        self.embedding_provider = embedding_provider
+        self.repository = repository
+
+    def ingest(self, request: ImportRequest) -> ImportResponse:
+        normalized_messages = self.normalizer.normalize(request.messages)
+        chunks = self.chunker.chunk(normalized_messages)
+        embeddings = self.embedding_provider.embed_texts([chunk.content for chunk in chunks])
+        if len(embeddings) != len(chunks):
+            raise RuntimeError("Embedding provider returned an unexpected result count")
+        embedded_chunks = [
+            EmbeddedChunk(chunk=chunk, embedding=embedding, embedding_model=self.embedding_provider.model_name)
+            for chunk, embedding in zip(chunks, embeddings)
+        ]
+        stored_count = self.repository.upsert_chunks(embedded_chunks)
+        return ImportResponse(
+            imported_count=len(request.messages),
+            chunk_count=stored_count,
+            messages=request.messages,
+        )
 
 
 class DatabaseChatService:
-    def __init__(self, repository: MessageRepository) -> None:
+    def __init__(
+        self,
+        repository: VectorRepository,
+        embedding_provider: EmbeddingProvider,
+        chat_provider: ChatCompletionProvider,
+        retrieval_limit: int = 5,
+    ) -> None:
         self.repository = repository
+        self.embedding_provider = embedding_provider
+        self.chat_provider = chat_provider
+        self.retrieval_limit = retrieval_limit
 
-    def answer(self, question: str) -> ChatResponse:
-        search_terms = self._extract_terms(question)
-        sources = self.repository.search_messages(search_terms)
-        if not sources:
-            return ChatResponse(
-                answer="V databázi jsem k této otázce nenašel žádnou relevantní zprávu.",
-                sources=[],
-            )
-        summaries = [f"{source.author}: {source.content}" for source in sources]
-        answer = "V uložených zprávách jsem našel:\n\n" + "\n\n".join(summaries)
-        return ChatResponse(answer=answer, sources=sources)
+    def answer(self, request: ChatRequest) -> ChatResponse:
+        query_embedding = self.embedding_provider.embed_texts([request.question])[0]
+        retrieved_chunks = self.repository.search_similar(query_embedding, self.retrieval_limit)
+        answer = self.chat_provider.answer(request.question, request.history, retrieved_chunks)
+        return ChatResponse(answer=answer, sources=self._to_sources(retrieved_chunks))
 
     @staticmethod
-    def _extract_terms(question: str) -> List[str]:
-        words = re.findall(r"[\wá-žÁ-Ž]+", question.lower(), flags=re.UNICODE)
-        meaningful_words = [word for word in words if len(word) > 2 and word not in STOP_WORDS]
-        return list(dict.fromkeys(meaningful_words))[:8]
+    def _to_sources(chunks: List[RetrievedChunk]) -> List[ChatSource]:
+        return [
+            ChatSource(
+                author=", ".join(chunk.authors), content=chunk.content,
+                timestamp=chunk.started_at, channel=chunk.channel,
+                similarity_score=chunk.similarity_score,
+            )
+            for chunk in chunks
+        ]

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,11 +18,18 @@ class ImportRequest(BaseModel):
 
 class ImportResponse(BaseModel):
     imported_count: int
+    chunk_count: int
     messages: List[DiscordMessageInput]
+
+
+class ChatHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=10000)
 
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
+    history: List[ChatHistoryTurn] = Field(default_factory=list, max_length=12)
 
 
 class ChatSource(BaseModel):
@@ -30,6 +37,7 @@ class ChatSource(BaseModel):
     content: str
     timestamp: Optional[datetime]
     channel: Optional[str]
+    similarity_score: float
 
 
 class ChatResponse(BaseModel):

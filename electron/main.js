@@ -35,8 +35,11 @@ async function postJson(endpoint, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Backend vrátil chybu ${response.status}.`);
-  return response.json();
+  const responseBody = await response.json();
+  if (!response.ok) {
+    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
+  }
+  return responseBody;
 }
 
 function registerIpcHandlers() {
@@ -48,7 +51,7 @@ function registerIpcHandlers() {
     discordController.hide();
     return result;
   });
-  ipcMain.handle("database:ask", (_event, question) => postJson("/chat", { question }));
+  ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
 }
 
 app.whenReady().then(async () => {

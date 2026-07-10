@@ -5,6 +5,7 @@ const screens = {
 };
 const discordActions = document.querySelector("#discord-actions");
 const toast = document.querySelector("#toast");
+const conversationHistory = [];
 
 function showScreen(screenName) {
   Object.entries(screens).forEach(([name, element]) => {
@@ -44,7 +45,7 @@ function setCaptureBusy(isBusy) {
 
 function renderImportedMessages(result) {
   document.querySelector("#import-summary").textContent =
-    `Nově uloženo: ${result.imported_count} · Zobrazeno: ${result.messages.length}`;
+    `Zpracováno: ${result.imported_count} zpráv · Uloženo: ${result.chunk_count} chunků`;
   const list = document.querySelector("#message-list");
   list.replaceChildren(...result.messages.map(createMessageCard));
 }
@@ -63,11 +64,14 @@ async function submitQuestion(event) {
   const input = document.querySelector("#question-input");
   const question = input.value.trim();
   if (!question) return;
+  const requestHistory = conversationHistory.slice(-8);
   appendConversationEntry("user", question);
+  conversationHistory.push({ role: "user", content: question });
   input.value = "";
   try {
-    const response = await window.chatContext.askDatabase(question);
+    const response = await window.chatContext.askDatabase(question, requestHistory);
     appendConversationEntry("assistant", response.answer);
+    conversationHistory.push({ role: "assistant", content: response.answer });
   } catch (error) {
     showToast(error.message, true);
   }

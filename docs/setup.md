@@ -4,8 +4,10 @@
 
 - Node.js 20 or newer
 - Python 3.9 available through the Windows `py` launcher
+- Docker Desktop with Linux containers
+- An OpenAI API key
 
-Install dependencies:
+Install application dependencies:
 
 ```powershell
 npm.cmd install
@@ -14,17 +16,31 @@ py -3.9 -m pip install -r backend/requirements.txt
 
 ## Environment configuration
 
-Copy `.env.example` to `.env` before adding API credentials:
+Copy the safe template and set local secrets:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-All API keys must be stored only in `.env`. The populated file is ignored by Git; `.env.example` contains variable names and safe defaults only. The current local search implementation does not require an API key, so `OPENAI_API_KEY` may remain blank.
+Set `OPENAI_API_KEY` and replace the example PostgreSQL password in both `POSTGRES_PASSWORD` and `POSTGRES_DSN`. Never commit `.env`. Restart FastAPI after any configuration change.
 
-Restart the desktop application after changing `.env`; configuration is loaded when FastAPI starts.
+Default AI configuration:
 
-`CHAT_CONTEXT_DATABASE` selects the SQLite file. Relative paths are resolved from the project root.
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- `OPENAI_EMBEDDING_DIMENSIONS=1536`
+- `OPENAI_EMBEDDING_BATCH_SIZE=64`
+- `OPENAI_CHAT_MODEL=gpt-5.6-luna`
+
+The local PostgreSQL container uses host port `5433` to avoid common conflicts with an existing PostgreSQL installation.
+
+## Start infrastructure and application
+
+Start PostgreSQL with pgvector:
+
+```powershell
+docker compose up -d
+docker compose ps
+```
 
 Start the desktop application:
 
@@ -32,7 +48,7 @@ Start the desktop application:
 npm.cmd start
 ```
 
-The app starts FastAPI automatically and loads `.env` from the project root. To run only the API during development, use `npm.cmd run backend`.
+Electron starts FastAPI automatically on `127.0.0.1:8765`. To run only the API during development, use `npm.cmd run backend`.
 
 ## Import flow
 
@@ -41,13 +57,20 @@ The app starts FastAPI automatically and loads `.env` from the project root. To 
 3. Ensure the desired messages are visible in the viewport.
 4. Choose **Načíst poslední 4** in the application toolbar.
 
-The app imports up to four currently visible messages. It does not fetch server history, use a Discord bot, or read chats that are not displayed.
+The app normalizes and chunks up to four visible messages, sends chunk text to the OpenAI embeddings API, and upserts vectors plus source metadata into PostgreSQL. It does not fetch Discord server history or use a Discord bot.
 
 ## Verification
 
-Run the JavaScript and backend tests:
+Run isolated tests without consuming OpenAI API credits:
 
 ```powershell
 npm.cmd test
-py -3.9 -m pytest backend/test_app.py
+py -3.9 -m pytest backend -q
+```
+
+Inspect PostgreSQL when diagnosing infrastructure:
+
+```powershell
+docker compose ps
+docker compose logs postgres
 ```
