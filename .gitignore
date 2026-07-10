@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+.env.*
+!.env.example
+chat_context.db
+dist/
+runtime.*.log

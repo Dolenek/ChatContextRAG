@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Context</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-bar">
+      <button id="home-button" class="brand" type="button" aria-label="Zpět na úvod">
+        <span class="brand-mark">C</span><span>Chat Context</span>
+      </button>
+      <div id="discord-actions" class="discord-actions hidden">
+        <span class="privacy-note">Načtou se jen 4 zprávy viditelné v otevřeném chatu.</span>
+        <button id="capture-button" class="small-primary" type="button">Načíst poslední 4</button>
+      </div>
+    </header>
+
+    <main id="app" class="app-shell">
+      <section id="home-screen" class="screen home-screen">
+        <div class="eyebrow">SOUKROMÁ LOKÁLNÍ DATABÁZE</div>
+        <h1>Vaše konverzace.<br /><span>Váš kontext.</span></h1>
+        <p class="lead">Uložte si důležité zprávy z Discordu a najděte v nich odpověď během pár sekund.</p>
+        <div class="action-grid">
+          <button id="open-discord-button" class="action-card discord-card" type="button">
+            <span class="card-icon">⌁</span>
+            <span><strong>Nahrát pomocí Discordu</strong><small>Přihlaste se a vyberte otevřený chat</small></span>
+            <span class="arrow">→</span>
+          </button>
+          <button id="open-chat-button" class="action-card database-card" type="button">
+            <span class="card-icon">✦</span>
+            <span><strong>Povídat s databází</strong><small>Ptejte se na uložené konverzace</small></span>
+            <span class="arrow">→</span>
+          </button>
+        </div>
+        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Bez Discord bota</span><span>● SQLite úložiště</span></div>
+      </section>
+
+      <section id="result-screen" class="screen panel-screen hidden">
+        <div class="panel-heading"><span class="success-mark">✓</span><div><h2>Zprávy jsou uložené</h2><p id="import-summary"></p></div></div>
+        <div id="message-list" class="message-list"></div>
+        <div class="panel-actions"><button id="import-more-button" class="secondary-button" type="button">Nahrát další</button><button id="chat-after-import-button" class="primary-button" type="button">Povídat s databází</button></div>
+      </section>
+
+      <section id="chat-screen" class="screen chat-screen hidden">
+        <div class="chat-heading"><div class="eyebrow">DATABÁZE ZPRÁV</div><h2>Na co si chcete vzpomenout?</h2><p>Odpovědi vycházejí pouze z uložených zpráv.</p></div>
+        <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
+        <form id="chat-form" class="chat-form"><input id="question-input" type="text" minlength="2" placeholder="Zeptejte se databáze…" autocomplete="off" required /><button type="submit" aria-label="Odeslat">↑</button></form>
+      </section>
+    </main>
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
