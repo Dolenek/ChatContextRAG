@@ -8,6 +8,9 @@ const {
   isCurrentChannel, updateTopConfirmation,
 } = require("./discord-scan-state");
 const { DiscordScanStallMonitor } = require("./discord-scan-stall-monitor");
+const {
+  DiscordScanCancelledError, DiscordScanOperationGuard,
+} = require("./discord-scan-operation-guard");
 
 class DiscordChannelScanner {
   constructor(webContents, options = {}) {
@@ -18,6 +21,7 @@ class DiscordChannelScanner {
     this.importBatchSize = options.importBatchSize ?? 400;
     this.requiredTopConfirmations = options.requiredTopConfirmations ?? 12;
     this.stallMonitorOptions = { recoveryThreshold: options.stallRecoveryThreshold };
+    this.operationGuard = new DiscordScanOperationGuard(options.operationTimeoutMs);
     this.running = false;
     this.cancelRequested = false;
   }
@@ -27,6 +31,7 @@ class DiscordChannelScanner {
     const channelRoute = getChannelRoute(this.webContents.getURL());
     this.running = true;
     this.cancelRequested = false;
+    this.operationGuard.reset();
     const summary = createScanSummary();
     const seenMessageIds = new Set();
     const pendingMessages = new Map();
@@ -43,6 +48,7 @@ class DiscordChannelScanner {
 
   stop() {
     this.cancelRequested = true;
+    this.operationGuard.cancel();
   }
 
   async runUntilStopped(
@@ -63,6 +69,7 @@ class DiscordChannelScanner {
         const observation = await this.observeMessages();
         if (!await this.processObservation(observation, scanState, resources)) break;
       } catch (error) {
+        if (error instanceof DiscordScanCancelledError) break;
         await this.waitAfterError(error, summary, reportProgress);
       }
     }
@@ -99,8 +106,9 @@ class DiscordChannelScanner {
   }
 
   async observeMessages() {
-    const observation = await this.webContents.executeJavaScript(
-      buildDiscordScanObservationScript(), true,
+    const observation = await this.operationGuard.run(
+      () => this.webContents.executeJavaScript(buildDiscordScanObservationScript(), true),
+      "Čtení historie Discordu",
     );
     if (observation.error) throw new Error(observation.error);
     return observation;
@@ -141,7 +149,10 @@ class DiscordChannelScanner {
 
   async scrollAndWait(atTop, recoveryMode = false) {
     const script = buildDiscordScrollUpScript(recoveryMode);
-    const result = await this.webContents.executeJavaScript(script, true);
+    const result = await this.operationGuard.run(
+      () => this.webContents.executeJavaScript(script, true),
+      "Posun historie Discordu",
+    );
     if (result.error) throw new Error(result.error);
     const delayMs = recoveryMode
       ? this.retryDelayMs
@@ -165,7 +176,7 @@ class DiscordChannelScanner {
   }
 
   wait(delayMs) {
-    return new Promise((resolve) => setTimeout(resolve, delayMs));
+    return this.operationGuard.wait(delayMs);
   }
 
 }

@@ -34,7 +34,10 @@ perform no OpenAI calls. A scan creates an `ingestion_session`; stopping or
 reaching the channel beginning closes it and queues a durable `indexing_job`.
 Repeated observations of the same non-top Discord viewport trigger recovery:
 the partial raw batch is committed, the loaded list is moved to its upper edge,
-and traversal resumes after a backoff instead of spinning indefinitely.
+and traversal resumes after a backoff instead of spinning indefinitely. DOM
+reads and scroll commands have a bounded wait and are cancellation-aware, so a
+stalled Discord renderer can be retried or interrupted before the pending raw
+batch is flushed and the session is finalized.
 Each claim assigns a unique worker ID and a renewable 90-second lease. Queued
 jobs and running jobs with expired leases are claimable with `SKIP LOCKED`, so a
 job abandoned by a stopped backend is recovered without resetting work owned by

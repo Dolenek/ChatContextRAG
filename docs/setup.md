@@ -44,7 +44,10 @@ Electron starts FastAPI on `127.0.0.1:8765`.
    also closes the scan automatically. If Discord leaves the visible history
    unchanged away from the channel start, the scanner flushes its partial raw
    batch, forces the loaded message list to its upper edge, and retries after a
-   short backoff.
+   short backoff. Discord DOM operations time out after 10 seconds and are
+   retried, so an unresponsive embedded Discord view cannot permanently block
+   the scan. **Zastavit** interrupts even an in-flight DOM operation, flushes
+   the pending raw batch, and closes the ingestion session for indexing.
 4. The toolbar changes from Discord/raw progress to RAG indexing progress.
    Closing or restarting the application does not lose the queued job.
 5. Use **Pokračovat od poslední načtené** to jump to the oldest raw message and

@@ -129,3 +129,59 @@ test("scanner accepts a Discord message deep link for the selected channel", asy
 
   assert.equal(summary.state, "completed");
 });
+
+test("stop interrupts an unresponsive Discord observation and flushes pending raw messages", async () => {
+  let observationCount = 0;
+  let signalSecondObservation;
+  const secondObservationStarted = new Promise((resolve) => {
+    signalSecondObservation = resolve;
+  });
+  const webContents = {
+    getURL: () => "https://discord.com/channels/server/channel",
+    executeJavaScript: async (script) => {
+      if (script.includes("requestedScrollTop")) return { requestedScrollTop: 100 };
+      observationCount += 1;
+      if (observationCount === 1) {
+        return { messages: [{ external_id: "1" }], atTop: false, topMessageId: "1" };
+      }
+      signalSecondObservation();
+      return new Promise(() => {});
+    },
+  };
+  const importedBatches = [];
+  const scanner = new DiscordChannelScanner(webContents, { delayMs: 0 });
+  const scan = scanner.start(async (messages) => {
+    importedBatches.push(messages.map((message) => message.external_id));
+    return { imported_count: messages.length, chunk_count: 0 };
+  }, () => {});
+
+  await secondObservationStarted;
+  scanner.stop();
+  const summary = await scan;
+
+  assert.equal(summary.state, "stopped");
+  assert.deepEqual(importedBatches, [["1"]]);
+});
+
+test("scanner retries after an unresponsive Discord operation times out", async () => {
+  let observationCount = 0;
+  const webContents = {
+    getURL: () => "https://discord.com/channels/server/channel",
+    executeJavaScript: async (script) => {
+      if (script.includes("requestedScrollTop")) return { requestedScrollTop: 0 };
+      observationCount += 1;
+      if (observationCount === 1) return new Promise(() => {});
+      return { messages: [], atTop: true, topMessageId: "first" };
+    },
+  };
+  const scanner = new DiscordChannelScanner(webContents, {
+    delayMs: 0, requiredTopConfirmations: 1, operationTimeoutMs: 1,
+  });
+
+  const summary = await scanner.start(async () => ({
+    imported_count: 0, chunk_count: 0,
+  }), () => {});
+
+  assert.equal(summary.state, "completed");
+  assert.equal(summary.retryCount, 1);
+});
