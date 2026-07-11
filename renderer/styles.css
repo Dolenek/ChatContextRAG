@@ -87,11 +87,12 @@ h1 span { color: #8e87a9; }
 .stat-card strong, .stat-card span { display: block; }
 .stat-card strong { margin-bottom: 8px; font-size: 25px; }
 .stat-card span { color: var(--muted); font-size: 12px; }
-.overview-breakdowns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.overview-breakdowns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .overview-breakdowns section { padding: 18px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
 .overview-breakdowns h3, .chunks-heading h3 { margin: 0 0 14px; }
 .count-list { display: grid; gap: 8px; max-height: 180px; overflow: auto; }
 .count-list > div { display: flex; justify-content: space-between; gap: 14px; color: var(--muted); font-size: 13px; }
+.job-action { border: 0; border-radius: 7px; padding: 4px 8px; color: #d8d3ff; background: rgba(124,108,255,.18); cursor: pointer; }
 .count-list strong { color: #eef1ff; }
 .empty-label { color: var(--muted); font-size: 13px; }
 .chunks-heading { display: flex; justify-content: space-between; margin: 32px 0 14px; }

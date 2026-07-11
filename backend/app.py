@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 from backend.chunking import ConversationAwareChunker
 from backend.models import (
     ChannelResumePoint, ChatRequest, ChatResponse, ClearDatabaseRequest,
-    ClearDatabaseResponse, DatabaseOverview, HealthResponse, ImportRequest, ImportResponse,
+    ClearDatabaseResponse, DatabaseOverview, FinishIngestionRequest, HealthResponse,
+    ImportRequest, ImportResponse, IndexingJobView, IngestionSessionRequest,
+    IngestionSessionView,
 )
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import (
@@ -17,6 +19,9 @@ from backend.openai_gateway import (
     OpenAIEmbeddingProvider,
 )
 from backend.postgres_repository import PostgresVectorRepository
+from backend.hybrid_repository import PostgresHybridRepository
+from backend.indexing_worker import PersistentIndexingWorker
+from backend.raw_repository import PostgresRawMessageRepository
 from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
 from backend.settings import ApplicationSettings
 
@@ -26,11 +31,11 @@ def create_app(
     chat_service: Optional[DatabaseChatService] = None,
     overview_service: Optional[DatabaseOverviewService] = None,
 ) -> FastAPI:
-    application = FastAPI(title="Chat Context RAG API", version="0.2.0")
+    application = FastAPI(title="Chat Context RAG API", version="0.3.0")
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost", "file://"],
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
     active_ingestion, active_chat, active_overview = _resolve_services(
@@ -49,6 +54,10 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": str(error)})
 
+    @application.exception_handler(ValueError)
+    async def value_error_handler(_request: Request, error: ValueError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
     @application.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok")
@@ -56,6 +65,30 @@ def create_app(
     @application.post("/messages/import", response_model=ImportResponse)
     def import_messages(request: ImportRequest) -> ImportResponse:
         return active_ingestion.ingest(request)
+
+    @application.post("/ingestion/sessions", response_model=IngestionSessionView)
+    def create_ingestion_session(request: IngestionSessionRequest) -> IngestionSessionView:
+        return active_ingestion.create_session(request)
+
+    @application.post(
+        "/ingestion/sessions/{session_id}/finish", response_model=IngestionSessionView,
+    )
+    def finish_ingestion_session(
+        session_id: str, request: FinishIngestionRequest,
+    ) -> IngestionSessionView:
+        return active_ingestion.finish_session(session_id, request)
+
+    @application.get("/indexing/jobs/{job_id}", response_model=IndexingJobView)
+    def indexing_job(job_id: str) -> IndexingJobView:
+        return active_ingestion.get_job(job_id)
+
+    @application.post("/indexing/jobs/{job_id}/retry", response_model=IndexingJobView)
+    def retry_indexing_job(job_id: str) -> IndexingJobView:
+        return active_ingestion.retry_job(job_id)
+
+    @application.post("/indexing/jobs/{job_id}/cancel", response_model=IndexingJobView)
+    def cancel_indexing_job(job_id: str) -> IndexingJobView:
+        return active_ingestion.cancel_job(job_id)
 
     @application.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
@@ -77,8 +110,12 @@ def create_app(
 
     @application.delete("/database", response_model=ClearDatabaseResponse)
     def clear_database(_request: ClearDatabaseRequest) -> ClearDatabaseResponse:
-        deleted_chunks = active_overview.clear_database()
-        return ClearDatabaseResponse(deleted_chunks=deleted_chunks)
+        result = active_overview.clear_database()
+        if isinstance(result, tuple):
+            return ClearDatabaseResponse(
+                deleted_chunks=result[0], deleted_messages=result[1],
+            )
+        return ClearDatabaseResponse(deleted_chunks=result)
 
     return application
 
@@ -97,16 +134,29 @@ def _build_default_services() -> tuple:
     settings = ApplicationSettings.from_environment()
     api_key = settings.openai_api_key
     repository = PostgresVectorRepository(settings.postgres_dsn, settings.embedding_dimensions)
+    raw_repository = PostgresRawMessageRepository(settings.postgres_dsn)
+    raw_repository.ensure_schema()
+    hybrid_repository = PostgresHybridRepository(
+        settings.postgres_dsn, settings.embedding_dimensions,
+    )
+    hybrid_repository.ensure_schema()
     embedding_provider = OpenAIEmbeddingProvider(
         api_key, settings.embedding_model, settings.embedding_dimensions,
         settings.embedding_batch_size,
     )
     chat_provider = OpenAIChatCompletionProvider(api_key, settings.chat_model)
-    ingestion = MessageIngestionService(
-        DiscordMessageNormalizer(), ConversationAwareChunker(), embedding_provider, repository,
+    indexing_worker = PersistentIndexingWorker(
+        raw_repository, hybrid_repository, ConversationAwareChunker(), embedding_provider,
+        settings.embedding_batch_size,
     )
-    chat = DatabaseChatService(repository, embedding_provider, chat_provider)
-    return ingestion, chat, DatabaseOverviewService(repository)
+    indexing_worker.start()
+    ingestion = MessageIngestionService(
+        DiscordMessageNormalizer(), raw_repository, indexing_worker,
+    )
+    chat = DatabaseChatService(
+        repository, embedding_provider, chat_provider, hybrid_repository,
+    )
+    return ingestion, chat, DatabaseOverviewService(repository, raw_repository)
 
 
 app = create_app()

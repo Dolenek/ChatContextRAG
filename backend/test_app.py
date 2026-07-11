@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from backend.app import create_app
 from backend.models import (
     ChannelResumePoint, ChatResponse, ChatSource, DatabaseOverview, ImportResponse,
+    IndexingJobView, IngestionSessionView,
 )
 
 
@@ -11,6 +12,23 @@ class FakeIngestionService:
         return ImportResponse(
             imported_count=len(request.messages), chunk_count=1, messages=request.messages
         )
+
+    def create_session(self, _request):
+        return IngestionSessionView(session_id="session-1", status="running")
+
+    def finish_session(self, session_id, request):
+        return IngestionSessionView(
+            session_id=session_id, status=request.reason, indexing_job_id="job-1",
+        )
+
+    def get_job(self, job_id):
+        return IndexingJobView(job_id=job_id, session_id="session-1", status="queued")
+
+    def retry_job(self, job_id):
+        return self.get_job(job_id)
+
+    def cancel_job(self, job_id):
+        return IndexingJobView(job_id=job_id, session_id="session-1", status="cancelled")
 
 
 class FakeChatService:
@@ -67,6 +85,17 @@ def test_import_and_chat() -> None:
     overview_response = client.get("/database/overview?limit=25&offset=0")
     assert overview_response.status_code == 200
     assert overview_response.json()["total_chunks"] == 0
+
+    session_response = client.post("/ingestion/sessions", json={
+        "guild_id": "10", "channel_id": "20", "channel": "projekt",
+    })
+    finish_response = client.post(
+        "/ingestion/sessions/session-1/finish", json={"reason": "completed"},
+    )
+    job_response = client.get("/indexing/jobs/job-1")
+    assert session_response.status_code == 200
+    assert finish_response.json()["indexing_job_id"] == "job-1"
+    assert job_response.json()["status"] == "queued"
 
     resume_response = client.get(
         "/database/resume-point?channel_id=456&channel=projekt"

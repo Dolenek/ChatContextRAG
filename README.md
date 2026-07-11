@@ -1,5 +1,5 @@
 # Chat Context RAG
 
-Electron desktop app that normalizes and chunks visible Discord messages, embeds them with OpenAI, stores them in PostgreSQL with pgvector, and answers grounded questions through the OpenAI Responses API.
+Electron desktop app that archives Discord messages into a deduplicated raw layer, builds persistent halfvec conversation indexes with OpenAI embeddings, and answers grounded questions through hybrid full-text/vector retrieval and the OpenAI Responses API.
 
 See [setup](docs/setup.md) and [architecture](docs/architecture.md).

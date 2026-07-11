@@ -9,3 +9,5 @@ __pycache__/
 chat_context.db
 dist/
 runtime.*.log
+runtime.*.json
+eval/

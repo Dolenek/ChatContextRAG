@@ -69,15 +69,18 @@ function registerIpcHandlers() {
   ipcMain.handle("discord:hide", () => discordController.hide());
   ipcMain.handle("discord:capture", async () => {
     const messages = await discordController.captureVisibleMessages();
-    const result = await postJson("/messages/import", { messages });
+    const context = await discordController.getCurrentChannelContext();
+    const session = await createIngestionSession(context);
+    const result = await postJson("/messages/import", {
+      session_id: session.session_id, messages,
+    });
+    const finished = await finishIngestionSession(session.session_id, "completed");
+    monitorIndexingJob(finished.indexing_job_id);
     discordController.hide();
     return result;
   });
-  ipcMain.handle("discord:scan:start", () => discordController.startChannelScan(
-    (messages) => postJson("/messages/import", { messages }),
-    (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
-  ));
-  ipcMain.handle("discord:scan:resume", () => resumeDiscordChannelScan());
+  ipcMain.handle("discord:scan:start", () => runManagedDiscordScan(false));
+  ipcMain.handle("discord:scan:resume", () => runManagedDiscordScan(true));
   ipcMain.handle("discord:scan:stop", () => {
     discordController.stopChannelScan();
     return { stopping: true };
@@ -88,10 +91,44 @@ function registerIpcHandlers() {
     return getJson(`/database/overview?${parameters}`);
   });
   ipcMain.handle("database:clear", (_event, request) => deleteJson("/database", request));
+  ipcMain.handle("indexing:retry", (_event, jobId) =>
+    postJson(`/indexing/jobs/${jobId}/retry`, {}));
+  ipcMain.handle("indexing:cancel", (_event, jobId) =>
+    postJson(`/indexing/jobs/${jobId}/cancel`, {}));
 }
 
-async function resumeDiscordChannelScan() {
+async function runManagedDiscordScan(shouldResume) {
   const context = await discordController.getCurrentChannelContext();
+  if (shouldResume) await jumpToResumePoint(context);
+  const session = await createIngestionSession(context);
+  let summary;
+  try {
+    summary = await discordController.startChannelScan(
+      (messages) => postJson("/messages/import", {
+        session_id: session.session_id, messages,
+      }),
+      (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
+    );
+  } finally {
+    const reason = summary?.state === "completed" ? "completed" : "stopped";
+    const finished = await finishIngestionSession(session.session_id, reason);
+    monitorIndexingJob(finished.indexing_job_id);
+    if (summary) summary.indexingJobId = finished.indexing_job_id;
+  }
+  return summary;
+}
+
+function createIngestionSession(context) {
+  return postJson("/ingestion/sessions", {
+    guild_id: context.guildId, channel_id: context.channelId, channel: context.channel,
+  });
+}
+
+function finishIngestionSession(sessionId, reason) {
+  return postJson(`/ingestion/sessions/${sessionId}/finish`, { reason });
+}
+
+async function jumpToResumePoint(context) {
   const parameters = new URLSearchParams({
     channel_id: context.channelId, channel: context.channel,
   });
@@ -100,10 +137,20 @@ async function resumeDiscordChannelScan() {
     throw new Error("Pro tento kanál zatím v databázi není žádná zpráva.");
   }
   await discordController.jumpToMessage(resumePoint.message_id);
-  return discordController.startChannelScan(
-    (messages) => postJson("/messages/import", { messages }),
-    (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
-  );
+}
+
+async function monitorIndexingJob(jobId) {
+  if (!jobId) return;
+  try {
+    let job;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      job = await getJson(`/indexing/jobs/${jobId}`);
+      mainWindow?.webContents.send("discord:index:progress", job);
+    } while (["queued", "running"].includes(job.status));
+  } catch (error) {
+    console.error("Indexing job monitor failed", error);
+  }
 }
 
 app.whenReady().then(async () => {

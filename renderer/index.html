@@ -12,7 +12,7 @@
         <span class="brand-mark">C</span><span>Chat Context</span>
       </button>
       <div id="discord-actions" class="discord-actions hidden">
-        <span id="scan-progress" class="scan-progress">Text zpráv se odešle OpenAI pro embedding.</span>
+        <span id="scan-progress" class="scan-progress">Discord se ukládá raw; embeddings se spustí po scanu.</span>
         <button id="capture-button" class="small-primary" type="button">Načíst poslední 4</button>
         <button id="resume-scan-button" class="small-resume" type="button">Pokračovat od poslední načtené</button>
         <button id="scan-channel-button" class="small-scan" type="button">Procházet do databáze</button>
@@ -66,6 +66,7 @@
           <section><h3>Kanály</h3><div id="channel-counts" class="count-list"></div></section>
           <section><h3>Autoři</h3><div id="author-counts" class="count-list"></div></section>
           <section><h3>Embedding modely</h3><div id="model-counts" class="count-list"></div></section>
+          <section><h3>Indexovací úlohy</h3><div id="indexing-jobs" class="count-list"></div></section>
         </div>
         <div class="chunks-heading"><div><h3>Uložené chunky</h3><p id="chunk-range"></p></div></div>
         <div id="database-chunks" class="database-chunks"></div>

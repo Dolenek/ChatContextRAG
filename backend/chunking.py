@@ -1,6 +1,6 @@
 import hashlib
 from datetime import timedelta
-from typing import List, Optional
+from typing import Iterable, Iterator, List, Optional
 
 from backend.vector_models import ConversationChunk, NormalizedMessage
 
@@ -11,16 +11,19 @@ class ConversationAwareChunker:
         self.max_gap = timedelta(minutes=max_gap_minutes)
 
     def chunk(self, messages: List[NormalizedMessage]) -> List[ConversationChunk]:
-        chunks: List[ConversationChunk] = []
+        return list(self.chunk_stream(messages))
+
+    def chunk_stream(
+        self, messages: Iterable[NormalizedMessage]
+    ) -> Iterator[ConversationChunk]:
         current: List[NormalizedMessage] = []
         for message in messages:
             if current and self._must_split(current, message):
-                chunks.extend(self._build_chunks(current))
+                yield from self._build_chunks(current)
                 current = []
             current.append(message)
         if current:
-            chunks.extend(self._build_chunks(current))
-        return chunks
+            yield from self._build_chunks(current)
 
     def _must_split(self, current: List[NormalizedMessage], message: NormalizedMessage) -> bool:
         previous = current[-1]
@@ -42,7 +45,10 @@ class ConversationAwareChunker:
     def _build_chunk(
         self, messages: List[NormalizedMessage], content: str, part_index: int
     ) -> ConversationChunk:
-        source_ids = [message.external_id for message in messages]
+        source_ids = [
+            source_id for message in messages
+            for source_id in (message.external_id, *message.related_external_ids)
+        ]
         identity = "|".join(source_ids + [str(part_index), content])
         chunk_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         timestamps = [message.timestamp for message in messages if message.timestamp]

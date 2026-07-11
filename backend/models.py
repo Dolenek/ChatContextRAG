@@ -15,6 +15,7 @@ class DiscordMessageInput(BaseModel):
 
 
 class ImportRequest(BaseModel):
+    session_id: Optional[str] = Field(default=None, max_length=64)
     messages: List[DiscordMessageInput] = Field(min_length=1, max_length=400)
 
 
@@ -22,6 +23,8 @@ class ImportResponse(BaseModel):
     imported_count: int
     chunk_count: int
     messages: List[DiscordMessageInput]
+    raw_stored_count: int = 0
+    unique_content_count: int = 0
 
 
 class ChatHistoryTurn(BaseModel):
@@ -83,6 +86,13 @@ class DatabaseOverview(BaseModel):
     limit: int
     offset: int
     has_more: bool
+    raw_message_count: int = 0
+    unique_content_count: int = 0
+    duplicate_message_count: int = 0
+    indexed_message_count: int = 0
+    pending_message_count: int = 0
+    database_size: str = "0 bytes"
+    indexing_jobs: List["IndexingJobView"] = Field(default_factory=list)
 
 
 class ClearDatabaseRequest(BaseModel):
@@ -91,9 +101,39 @@ class ClearDatabaseRequest(BaseModel):
 
 class ClearDatabaseResponse(BaseModel):
     deleted_chunks: int
+    deleted_messages: int = 0
 
 
 class ChannelResumePoint(BaseModel):
     message_id: Optional[str]
     channel_id: str
     channel: Optional[str]
+
+
+class IngestionSessionRequest(BaseModel):
+    guild_id: str = Field(min_length=1, max_length=128)
+    channel_id: str = Field(min_length=1, max_length=128)
+    channel: Optional[str] = Field(default=None, max_length=300)
+
+
+class IngestionSessionView(BaseModel):
+    session_id: str
+    status: Literal["running", "completed", "stopped"]
+    raw_message_count: int = 0
+    indexing_job_id: Optional[str] = None
+
+
+class FinishIngestionRequest(BaseModel):
+    reason: Literal["completed", "stopped"]
+
+
+class IndexingJobView(BaseModel):
+    job_id: str
+    session_id: str
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    total_messages: int = 0
+    processed_messages: int = 0
+    stored_chunks: int = 0
+    last_error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None

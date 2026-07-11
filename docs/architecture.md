@@ -1,61 +1,90 @@
 # Architecture
 
-Chat Context RAG is a local Electron application backed by FastAPI, PostgreSQL, pgvector, and the OpenAI API.
+Chat Context RAG is a local Electron application backed by FastAPI, PostgreSQL,
+pgvector, and the OpenAI API. Discord is accessed only through the signed-in
+embedded web surface; no user token or self-bot API is used.
 
-- Electron owns the desktop window, isolated Discord browser surface, and narrow IPC bridge.
-- FastAPI owns ingestion, retrieval, and RAG orchestration.
-- PostgreSQL with pgvector stores conversation chunks, vectors, and source metadata.
-- OpenAI creates embeddings and generates grounded chat responses.
+## Two-phase ingestion
 
-## Ingestion pipeline
-
-The canonical Discord ingestion flow is:
+Discord traversal and RAG indexing are intentionally decoupled:
 
 ```text
-selected visible Discord messages
-    -> Unicode and whitespace normalization
-    -> conversation-aware chunking
-    -> batched text inputs
-    -> OpenAI embeddings API
-    -> pgvector storage with source metadata
+Discord DOM -> normalization -> canonical content + raw occurrence storage
+            -> close ingestion session -> persistent indexing job
+            -> chronological conversation chunking -> OpenAI embeddings
+            -> halfvec HNSW storage + normalized chunk/message links
 ```
 
-The normalizer preserves message order and identity while removing formatting noise. The chunker keeps nearby messages from the same channel together, starts a new chunk when the channel changes or the time gap exceeds 20 minutes, and caps chunks at 1,800 characters. Deterministic chunk identifiers make repeated imports idempotent.
+`message_contents` stores one normalized copy of each exact text, its occurrence
+count, and a generated `simple` PostgreSQL full-text vector. `discord_messages`
+stores every occurrence with Discord identity, author, channel, snowflake order,
+and timestamp. Exact duplicate text is never discarded; occurrences share a
+canonical content row.
 
-`OpenAIEmbeddingProvider` batches chunk texts according to `OPENAI_EMBEDDING_BATCH_SIZE`. The default embedding configuration is `text-embedding-3-small` with 1,536 dimensions, matching the vector column. See the [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings).
+Electron writes up to 400 messages per request during traversal. These requests
+perform no OpenAI calls. A scan creates an `ingestion_session`; stopping or
+reaching the channel beginning closes it and queues a durable `indexing_job`.
+Running jobs return to `queued` after a backend restart. Failed jobs retain raw
+data and can be retried; active jobs can be cancelled.
 
-### Automatic channel traversal
+The indexer uses a server-side PostgreSQL cursor and streams messages in
+snowflake order. Memory is bounded by the cursor page, one unfinished chunk,
+and one embedding batch. Adjacent identical messages from the same author are
+rendered once with a repetition count while all source IDs remain linked.
+Conversation boundaries use a 20-minute gap and an 1,800-character cap.
 
-The Electron toolbar can traverse the currently selected Discord channel toward its oldest message. Each step extracts up to 100 rendered `chat-messages-*` items, finds the scrollable ancestor dynamically, and moves upward by 85% of the viewport. Extracted messages accumulate in a deduplicated in-memory queue and are persisted chronologically in batches of up to 400. This avoids waiting for OpenAI and PostgreSQL after every viewport while keeping the queue bounded. A batch is marked as seen only after successful storage, so transient OpenAI or PostgreSQL failures are retried without losing messages.
+When a later session overlaps an indexed message, the job snapshots all source
+messages from affected chunks, removes those chunks, and rebuilds the combined
+boundary. This preserves context across scan sessions and handles edited
+messages without leaving stale vectors.
 
-Traversal uses a short delay between ordinary scroll steps and a longer delay while Discord reports the top of its currently loaded history. It has no step or inactivity limit. Slow loading, unchanged virtualized views, API failures, and temporary navigation away from the selected channel put it into a waiting/retry state. It ends only when the user stops it or the same oldest message remains at scroll position zero for 12 consecutive checks, confirming the actual beginning of the channel. Any queued partial batch is stored before a user-requested stop completes.
+## Vector storage
 
-The backend checks source message IDs already present in pgvector before embedding, so repeated traversals do not spend API calls or create chunks for previously stored messages.
+New chunks are stored in `rag_chunks` as `halfvec(1536)` and indexed with HNSW
+using `halfvec_cosine_ops`. Half precision retains all embedding dimensions while
+reducing vector and index storage. The legacy `conversation_chunks` table remains
+readable until the user explicitly clears the database; no startup migration
+deletes data.
 
-The toolbar displays elapsed wall-clock time for the full traversal, including retry waits. **Pokračovat od poslední načtené** resolves the oldest stored Discord message for the selected channel, opens its Discord deep link, and resumes traversal toward older history. New chunks store stable Discord guild and channel IDs in metadata; legacy chunks without those IDs are matched by channel name. Source-ID deduplication remains active during resumed traversal.
+`rag_chunk_messages` provides normalized source links for boundary rebuilding,
+indexed-message statistics, and retrieval diversity. Chunk IDs remain
+deterministic from source IDs and rendered content, making retries idempotent.
 
-## Vector storage and retrieval
+## Hybrid retrieval
 
-`PostgresVectorRepository` creates the `vector` extension and a `conversation_chunks` table on first use. Each row contains normalized content, authors, source Discord message IDs, channel, time range, embedding model, JSON metadata, and the vector itself.
+Each chat question produces 30 HNSW candidates and 30 `simple` full-text
+candidates. Full-text hits use their newest and earliest occurrences and expand
+to four neighboring messages on either side, capped at 12 messages and stopped
+by a 20-minute gap.
 
-An HNSW index using `vector_cosine_ops` serves nearest-neighbor retrieval. The repository is behind the `VectorRepository` protocol so another vector store can replace PostgreSQL without changing orchestration. See the [pgvector project](https://github.com/pgvector/pgvector) and its [Python integration](https://github.com/pgvector/pgvector-python).
+Candidates are combined with reciprocal-rank fusion using constant 60. Exact
+canonical-content matches merge into their vector candidate instead of filling
+multiple result slots. A recency multiplier contributes at most 10 percent and
+decays with a three-year half-life, so old strategies remain discoverable.
+The best eight diverse contexts are sent to the OpenAI Responses API. Retrieved
+Discord text is untrusted evidence; the prompt requires citations and an
+explicit insufficient-evidence response when appropriate.
 
-## RAG chat
+If no new hybrid data exists, chat falls back to the legacy vector index. This
+keeps the current database usable until an explicit clear and re-import.
 
-For each question, FastAPI embeds the question, retrieves the five closest chunks by cosine similarity, and sends those chunks plus recent user/assistant turns to the OpenAI Responses API. Retrieved Discord content is explicitly treated as untrusted evidence rather than model instructions. The answer prompt requires source markers such as `[1]` and requires the model to acknowledge missing evidence.
+## Public API
 
-The default generation model is `gpt-5.6-luna` with low reasoning effort. It can be replaced through `OPENAI_CHAT_MODEL`. The implementation uses the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text).
+- `POST /ingestion/sessions` starts a raw scan session.
+- `POST /messages/import` stores raw messages for a session.
+- `POST /ingestion/sessions/{id}/finish` queues indexing.
+- `GET /indexing/jobs/{id}` reports durable progress.
+- `POST /indexing/jobs/{id}/retry` and `/cancel` control a job.
+- `POST /chat` performs hybrid RAG with legacy fallback.
+- `GET /database/resume-point` reads the oldest raw message, then legacy data.
+- `GET /database/overview` reports raw, deduplication, index, job, and size data.
+- `DELETE /database` requires `VYMAZAT` and clears both generations of data.
 
-## Database overview
+## Configuration
 
-`GET /database/overview` is a read-only, paginated inspection endpoint. It reports chunk and source-message totals, distinct channels and authors, message date range, channel/author/model distributions, and stored chunk content with source identifiers. The Electron overview screen loads 50 chunks at a time and does not call the OpenAI API.
+The automated test suite includes a 100,000-message synthetic test that verifies
+streaming and the 64-chunk embedding bound.
 
-`GET /database/resume-point` returns the oldest stored Discord source message ID for a channel. It prefers indexed stable channel metadata and falls back to an indexed channel name only for legacy chunks.
-
-`DELETE /database` removes every conversation chunk and vector while leaving the schema and Discord login partition intact. Both the API and Electron confirmation dialog require the exact `VYMAZAT` confirmation token.
-
-## Configuration and secrets
-
-FastAPI loads configuration from `.env` through `ApplicationSettings`. `.env` is ignored and all API credentials and database passwords belong there. `.env.example` contains only variable names and safe placeholders.
-
-Changing `OPENAI_EMBEDDING_DIMENSIONS` requires a fresh compatible vector schema. Existing rows cannot mix vector dimensions.
+FastAPI loads secrets and model configuration from `.env`; `.env.example`
+contains safe placeholders only. `OPENAI_EMBEDDING_DIMENSIONS` remains 1536.
+Changing it requires a new compatible `rag_chunks` table.

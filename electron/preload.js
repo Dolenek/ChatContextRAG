@@ -11,10 +11,17 @@ contextBridge.exposeInMainWorld("chatContext", {
     ipcRenderer.on("discord:scan:progress", listener);
     return () => ipcRenderer.removeListener("discord:scan:progress", listener);
   },
+  onIndexingProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("discord:index:progress", listener);
+    return () => ipcRenderer.removeListener("discord:index:progress", listener);
+  },
   hideDiscord: () => ipcRenderer.invoke("discord:hide"),
   askDatabase: (question, history) => ipcRenderer.invoke("database:ask", { question, history }),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
   clearDatabase: (confirmation) =>
     ipcRenderer.invoke("database:clear", { confirmation }),
+  retryIndexingJob: (jobId) => ipcRenderer.invoke("indexing:retry", jobId),
+  cancelIndexingJob: (jobId) => ipcRenderer.invoke("indexing:cancel", jobId),
 });

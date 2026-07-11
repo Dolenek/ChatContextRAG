@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -12,6 +12,7 @@ class NormalizedMessage:
     channel: Optional[str]
     channel_id: Optional[str]
     guild_id: Optional[str]
+    related_external_ids: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

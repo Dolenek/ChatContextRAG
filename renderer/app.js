@@ -99,9 +99,16 @@ function renderScanProgress(progress) {
     ? ` · čekám a zkouším dál${progress.lastError ? `: ${progress.lastError}` : "…"}`
     : "";
   const stoppingSuffix = progress.state === "stopping" ? " · zastavuji…" : "";
-  const pendingSuffix = progress.pendingMessages ? ` · čeká na uložení ${progress.pendingMessages}` : "";
+  const pendingSuffix = progress.pendingMessages ? ` · čeká na raw uložení ${progress.pendingMessages}` : "";
   const elapsed = scanStartedAt ? ` · čas ${formatElapsed(Date.now() - scanStartedAt)}` : "";
-  status.textContent = `Nalezeno ${progress.discoveredMessages || 0} · nově uloženo ${progress.importedMessages || 0} · chunky ${progress.storedChunks || 0}${pendingSuffix}${elapsed}${waitingSuffix}${stoppingSuffix}`;
+  status.textContent = `Discord: nalezeno ${progress.discoveredMessages || 0} · raw uloženo ${progress.importedMessages || 0}${pendingSuffix}${elapsed}${waitingSuffix}${stoppingSuffix}`;
+  status.title = status.textContent;
+}
+
+function renderIndexingProgress(job) {
+  const status = document.querySelector("#scan-progress");
+  const error = job.last_error ? ` · chyba: ${job.last_error}` : "";
+  status.textContent = `RAG index: ${job.status} · zprávy ${job.processed_messages}/${job.total_messages} · chunky ${job.stored_chunks}${error}`;
   status.title = status.textContent;
 }
 
@@ -204,6 +211,7 @@ function renderOverview(overview, append) {
   renderCountList("#channel-counts", overview.channels);
   renderCountList("#author-counts", overview.authors);
   renderCountList("#model-counts", overview.embedding_models);
+  renderIndexingJobs(overview.indexing_jobs || []);
   const chunkCards = overview.chunks.map(createDatabaseChunkCard);
   const chunkList = document.querySelector("#database-chunks");
   append ? chunkList.append(...chunkCards) : chunkList.replaceChildren(...chunkCards);
@@ -215,12 +223,46 @@ function renderOverview(overview, append) {
 function renderOverviewStats(overview) {
   const stats = [
     ["Chunky", overview.total_chunks], ["Zdrojové zprávy", overview.total_source_messages],
+    ["Raw zprávy", overview.raw_message_count],
+    ["Unikátní texty", overview.unique_content_count],
+    ["Přesné duplicity", overview.duplicate_message_count],
+    ["Zaindexované zprávy", overview.indexed_message_count],
+    ["Čeká na index", overview.pending_message_count],
+    ["Velikost databáze", overview.database_size],
     ["Kanály", overview.total_channels], ["Autoři", overview.total_authors],
     ["Nejstarší zpráva", formatDate(overview.oldest_message_at)],
     ["Nejnovější zpráva", formatDate(overview.newest_message_at)],
   ];
   const cards = stats.map(([label, value]) => createStatCard(label, value));
   document.querySelector("#overview-stats").replaceChildren(...cards);
+}
+
+function renderIndexingJobs(jobs) {
+  const rows = jobs.map((job) => {
+    const row = document.createElement("div");
+    const action = ["queued", "running"].includes(job.status) ? "cancel" : "retry";
+    const label = action === "cancel" ? "Zrušit" : "Opakovat";
+    row.innerHTML = `<span>${escapeHtml(job.status)} · ${job.processed_messages}/${job.total_messages}</span><strong>${job.stored_chunks} chunků</strong><button class="job-action" data-job-id="${escapeHtml(job.job_id)}" data-action="${action}" type="button">${label}</button>`;
+    return row;
+  });
+  if (!rows.length) rows.push(createEmptyLabel("Žádné indexovací úlohy"));
+  document.querySelector("#indexing-jobs").replaceChildren(...rows);
+}
+
+async function handleIndexingJobAction(event) {
+  const button = event.target.closest(".job-action");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    if (button.dataset.action === "cancel") {
+      await window.chatContext.cancelIndexingJob(button.dataset.jobId);
+    } else {
+      await window.chatContext.retryIndexingJob(button.dataset.jobId);
+    }
+    await openDatabaseOverview();
+  } catch (error) {
+    showToast(error.message, true);
+  }
 }
 
 function createStatCard(label, value) {
@@ -302,7 +344,7 @@ async function clearDatabase() {
   try {
     const result = await window.chatContext.clearDatabase(confirmation);
     closeClearDatabaseDialog();
-    showToast(`Databáze byla vymazána. Odstraněno chunků: ${result.deleted_chunks}`);
+    showToast(`Databáze byla vymazána. Chunky: ${result.deleted_chunks} · raw zprávy: ${result.deleted_messages || 0}`);
     await openDatabaseOverview();
   } catch (error) {
     showToast(error.message, true);
@@ -341,9 +383,11 @@ document.querySelector("#open-clear-database-button").addEventListener("click", 
 document.querySelector("#cancel-clear-button").addEventListener("click", closeClearDatabaseDialog);
 document.querySelector("#clear-confirmation-input").addEventListener("input", updateClearConfirmation);
 document.querySelector("#confirm-clear-button").addEventListener("click", clearDatabase);
+document.querySelector("#indexing-jobs").addEventListener("click", handleIndexingJobAction);
 document.querySelector("#home-button").addEventListener("click", async () => {
   await window.chatContext.hideDiscord();
   showScreen("home");
 });
 
 window.chatContext.onDiscordScanProgress(renderScanProgress);
+window.chatContext.onIndexingProgress(renderIndexingProgress);

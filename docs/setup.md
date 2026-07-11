@@ -1,84 +1,66 @@
 # Setup and operation
 
-## Prerequisites
+## Prerequisites and configuration
 
 - Node.js 20 or newer
-- Python 3.9 available through the Windows `py` launcher
+- Python 3.9 through the Windows `py` launcher
 - Docker Desktop with Linux containers
 - An OpenAI API key
 
-Install application dependencies:
+Install dependencies and create the private environment file:
 
 ```powershell
 npm.cmd install
 py -3.9 -m pip install -r backend/requirements.txt
-```
-
-## Environment configuration
-
-Copy the safe template and set local secrets:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-Set `OPENAI_API_KEY` and replace the example PostgreSQL password in both `POSTGRES_PASSWORD` and `POSTGRES_DSN`. Never commit `.env`. Restart FastAPI after any configuration change.
+Set `OPENAI_API_KEY` and matching PostgreSQL credentials in `.env`. Never commit
+that file. Defaults use `text-embedding-3-small`, 1,536 dimensions, embedding
+batches of 64, and PostgreSQL port 5433.
 
-Default AI configuration:
+## Starting the application
 
-- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
-- `OPENAI_EMBEDDING_DIMENSIONS=1536`
-- `OPENAI_EMBEDDING_BATCH_SIZE=64`
-- `OPENAI_CHAT_MODEL=gpt-5.6-luna`
-
-The local PostgreSQL container uses host port `5433` to avoid common conflicts with an existing PostgreSQL installation.
-
-## Start infrastructure and application
-
-On Windows, the simplest option is to run `run.bat` from the repository root. The launcher validates prerequisites, refreshes Node and Python dependencies when application files have changed, starts PostgreSQL through Docker Compose, and then starts the Electron application. The first run is treated as requiring a dependency rebuild. A successful rebuild is recorded under the ignored `node_modules/` directory.
-
-Before using the launcher, create and configure `.env` as described above. Docker Desktop must be running.
-
-For a manual start, start PostgreSQL with pgvector:
+Run `run.bat` from the repository root. It validates dependencies, starts the
+pgvector Docker service, and opens Electron. For a manual start:
 
 ```powershell
 docker compose up -d
-docker compose ps
-```
-
-Then start the desktop application:
-
-```powershell
 npm.cmd start
 ```
 
-Electron starts FastAPI automatically on `127.0.0.1:8765`. To run only the API during development, use `npm.cmd run backend`.
+Electron starts FastAPI on `127.0.0.1:8765`.
 
-## Import flow
+## Importing Discord history
 
-1. Choose **Nahrát pomocí Discordu**.
-2. Sign in to Discord in the embedded surface and open a chat.
-3. Ensure the desired messages are visible in the viewport.
-4. Choose **Načíst poslední 4** in the application toolbar.
+1. Choose **Nahrát pomocí Discordu** and open a channel.
+2. Use **Načíst poslední 4** for a small import, or **Procházet do databáze** for
+   continuous history traversal.
+3. Use **Zastavit** to flush the current raw batch. Reaching the channel start
+   also closes the scan automatically.
+4. The toolbar changes from Discord/raw progress to RAG indexing progress.
+   Closing or restarting the application does not lose the queued job.
+5. Use **Pokračovat od poslední načtené** to jump to the oldest raw message and
+   continue into older history.
 
-The app normalizes and chunks up to four visible messages, sends chunk text to the OpenAI embeddings API, and upserts vectors plus source metadata into PostgreSQL. It does not fetch Discord server history or use a Discord bot.
+Traversal stores raw data only and therefore does not wait for OpenAI. After a
+session closes, indexing streams the complete session chronologically, creates
+conversation chunks, and stores `halfvec(1536)` vectors. The database overview
+shows raw messages, unique texts, duplicates, indexed and pending messages,
+database size, and recent jobs. Failed jobs can be retried and active jobs can
+be cancelled there.
 
-To import channel history automatically, open a channel and choose **Procházet do databáze**. The app scrolls upward while the toolbar shows total elapsed time and the number of messages waiting for storage. Messages are written in batches of up to 400 to reduce OpenAI and PostgreSQL round trips. Choose **Zastavit** to flush the current partial batch and interrupt traversal. Discord messages traversed this way are sent to OpenAI for embedding. Re-running the traversal skips source message IDs already stored in the database.
+Legacy chunks remain available until **Vymazat databázi** is confirmed with
+`VYMAZAT`. Clearing removes legacy chunks, raw messages, jobs, and new vectors,
+but preserves the Discord login partition and database schema.
 
-To continue an earlier traversal, open the same Discord channel and choose **Pokračovat od poslední načtené**. The app jumps to the oldest message already stored for that channel and continues toward the beginning. Existing imports created before stable channel IDs were stored are located by their channel name; future imports use Discord channel IDs.
+## Verification and evaluation
 
-## Verification
-
-Run isolated tests without consuming OpenAI API credits:
+Run tests without OpenAI charges:
 
 ```powershell
 npm.cmd test
 py -3.9 -m pytest backend -q
 ```
 
-Inspect PostgreSQL when diagnosing infrastructure:
-
-```powershell
-docker compose ps
-docker compose logs postgres
-```
+Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`.
