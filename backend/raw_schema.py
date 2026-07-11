@@ -17,6 +17,8 @@ def raw_schema_statements() -> List[str]:
               REFERENCES message_contents(content_hash), updated_at TIMESTAMPTZ DEFAULT NOW())""",
         """CREATE INDEX IF NOT EXISTS discord_messages_channel_order
             ON discord_messages(channel_id, message_order)""",
+        """CREATE INDEX IF NOT EXISTS discord_messages_content_order
+            ON discord_messages(content_hash, message_order)""",
         """CREATE TABLE IF NOT EXISTS ingestion_sessions (
             id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
             channel TEXT, status TEXT NOT NULL, raw_message_count BIGINT DEFAULT 0,

@@ -71,6 +71,13 @@ h1 span { color: #8e87a9; }
 .chat-bubble { max-width: 78%; margin: 10px 0; padding: 14px 17px; border-radius: 16px; line-height: 1.55; white-space: pre-wrap; }
 .chat-bubble.user { margin-left: auto; background: #6f5ce8; }
 .chat-bubble.assistant { background: var(--surface); border: 1px solid var(--border); color: #d7dcee; }
+.chat-sources { width: 78%; margin: -3px 0 18px; display: grid; gap: 7px; }
+.chat-sources-heading { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.chat-source-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: 11px; background: rgba(12, 17, 32, .72); }
+.chat-source-card summary { color: #cdd3e7; font-size: 12px; cursor: pointer; }
+.chat-source-card small { display: block; margin-top: 9px; color: var(--muted); font-size: 10px; }
+.chat-source-card p { max-height: 180px; overflow: auto; margin: 8px 0; color: #afb7cf; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.source-open-button { border: 0; border-radius: 7px; padding: 6px 9px; color: #b9f7fb; background: rgba(50, 210, 221, .13); cursor: pointer; font-size: 11px; }
 .chat-form { display: grid; grid-template-columns: 1fr 48px; gap: 10px; padding: 10px; border: 1px solid rgba(124, 108, 255, 0.38); border-radius: 17px; background: #11172a; }
 .chat-form input { border: 0; outline: 0; padding: 0 10px; background: transparent; color: white; }
 .chat-form button { width: 48px; height: 48px; border: 0; border-radius: 12px; background: var(--violet); font-size: 21px; cursor: pointer; }

@@ -1,4 +1,5 @@
 import hashlib
+import re
 from datetime import datetime, timedelta
 from typing import Iterable, Iterator, List, Optional
 
@@ -6,9 +7,15 @@ from backend.vector_models import ConversationChunk, NormalizedMessage
 
 
 class ConversationAwareChunker:
-    def __init__(self, max_characters: int = 1800, max_gap_minutes: int = 20) -> None:
+    def __init__(
+        self, max_characters: int = 1800, max_gap_minutes: int = 20,
+        overlap_characters: int = 160,
+    ) -> None:
+        if max_characters < 80:
+            raise ValueError("max_characters must be at least 80")
         self.max_characters = max_characters
         self.max_gap = timedelta(minutes=max_gap_minutes)
+        self.overlap_characters = min(overlap_characters, max_characters // 4)
 
     def chunk(self, messages: List[NormalizedMessage]) -> List[ConversationChunk]:
         return list(self.chunk_stream(messages))
@@ -93,7 +100,42 @@ class ConversationAwareChunker:
         return f"[{timestamp}] {message.author}: {message.content}"
 
     def _split_long_text(self, content: str) -> List[str]:
-        return [
-            content[start : start + self.max_characters]
-            for start in range(0, len(content), self.max_characters)
-        ]
+        if len(content) <= self.max_characters:
+            return [content]
+        parts = []
+        start = 0
+        while start < len(content):
+            prefix = "" if not parts else self._continuation_prefix(content, start)
+            available = self.max_characters - len(prefix)
+            proposed_end = min(len(content), start + available)
+            end = self._semantic_boundary(content, start, proposed_end)
+            segment = content[start:end].strip()
+            parts.append(f"{prefix}{segment}")
+            if end >= len(content):
+                break
+            start = self._overlap_start(content, start, end)
+        return parts
+
+    @staticmethod
+    def _semantic_boundary(content: str, start: int, proposed_end: int) -> int:
+        if proposed_end >= len(content):
+            return proposed_end
+        minimum = start + max(1, (proposed_end - start) // 2)
+        for separator in ("\n\n", "\n", ". ", " "):
+            boundary = content.rfind(separator, minimum, proposed_end)
+            if boundary >= minimum:
+                return boundary + len(separator)
+        return proposed_end
+
+    def _overlap_start(self, content: str, previous_start: int, end: int) -> int:
+        candidate = max(previous_start + 1, end - self.overlap_characters)
+        word_boundary = content.find(" ", candidate, end)
+        return word_boundary + 1 if word_boundary >= candidate else candidate
+
+    def _continuation_prefix(self, content: str, start: int) -> str:
+        header_matches = list(re.finditer(r"(?m)^\[[^\]]+\] [^\n]+?: ", content[:start]))
+        label = header_matches[-1].group(0).strip() if header_matches else "zprávy"
+        prefix = f"[Pokračování] {label}\n"
+        if len(prefix) > self.max_characters // 3:
+            return "[Pokračování]\n"
+        return prefix

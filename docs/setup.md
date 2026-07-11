@@ -72,4 +72,13 @@ npm.cmd test
 py -3.9 -m pytest backend -q
 ```
 
+The PostgreSQL atomic-publication test is skipped by default. Run it only
+against a dedicated empty test database by setting `POSTGRES_TEST_DSN`; the test
+creates isolated rows, verifies the staged replacement, and removes those rows:
+
+```powershell
+$env:POSTGRES_TEST_DSN = "postgresql://chat_context:password@127.0.0.1:5433/chat_context_test"
+py -3.9 -m pytest backend/test_postgres_integration.py -q
+```
+
 Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`.

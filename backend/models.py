@@ -43,6 +43,9 @@ class ChatSource(BaseModel):
     timestamp: Optional[datetime]
     channel: Optional[str]
     similarity_score: float
+    source_message_ids: List[str] = Field(default_factory=list)
+    channel_id: Optional[str] = None
+    guild_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

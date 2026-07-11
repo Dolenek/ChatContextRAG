@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -42,3 +42,6 @@ class RetrievedChunk:
     channel: Optional[str]
     started_at: Optional[datetime]
     similarity_score: float
+    source_message_ids: List[str] = field(default_factory=list)
+    channel_id: Optional[str] = None
+    guild_id: Optional[str] = None

@@ -59,7 +59,10 @@ channel are rendered once with a repetition count while all source IDs and
 timestamp bounds remain linked. Messages across a 20-minute boundary are never
 collapsed. Chunk boundaries compare the final timestamp in a collapsed group
 with the first timestamp in the next group. Conversation chunks use an
-1,800-character cap.
+1,800-character cap. Oversized messages are split at paragraph, line, sentence,
+or word boundaries instead of arbitrary character positions. Continuation
+chunks repeat a compact message header and overlap the previous part by up to
+160 characters so retrieval does not lose context at a split boundary.
 
 When a later session overlaps an indexed message, the job snapshots all source
 messages from affected chunks and rebuilds the combined boundary in staging.
@@ -89,6 +92,12 @@ to four neighboring messages on either side, capped at 12 messages and stopped
 by a 20-minute gap. Gap trimming expands outward from the matching anchor, so an
 older disconnected message cannot displace the actual full-text hit.
 
+The HNSW query limits vector candidates before joining source-message hashes,
+preserving the approximate-nearest-neighbor index path as the database grows.
+Canonical occurrences are indexed by `(content_hash, message_order)`, which
+supports full-text anchor selection, edit cleanup, and occurrence refreshes
+without repeatedly scanning the complete raw message table.
+
 Candidates are combined with reciprocal-rank fusion using constant 60. Exact
 canonical-content matches merge into their vector candidate instead of filling
 multiple result slots. A recency multiplier contributes at most 10 percent and
@@ -96,6 +105,12 @@ decays with a three-year half-life, so old strategies remain discoverable.
 The best eight diverse contexts are sent to the OpenAI Responses API. Retrieved
 Discord text is untrusted evidence; the prompt requires citations and an
 explicit insufficient-evidence response when appropriate.
+
+Every returned context retains its Discord message IDs, channel ID, and guild
+ID. `POST /chat` exposes that identity in `sources`; the Electron chat renders
+numbered expandable source cards matching the model's `[1]`, `[2]` citations.
+When Discord identity is complete, a source card can navigate the embedded
+signed-in Discord view directly to the referenced message.
 
 If no new hybrid data exists, chat falls back to the legacy vector index. This
 keeps the current database usable until an explicit clear and re-import.
@@ -115,7 +130,10 @@ keeps the current database usable until an explicit clear and re-import.
 ## Configuration
 
 The automated test suite includes a 100,000-message synthetic test that verifies
-streaming and the 64-chunk embedding bound.
+streaming and the 64-chunk embedding bound. The worker rejects missing vectors
+or unexpected embedding dimensions before any staged generation can publish.
+An optional PostgreSQL integration test verifies that the old generation stays
+searchable throughout staging and is replaced only by the final transaction.
 
 FastAPI loads secrets and model configuration from `.env`; `.env.example`
 contains safe placeholders only. `OPENAI_EMBEDDING_DIMENSIONS` remains 1536.

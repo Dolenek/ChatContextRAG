@@ -66,6 +66,8 @@ async function deleteJson(endpoint, body) {
 
 function registerIpcHandlers() {
   ipcMain.handle("discord:open", async () => discordController.open());
+  ipcMain.handle("discord:source:open", (_event, source) =>
+    discordController.openMessage(source.guild_id, source.channel_id, source.message_id));
   ipcMain.handle("discord:hide", () => discordController.hide());
   ipcMain.handle("discord:capture", async () => {
     const messages = await discordController.captureVisibleMessages();

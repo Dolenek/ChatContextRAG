@@ -163,7 +163,8 @@ class PostgresVectorRepository(VectorRepository):
     def _search_sql() -> str:
         return """
             SELECT content, authors, channel, started_at,
-                   1 - (embedding <=> %s) AS similarity_score
+                   1 - (embedding <=> %s) AS similarity_score,
+                   source_message_ids, metadata->>'channel_id', metadata->>'guild_id'
             FROM conversation_chunks ORDER BY embedding <=> %s LIMIT %s
         """
 
@@ -194,5 +195,6 @@ class PostgresVectorRepository(VectorRepository):
     def _to_retrieved_chunk(row: tuple) -> RetrievedChunk:
         return RetrievedChunk(
             content=row[0], authors=row[1], channel=row[2], started_at=row[3],
-            similarity_score=float(row[4]),
+            similarity_score=float(row[4]), source_message_ids=row[5],
+            channel_id=row[6], guild_id=row[7],
         )

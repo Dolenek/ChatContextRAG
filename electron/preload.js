@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("chatContext", {
   openDiscord: () => ipcRenderer.invoke("discord:open"),
+  openDiscordSource: (source) => ipcRenderer.invoke("discord:source:open", source),
   captureDiscord: () => ipcRenderer.invoke("discord:capture"),
   startDiscordScan: () => ipcRenderer.invoke("discord:scan:start"),
   resumeDiscordScan: () => ipcRenderer.invoke("discord:scan:resume"),

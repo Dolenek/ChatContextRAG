@@ -71,9 +71,19 @@ class DiscordViewController {
   }
 
   async jumpToMessage(messageId) {
-    if (!/^\d+$/.test(messageId)) throw new Error("Uložené ID Discord zprávy není platné.");
     const context = await this.getCurrentChannelContext();
-    const targetUrl = `https://discord.com/channels/${context.guildId}/${context.channelId}/${messageId}`;
+    await this.openMessage(context.guildId, context.channelId, messageId);
+  }
+
+  async openMessage(guildId, channelId, messageId) {
+    if (!/^\d+$/.test(messageId) || !/^\d+$/.test(channelId)) {
+      throw new Error("Uložená identita Discord zprávy není platná.");
+    }
+    if (guildId !== "@me" && !/^\d+$/.test(guildId)) {
+      throw new Error("Uložená identita Discord serveru není platná.");
+    }
+    await this.open();
+    const targetUrl = `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
     await this.discordView.webContents.loadURL(targetUrl);
   }
 

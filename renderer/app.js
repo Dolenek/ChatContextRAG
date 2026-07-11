@@ -166,20 +166,23 @@ async function submitQuestion(event) {
   input.value = "";
   try {
     const response = await window.chatContext.askDatabase(question, requestHistory);
-    appendConversationEntry("assistant", response.answer);
+    appendConversationEntry("assistant", response.answer, response.sources);
     conversationHistory.push({ role: "assistant", content: response.answer });
   } catch (error) {
     showToast(error.message, true);
   }
 }
 
-function appendConversationEntry(role, text) {
+function appendConversationEntry(role, text, sources = []) {
   const conversation = document.querySelector("#conversation");
   conversation.querySelector(".empty-chat")?.remove();
   const entry = document.createElement("div");
   entry.className = `chat-bubble ${role}`;
   entry.textContent = text;
-  conversation.append(entry);
+  const sourceCards = role === "assistant"
+    ? window.chatSources.createChatSources(sources)
+    : null;
+  conversation.append(...[entry, sourceCards].filter(Boolean));
   conversation.scrollTop = conversation.scrollHeight;
 }
 

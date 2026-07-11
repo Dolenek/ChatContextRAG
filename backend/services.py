@@ -109,6 +109,8 @@ class DatabaseChatService:
                 author=", ".join(chunk.authors), content=chunk.content,
                 timestamp=chunk.started_at, channel=chunk.channel,
                 similarity_score=chunk.similarity_score,
+                source_message_ids=chunk.source_message_ids,
+                channel_id=chunk.channel_id, guild_id=chunk.guild_id,
             )
             for chunk in chunks
         ]
