@@ -2,6 +2,12 @@ const {
   buildDiscordScanObservationScript,
   buildDiscordScrollUpScript,
 } = require("./discord-extractor");
+const { takeChronologicalBatch } = require("./discord-message-batch");
+const {
+  createScanSummary, findUnseenMessages, getChannelRoute,
+  isCurrentChannel, updateTopConfirmation,
+} = require("./discord-scan-state");
+const { DiscordScanStallMonitor } = require("./discord-scan-stall-monitor");
 
 class DiscordChannelScanner {
   constructor(webContents, options = {}) {
@@ -11,16 +17,17 @@ class DiscordChannelScanner {
     this.retryDelayMs = options.retryDelayMs ?? options.delayMs ?? 1100;
     this.importBatchSize = options.importBatchSize ?? 400;
     this.requiredTopConfirmations = options.requiredTopConfirmations ?? 12;
+    this.stallMonitorOptions = { recoveryThreshold: options.stallRecoveryThreshold };
     this.running = false;
     this.cancelRequested = false;
   }
 
   async start(importMessages, reportProgress) {
     if (this.running) throw new Error("Procházení kanálu už běží.");
-    const channelRoute = this.getChannelRoute(this.webContents.getURL());
+    const channelRoute = getChannelRoute(this.webContents.getURL());
     this.running = true;
     this.cancelRequested = false;
-    const summary = this.createSummary();
+    const summary = createScanSummary();
     const seenMessageIds = new Set();
     const pendingMessages = new Map();
     try {
@@ -41,35 +48,20 @@ class DiscordChannelScanner {
   async runUntilStopped(
     channelRoute, seenIds, pendingMessages, summary, importMessages, reportProgress,
   ) {
-    let topCandidateId = null;
-    let topConfirmationCount = 0;
+    const scanState = {
+      topCandidateId: null,
+      topConfirmationCount: 0,
+      stallMonitor: new DiscordScanStallMonitor(this.stallMonitorOptions),
+    };
+    const resources = { seenIds, pendingMessages, summary, importMessages, reportProgress };
     while (!this.cancelRequested) {
-      if (!this.isCurrentChannel(channelRoute)) {
+      if (!isCurrentChannel(this.webContents, channelRoute)) {
         await this.waitForOriginalChannel(summary, reportProgress);
         continue;
       }
       try {
         const observation = await this.observeMessages();
-        const newMessages = observation.messages.filter(
-          (message) => !seenIds.has(message.external_id)
-            && !pendingMessages.has(message.external_id),
-        );
-        this.queueMessages(newMessages, pendingMessages, summary);
-        if (newMessages.length) reportProgress({ ...summary });
-        await this.flushPendingMessages(
-          pendingMessages, seenIds, summary, importMessages, observation.atTop,
-        );
-        [topCandidateId, topConfirmationCount] = this.updateTopConfirmation(
-          observation, newMessages, topCandidateId, topConfirmationCount,
-        );
-        if (topConfirmationCount >= this.requiredTopConfirmations) {
-          summary.state = "completed";
-          break;
-        }
-        summary.state = observation.atTop ? "waiting" : "running";
-        summary.lastError = null;
-        reportProgress({ ...summary });
-        await this.scrollAndWait(observation.atTop);
+        if (!await this.processObservation(observation, scanState, resources)) break;
       } catch (error) {
         await this.waitAfterError(error, summary, reportProgress);
       }
@@ -77,6 +69,33 @@ class DiscordChannelScanner {
     await this.flushPendingMessages(
       pendingMessages, seenIds, summary, importMessages, true,
     );
+  }
+
+  async processObservation(observation, scanState, resources) {
+    const { seenIds, pendingMessages, summary, importMessages, reportProgress } = resources;
+    const newMessages = findUnseenMessages(observation, seenIds, pendingMessages);
+    this.queueMessages(newMessages, pendingMessages, summary);
+    if (newMessages.length) reportProgress({ ...summary });
+    await this.flushPendingMessages(
+      pendingMessages, seenIds, summary, importMessages, observation.atTop,
+    );
+    updateTopConfirmation(observation, newMessages.length, scanState);
+    if (scanState.topConfirmationCount >= this.requiredTopConfirmations) {
+      summary.state = "completed";
+      summary.lastError = null;
+      return false;
+    }
+    if (scanState.stallMonitor.record(observation, newMessages.length)) {
+      await this.recoverStalledScan(
+        pendingMessages, seenIds, summary, importMessages, reportProgress,
+      );
+      return true;
+    }
+    summary.state = observation.atTop ? "waiting" : "running";
+    summary.lastError = null;
+    reportProgress({ ...summary });
+    await this.scrollAndWait(observation.atTop);
+    return true;
   }
 
   async observeMessages() {
@@ -97,7 +116,7 @@ class DiscordChannelScanner {
     pendingMessages, seenIds, summary, importMessages, force,
   ) {
     while (pendingMessages.size >= this.importBatchSize || (force && pendingMessages.size)) {
-      const messages = this.takeChronologicalBatch(pendingMessages);
+      const messages = takeChronologicalBatch(pendingMessages, this.importBatchSize);
       const result = await importMessages(messages);
       messages.forEach((message) => {
         pendingMessages.delete(message.external_id);
@@ -109,32 +128,25 @@ class DiscordChannelScanner {
     }
   }
 
-  takeChronologicalBatch(pendingMessages) {
-    return [...pendingMessages.values()]
-      .sort((left, right) => this.compareMessageIds(left.external_id, right.external_id))
-      .slice(0, this.importBatchSize);
+  async recoverStalledScan(
+    pendingMessages, seenIds, summary, importMessages, reportProgress,
+  ) {
+    await this.flushPendingMessages(pendingMessages, seenIds, summary, importMessages, true);
+    summary.state = "recovering";
+    summary.retryCount += 1;
+    summary.lastError = "Discord neposunul historii; obnovuji načítání.";
+    reportProgress({ ...summary });
+    await this.scrollAndWait(false, true);
   }
 
-  compareMessageIds(leftId, rightId) {
-    if (/^\d+$/.test(leftId) && /^\d+$/.test(rightId)) {
-      const left = BigInt(leftId);
-      const right = BigInt(rightId);
-      return left < right ? -1 : left > right ? 1 : 0;
-    }
-    return leftId.localeCompare(rightId);
-  }
-
-  updateTopConfirmation(observation, newMessages, candidateId, confirmationCount) {
-    if (!observation.atTop) return [null, 0];
-    const sameCandidate = observation.topMessageId === candidateId;
-    const stable = sameCandidate && newMessages.length === 0;
-    return [observation.topMessageId, stable ? confirmationCount + 1 : 1];
-  }
-
-  async scrollAndWait(atTop) {
-    const result = await this.webContents.executeJavaScript(buildDiscordScrollUpScript(), true);
+  async scrollAndWait(atTop, recoveryMode = false) {
+    const script = buildDiscordScrollUpScript(recoveryMode);
+    const result = await this.webContents.executeJavaScript(script, true);
     if (result.error) throw new Error(result.error);
-    await this.wait(atTop ? this.topDelayMs : this.scrollDelayMs);
+    const delayMs = recoveryMode
+      ? this.retryDelayMs
+      : atTop ? this.topDelayMs : this.scrollDelayMs;
+    await this.wait(delayMs);
   }
 
   async waitForOriginalChannel(summary, reportProgress) {
@@ -156,28 +168,6 @@ class DiscordChannelScanner {
     return new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  getChannelRoute(url) {
-    const match = url.match(/^(https:\/\/discord\.com\/channels\/[^/]+\/[^/]+)/);
-    if (!match) {
-      throw new Error("Nejdřív v Discordu otevřete konkrétní kanál nebo konverzaci.");
-    }
-    return match[1];
-  }
-
-  isCurrentChannel(expectedRoute) {
-    try {
-      return this.getChannelRoute(this.webContents.getURL()) === expectedRoute;
-    } catch (_error) {
-      return false;
-    }
-  }
-
-  createSummary() {
-    return {
-      discoveredMessages: 0, importedMessages: 0, storedChunks: 0,
-      pendingMessages: 0, retryCount: 0, lastError: null, state: "running",
-    };
-  }
 }
 
 module.exports = { DiscordChannelScanner };

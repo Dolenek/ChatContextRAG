@@ -41,7 +41,10 @@ Electron starts FastAPI on `127.0.0.1:8765`.
 2. Use **Načíst poslední 4** for a small import, or **Procházet do databáze** for
    continuous history traversal.
 3. Use **Zastavit** to flush the current raw batch. Reaching the channel start
-   also closes the scan automatically.
+   also closes the scan automatically. If Discord leaves the visible history
+   unchanged away from the channel start, the scanner flushes its partial raw
+   batch, forces the loaded message list to its upper edge, and retries after a
+   short backoff.
 4. The toolbar changes from Discord/raw progress to RAG indexing progress.
    Closing or restarting the application does not lose the queued job.
 5. Use **Pokračovat od poslední načtené** to jump to the oldest raw message and

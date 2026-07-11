@@ -94,7 +94,7 @@ function stopScanTimer() {
 function renderScanProgress(progress) {
   latestScanProgress = progress;
   const status = document.querySelector("#scan-progress");
-  const waitingStates = ["waiting", "retrying", "waiting-channel"];
+  const waitingStates = ["waiting", "retrying", "recovering", "waiting-channel"];
   const waitingSuffix = waitingStates.includes(progress.state)
     ? ` · čekám a zkouším dál${progress.lastError ? `: ${progress.lastError}` : "…"}`
     : "";

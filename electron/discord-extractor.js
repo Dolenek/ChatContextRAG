@@ -77,16 +77,19 @@ function buildDiscordScanObservationScript() {
   })()`;
 }
 
-function buildDiscordScrollUpScript() {
+function buildDiscordScrollUpScript(recoveryMode = false) {
   return `(() => {
     ${SCROLLER_HELPER}
     const firstMessage = document.querySelector('li[id^="chat-messages-"]');
     const scroller = findMessageScroller(firstMessage);
     if (!scroller) return { error: 'Scroll kontejner zpráv nebyl nalezen.' };
-    const distance = Math.max(scroller.clientHeight * 0.85, 450);
+    const recoveryMode = ${recoveryMode};
+    const distance = recoveryMode
+      ? scroller.scrollTop
+      : Math.max(scroller.clientHeight * 0.85, 450);
     scroller.scrollTop = Math.max(0, scroller.scrollTop - distance);
     scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-    return { requestedScrollTop: scroller.scrollTop };
+    return { requestedScrollTop: scroller.scrollTop, recoveryMode };
   })()`;
 }
 

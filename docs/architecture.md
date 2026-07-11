@@ -32,6 +32,9 @@ an in-flight batch nor create an incomplete indexing snapshot.
 Electron writes up to 400 messages per request during traversal. These requests
 perform no OpenAI calls. A scan creates an `ingestion_session`; stopping or
 reaching the channel beginning closes it and queues a durable `indexing_job`.
+Repeated observations of the same non-top Discord viewport trigger recovery:
+the partial raw batch is committed, the loaded list is moved to its upper edge,
+and traversal resumes after a backoff instead of spinning indefinitely.
 Each claim assigns a unique worker ID and a renewable 90-second lease. Queued
 jobs and running jobs with expired leases are claimable with `SKIP LOCKED`, so a
 job abandoned by a stopped backend is recovered without resetting work owned by

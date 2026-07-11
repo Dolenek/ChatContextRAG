@@ -79,6 +79,39 @@ test("scanner keeps retrying unchanged views until a confirmed channel start", a
   assert.equal(summary.state, "completed");
 });
 
+test("scanner flushes pending messages and forces a scroll after a stalled viewport", async () => {
+  const observations = [
+    { messages: [{ external_id: "2" }], atTop: false, topMessageId: "2" },
+    { messages: [{ external_id: "2" }], atTop: false, topMessageId: "2" },
+    { messages: [{ external_id: "2" }], atTop: false, topMessageId: "2" },
+    { messages: [{ external_id: "1" }], atTop: true, topMessageId: "1" },
+  ];
+  const executedScripts = [];
+  const webContents = {
+    getURL: () => "https://discord.com/channels/server/channel",
+    executeJavaScript: async (script) => {
+      executedScripts.push(script);
+      return script.includes("requestedScrollTop")
+        ? { requestedScrollTop: 0 }
+        : observations.shift();
+    },
+  };
+  const importedBatches = [];
+  const scanner = new DiscordChannelScanner(webContents, {
+    delayMs: 0, requiredTopConfirmations: 1, importBatchSize: 10,
+    stallRecoveryThreshold: 2,
+  });
+
+  const summary = await scanner.start(async (messages) => {
+    importedBatches.push(messages.map((message) => message.external_id));
+    return { imported_count: messages.length, chunk_count: 0 };
+  }, () => {});
+
+  assert.deepEqual(importedBatches, [["2"], ["1"]]);
+  assert.equal(summary.retryCount, 1);
+  assert.ok(executedScripts.some((script) => script.includes("const recoveryMode = true")));
+});
+
 test("scanner accepts a Discord message deep link for the selected channel", async () => {
   const webContents = {
     getURL: () => "https://discord.com/channels/server/channel/message-id",

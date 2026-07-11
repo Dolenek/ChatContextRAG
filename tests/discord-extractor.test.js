@@ -30,3 +30,9 @@ test("scan script discovers the scroll container without Discord class hashes", 
   assert.match(scroll, /scrollTop/);
   assert.doesNotMatch(observation, /scroller__\w+/);
 });
+
+test("recovery scroll forces the currently loaded message list to its top", () => {
+  const scroll = buildDiscordScrollUpScript(true);
+  assert.match(scroll, /const recoveryMode = true/);
+  assert.match(scroll, /scroller\.scrollTop/);
+});
