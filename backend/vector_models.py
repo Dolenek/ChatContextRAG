@@ -10,6 +10,8 @@ class NormalizedMessage:
     content: str
     timestamp: Optional[datetime]
     channel: Optional[str]
+    channel_id: Optional[str]
+    guild_id: Optional[str]
 
 
 @dataclass(frozen=True)

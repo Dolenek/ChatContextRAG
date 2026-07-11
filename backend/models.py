@@ -10,10 +10,12 @@ class DiscordMessageInput(BaseModel):
     content: str = Field(min_length=1, max_length=10000)
     timestamp: Optional[datetime] = None
     channel: Optional[str] = Field(default=None, max_length=300)
+    channel_id: Optional[str] = Field(default=None, max_length=128)
+    guild_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class ImportRequest(BaseModel):
-    messages: List[DiscordMessageInput] = Field(min_length=1, max_length=100)
+    messages: List[DiscordMessageInput] = Field(min_length=1, max_length=400)
 
 
 class ImportResponse(BaseModel):
@@ -89,3 +91,9 @@ class ClearDatabaseRequest(BaseModel):
 
 class ClearDatabaseResponse(BaseModel):
     deleted_chunks: int
+
+
+class ChannelResumePoint(BaseModel):
+    message_id: Optional[str]
+    channel_id: str
+    channel: Optional[str]

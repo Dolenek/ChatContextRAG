@@ -24,6 +24,9 @@ class FakeVectorRepository:
         self.chunks = list(chunks)
         return len(self.chunks)
 
+    def find_oldest_source_message_id(self, channel_id, channel_name):
+        return "1"
+
 
 def test_ingestion_normalizes_chunks_and_embeds_conversation() -> None:
     embedding_provider = FakeEmbeddingProvider()
@@ -35,10 +38,12 @@ def test_ingestion_normalizes_chunks_and_embeds_conversation() -> None:
         DiscordMessageInput(
             external_id="1", author=" Ada ", content="  Ahoj   světe ",
             timestamp=datetime(2026, 7, 10, 10, 0, tzinfo=timezone.utc), channel="general",
+            channel_id="20", guild_id="10",
         ),
         DiscordMessageInput(
             external_id="2", author="Bob", content="Navazující odpověď",
             timestamp=datetime(2026, 7, 10, 10, 2, tzinfo=timezone.utc), channel="general",
+            channel_id="20", guild_id="10",
         ),
     ]
 
@@ -47,6 +52,7 @@ def test_ingestion_normalizes_chunks_and_embeds_conversation() -> None:
     assert result.chunk_count == 1
     assert "Ada: Ahoj světe" in embedding_provider.received_texts[0]
     assert repository.chunks[0].chunk.source_message_ids == ["1", "2"]
+    assert repository.chunks[0].chunk.metadata["channel_id"] == "20"
 
 
 def test_ingestion_skips_already_stored_messages() -> None:

@@ -1,8 +1,9 @@
-from typing import List
+from typing import List, Optional
 
 from backend.chunking import ConversationAwareChunker
 from backend.models import (
-    ChatRequest, ChatResponse, ChatSource, DatabaseOverview, ImportRequest, ImportResponse,
+    ChannelResumePoint, ChatRequest, ChatResponse, ChatSource, DatabaseOverview,
+    ImportRequest, ImportResponse,
 )
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
@@ -88,3 +89,11 @@ class DatabaseOverviewService:
 
     def clear_database(self) -> int:
         return self.repository.delete_all()
+
+    def get_resume_point(
+        self, channel_id: str, channel_name: Optional[str]
+    ) -> ChannelResumePoint:
+        message_id = self.repository.find_oldest_source_message_id(channel_id, channel_name)
+        return ChannelResumePoint(
+            message_id=message_id, channel_id=channel_id, channel=channel_name,
+        )

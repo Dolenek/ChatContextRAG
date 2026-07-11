@@ -26,6 +26,8 @@ class ConversationAwareChunker:
         previous = current[-1]
         if previous.channel != message.channel:
             return True
+        if previous.channel_id != message.channel_id:
+            return True
         if previous.timestamp and message.timestamp:
             if message.timestamp - previous.timestamp > self.max_gap:
                 return True
@@ -52,7 +54,12 @@ class ConversationAwareChunker:
             channel=messages[0].channel,
             started_at=min(timestamps) if timestamps else None,
             ended_at=max(timestamps) if timestamps else None,
-            metadata={"part_index": part_index, "message_count": len(messages)},
+            metadata={
+                "part_index": part_index,
+                "message_count": len(messages),
+                "channel_id": messages[0].channel_id,
+                "guild_id": messages[0].guild_id,
+            },
         )
 
     def _render_messages(self, messages: List[NormalizedMessage]) -> str:

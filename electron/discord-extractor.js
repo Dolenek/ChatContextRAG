@@ -24,12 +24,17 @@ const MESSAGE_EXTRACTION_HELPERS = `
   };
   const extractMessages = (groups) => {
     const channel = document.querySelector('h1')?.innerText?.trim() || document.title;
+    const routeParts = location.pathname.split('/').filter(Boolean);
+    const guildId = routeParts[0] === 'channels' ? routeParts[1] : null;
+    const channelId = routeParts[0] === 'channels' ? routeParts[2] : null;
     return groups.map((group) => ({
       external_id: group.id.split('-').pop(),
       author: findAuthor(group),
       content: extractContent(group),
       timestamp: group.querySelector('time')?.getAttribute('datetime') || null,
       channel,
+      channel_id: channelId,
+      guild_id: guildId,
     })).filter((message) => message.content);
   };
 `;
@@ -85,6 +90,20 @@ function buildDiscordScrollUpScript() {
   })()`;
 }
 
+function buildDiscordChannelContextScript() {
+  return `(() => {
+    const routeParts = location.pathname.split('/').filter(Boolean);
+    if (routeParts[0] !== 'channels' || !routeParts[1] || !routeParts[2]) {
+      return { error: 'Nejdřív v Discordu otevřete konkrétní kanál nebo konverzaci.' };
+    }
+    return {
+      guildId: routeParts[1], channelId: routeParts[2],
+      channel: document.querySelector('h1')?.innerText?.trim() || document.title,
+    };
+  })()`;
+}
+
 module.exports = {
-  buildDiscordExtractionScript, buildDiscordScanObservationScript, buildDiscordScrollUpScript,
+  buildDiscordChannelContextScript, buildDiscordExtractionScript,
+  buildDiscordScanObservationScript, buildDiscordScrollUpScript,
 };

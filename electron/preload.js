@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("chatContext", {
   openDiscord: () => ipcRenderer.invoke("discord:open"),
   captureDiscord: () => ipcRenderer.invoke("discord:capture"),
   startDiscordScan: () => ipcRenderer.invoke("discord:scan:start"),
+  resumeDiscordScan: () => ipcRenderer.invoke("discord:scan:resume"),
   stopDiscordScan: () => ipcRenderer.invoke("discord:scan:stop"),
   onDiscordScanProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);

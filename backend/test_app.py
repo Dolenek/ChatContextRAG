@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
-from backend.models import ChatResponse, ChatSource, DatabaseOverview, ImportResponse
+from backend.models import (
+    ChannelResumePoint, ChatResponse, ChatSource, DatabaseOverview, ImportResponse,
+)
 
 
 class FakeIngestionService:
@@ -37,6 +39,11 @@ class FakeOverviewService:
     def clear_database(self):
         return self.deleted_chunks
 
+    def get_resume_point(self, channel_id, channel_name):
+        return ChannelResumePoint(
+            message_id="100", channel_id=channel_id, channel=channel_name,
+        )
+
 
 def test_import_and_chat() -> None:
     client = TestClient(
@@ -60,6 +67,12 @@ def test_import_and_chat() -> None:
     overview_response = client.get("/database/overview?limit=25&offset=0")
     assert overview_response.status_code == 200
     assert overview_response.json()["total_chunks"] == 0
+
+    resume_response = client.get(
+        "/database/resume-point?channel_id=456&channel=projekt"
+    )
+    assert resume_response.status_code == 200
+    assert resume_response.json()["message_id"] == "100"
 
     invalid_clear_response = client.request(
         "DELETE", "/database", json={"confirmation": "NE"}

@@ -35,14 +35,18 @@ The local PostgreSQL container uses host port `5433` to avoid common conflicts w
 
 ## Start infrastructure and application
 
-Start PostgreSQL with pgvector:
+On Windows, the simplest option is to run `run.bat` from the repository root. The launcher validates prerequisites, refreshes Node and Python dependencies when application files have changed, starts PostgreSQL through Docker Compose, and then starts the Electron application. The first run is treated as requiring a dependency rebuild. A successful rebuild is recorded under the ignored `node_modules/` directory.
+
+Before using the launcher, create and configure `.env` as described above. Docker Desktop must be running.
+
+For a manual start, start PostgreSQL with pgvector:
 
 ```powershell
 docker compose up -d
 docker compose ps
 ```
 
-Start the desktop application:
+Then start the desktop application:
 
 ```powershell
 npm.cmd start
@@ -59,7 +63,9 @@ Electron starts FastAPI automatically on `127.0.0.1:8765`. To run only the API d
 
 The app normalizes and chunks up to four visible messages, sends chunk text to the OpenAI embeddings API, and upserts vectors plus source metadata into PostgreSQL. It does not fetch Discord server history or use a Discord bot.
 
-To import channel history automatically, open a channel and choose **Procházet do databáze**. The app scrolls upward and writes new messages continuously. Choose **Zastavit** to interrupt it. Discord messages traversed this way are sent to OpenAI for embedding. Re-running the traversal skips source message IDs already stored in the database.
+To import channel history automatically, open a channel and choose **Procházet do databáze**. The app scrolls upward while the toolbar shows total elapsed time and the number of messages waiting for storage. Messages are written in batches of up to 400 to reduce OpenAI and PostgreSQL round trips. Choose **Zastavit** to flush the current partial batch and interrupt traversal. Discord messages traversed this way are sent to OpenAI for embedding. Re-running the traversal skips source message IDs already stored in the database.
+
+To continue an earlier traversal, open the same Discord channel and choose **Pokračovat od poslední načtené**. The app jumps to the oldest message already stored for that channel and continues toward the beginning. Existing imports created before stable channel IDs were stored are located by their channel name; future imports use Discord channel IDs.
 
 ## Verification
 

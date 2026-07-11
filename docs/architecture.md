@@ -26,11 +26,13 @@ The normalizer preserves message order and identity while removing formatting no
 
 ### Automatic channel traversal
 
-The Electron toolbar can traverse the currently selected Discord channel toward its oldest message. Each step extracts up to 100 rendered `chat-messages-*` items, persists the batch, finds the scrollable ancestor dynamically, moves upward by 85% of the viewport, and waits for Discord virtualization. A batch is marked as seen only after successful storage, so transient OpenAI or PostgreSQL failures are retried without losing messages.
+The Electron toolbar can traverse the currently selected Discord channel toward its oldest message. Each step extracts up to 100 rendered `chat-messages-*` items, finds the scrollable ancestor dynamically, and moves upward by 85% of the viewport. Extracted messages accumulate in a deduplicated in-memory queue and are persisted chronologically in batches of up to 400. This avoids waiting for OpenAI and PostgreSQL after every viewport while keeping the queue bounded. A batch is marked as seen only after successful storage, so transient OpenAI or PostgreSQL failures are retried without losing messages.
 
-Traversal has no step or inactivity limit. Slow loading, unchanged virtualized views, API failures, and temporary navigation away from the selected channel put it into a waiting/retry state. It ends only when the user stops it or the same oldest message remains at scroll position zero for 12 consecutive checks, confirming the actual beginning of the channel.
+Traversal uses a short delay between ordinary scroll steps and a longer delay while Discord reports the top of its currently loaded history. It has no step or inactivity limit. Slow loading, unchanged virtualized views, API failures, and temporary navigation away from the selected channel put it into a waiting/retry state. It ends only when the user stops it or the same oldest message remains at scroll position zero for 12 consecutive checks, confirming the actual beginning of the channel. Any queued partial batch is stored before a user-requested stop completes.
 
 The backend checks source message IDs already present in pgvector before embedding, so repeated traversals do not spend API calls or create chunks for previously stored messages.
+
+The toolbar displays elapsed wall-clock time for the full traversal, including retry waits. **Pokračovat od poslední načtené** resolves the oldest stored Discord message for the selected channel, opens its Discord deep link, and resumes traversal toward older history. New chunks store stable Discord guild and channel IDs in metadata; legacy chunks without those IDs are matched by channel name. Source-ID deduplication remains active during resumed traversal.
 
 ## Vector storage and retrieval
 
@@ -47,6 +49,8 @@ The default generation model is `gpt-5.6-luna` with low reasoning effort. It can
 ## Database overview
 
 `GET /database/overview` is a read-only, paginated inspection endpoint. It reports chunk and source-message totals, distinct channels and authors, message date range, channel/author/model distributions, and stored chunk content with source identifiers. The Electron overview screen loads 50 chunks at a time and does not call the OpenAI API.
+
+`GET /database/resume-point` returns the oldest stored Discord source message ID for a channel. It prefers indexed stable channel metadata and falls back to an indexed channel name only for legacy chunks.
 
 `DELETE /database` removes every conversation chunk and vector while leaving the schema and Discord login partition intact. Both the API and Electron confirmation dialog require the exact `VYMAZAT` confirmation token.
 

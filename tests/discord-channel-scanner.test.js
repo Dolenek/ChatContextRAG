@@ -24,9 +24,34 @@ test("scanner imports unseen messages until the top of a channel", async () => {
     return { imported_count: messages.length, chunk_count: 1 };
   }, () => {});
 
-  assert.deepEqual(importedBatches, [["2", "3"], ["1"]]);
+  assert.deepEqual(importedBatches, [["1", "2", "3"]]);
   assert.equal(summary.importedMessages, 3);
   assert.equal(summary.state, "completed");
+});
+
+test("scanner stores full batches before reaching the channel top", async () => {
+  const observations = [
+    { messages: [{ external_id: "5" }, { external_id: "6" }], atTop: false, topMessageId: "5" },
+    { messages: [{ external_id: "3" }, { external_id: "4" }], atTop: false, topMessageId: "3" },
+    { messages: [{ external_id: "1" }, { external_id: "2" }], atTop: true, topMessageId: "1" },
+  ];
+  const webContents = {
+    getURL: () => "https://discord.com/channels/server/channel",
+    executeJavaScript: async (script) => script.includes("requestedScrollTop")
+      ? { requestedScrollTop: 100 }
+      : observations.shift(),
+  };
+  const importedBatches = [];
+  const scanner = new DiscordChannelScanner(
+    webContents, { delayMs: 0, requiredTopConfirmations: 1, importBatchSize: 4 },
+  );
+
+  await scanner.start(async (messages) => {
+    importedBatches.push(messages.map((message) => message.external_id));
+    return { imported_count: messages.length, chunk_count: 1 };
+  }, () => {});
+
+  assert.deepEqual(importedBatches, [["3", "4", "5", "6"], ["1", "2"]]);
 });
 
 test("scanner keeps retrying unchanged views until a confirmed channel start", async () => {
@@ -51,5 +76,23 @@ test("scanner keeps retrying unchanged views until a confirmed channel start", a
   }), () => {});
 
   assert.equal(summary.discoveredMessages, 2);
+  assert.equal(summary.state, "completed");
+});
+
+test("scanner accepts a Discord message deep link for the selected channel", async () => {
+  const webContents = {
+    getURL: () => "https://discord.com/channels/server/channel/message-id",
+    executeJavaScript: async (script) => script.includes("requestedScrollTop")
+      ? { requestedScrollTop: 0 }
+      : { messages: [], atTop: true, topMessageId: "first" },
+  };
+  const scanner = new DiscordChannelScanner(
+    webContents, { delayMs: 0, requiredTopConfirmations: 1 },
+  );
+
+  const summary = await scanner.start(async () => ({
+    imported_count: 0, chunk_count: 0,
+  }), () => {});
+
   assert.equal(summary.state, "completed");
 });

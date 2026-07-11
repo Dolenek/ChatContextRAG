@@ -1,4 +1,4 @@
-from typing import Iterable, List, Protocol, Sequence, Set
+from typing import Iterable, List, Optional, Protocol, Sequence, Set
 
 from backend.models import DatabaseOverview
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
@@ -20,4 +20,9 @@ class VectorRepository(Protocol):
         ...
 
     def existing_source_message_ids(self, external_ids: Sequence[str]) -> Set[str]:
+        ...
+
+    def find_oldest_source_message_id(
+        self, channel_id: str, channel_name: Optional[str]
+    ) -> Optional[str]:
         ...

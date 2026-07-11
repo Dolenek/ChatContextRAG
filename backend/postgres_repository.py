@@ -1,5 +1,5 @@
 import threading
-from typing import Iterable, List, Sequence, Set
+from typing import Iterable, List, Optional, Sequence, Set
 
 import numpy as np
 import psycopg
@@ -79,6 +79,19 @@ class PostgresVectorRepository(VectorRepository):
             raise ExternalIntegrationError("PostgreSQL deduplication query failed.") from error
         return {row[0] for row in rows}
 
+    def find_oldest_source_message_id(
+        self, channel_id: str, channel_name: Optional[str]
+    ) -> Optional[str]:
+        self._ensure_schema()
+        try:
+            with self._connect() as connection:
+                row = connection.execute(
+                    self._oldest_source_message_sql(), (channel_id, channel_name)
+                ).fetchone()
+        except psycopg.Error as error:
+            raise ExternalIntegrationError("PostgreSQL resume-point query failed.") from error
+        return row[0] if row else None
+
     def _ensure_schema(self) -> None:
         if self._initialized:
             return
@@ -95,6 +108,7 @@ class PostgresVectorRepository(VectorRepository):
                 register_vector(connection)
                 connection.execute(self._create_table_sql())
                 connection.execute(self._create_index_sql())
+                connection.execute(self._create_resume_indexes_sql())
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL vector schema initialization failed.") from error
 
@@ -122,6 +136,15 @@ class PostgresVectorRepository(VectorRepository):
         """
 
     @staticmethod
+    def _create_resume_indexes_sql() -> str:
+        return """
+            CREATE INDEX IF NOT EXISTS conversation_chunks_channel_id
+            ON conversation_chunks ((metadata->>'channel_id'));
+            CREATE INDEX IF NOT EXISTS conversation_chunks_channel_name
+            ON conversation_chunks (channel)
+        """
+
+    @staticmethod
     def _upsert_sql() -> str:
         return """
             INSERT INTO conversation_chunks
@@ -139,6 +162,19 @@ class PostgresVectorRepository(VectorRepository):
             SELECT content, authors, channel, started_at,
                    1 - (embedding <=> %s) AS similarity_score
             FROM conversation_chunks ORDER BY embedding <=> %s LIMIT %s
+        """
+
+    @staticmethod
+    def _oldest_source_message_sql() -> str:
+        return """
+            SELECT source_id FROM conversation_chunks,
+            LATERAL UNNEST(source_message_ids) AS source_id
+            WHERE source_id ~ '^[0-9]+$' AND (
+                metadata->>'channel_id' = %s OR (
+                    COALESCE(metadata->>'channel_id', '') = '' AND channel = %s
+                )
+            )
+            ORDER BY source_id::numeric ASC LIMIT 1
         """
 
     @staticmethod

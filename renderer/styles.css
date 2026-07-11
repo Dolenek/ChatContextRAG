@@ -20,12 +20,14 @@ button { color: inherit; }
 .brand, .discord-actions button { -webkit-app-region: no-drag; }
 .brand { display: flex; align-items: center; gap: 11px; border: 0; background: transparent; font-weight: 750; cursor: pointer; }
 .brand-mark { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; color: #09101c; background: linear-gradient(135deg, var(--cyan), #a8fbff); box-shadow: 0 0 25px rgba(50, 210, 221, 0.25); }
-.discord-actions { display: flex; align-items: center; gap: 20px; }
+.discord-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .privacy-note { color: var(--muted); font-size: 13px; }
 .small-primary, .primary-button { border: 0; border-radius: 11px; background: linear-gradient(135deg, #7765ff, #9a67ff); padding: 11px 18px; font-weight: 700; cursor: pointer; }
+.small-resume { -webkit-app-region: no-drag; border: 1px solid rgba(124, 108, 255, .48); border-radius: 11px; padding: 10px 14px; background: rgba(124, 108, 255, .13); color: #d8d3ff; font-weight: 700; cursor: pointer; }
 .small-scan { -webkit-app-region: no-drag; border: 1px solid rgba(50, 210, 221, .45); border-radius: 11px; padding: 10px 16px; background: rgba(50, 210, 221, .12); color: #a8f8fd; font-weight: 700; cursor: pointer; }
 .small-scan.scanning { border-color: #a83d55; background: #5a1f2d; color: #ffe0e6; }
-.scan-progress { color: var(--muted); font-size: 12px; }
+.small-primary:disabled, .small-resume:disabled { cursor: not-allowed; opacity: .45; }
+.scan-progress { min-width: 220px; overflow: hidden; color: var(--muted); font-size: 12px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 
 .app-shell { height: calc(100vh - 72px); overflow: auto; }
 .screen { width: min(100% - 48px, 1050px); min-height: 100%; margin: 0 auto; }

@@ -6,8 +6,8 @@ from fastapi.responses import JSONResponse
 
 from backend.chunking import ConversationAwareChunker
 from backend.models import (
-    ChatRequest, ChatResponse, ClearDatabaseRequest, ClearDatabaseResponse,
-    DatabaseOverview, HealthResponse, ImportRequest, ImportResponse,
+    ChannelResumePoint, ChatRequest, ChatResponse, ClearDatabaseRequest,
+    ClearDatabaseResponse, DatabaseOverview, HealthResponse, ImportRequest, ImportResponse,
 )
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import (
@@ -67,6 +67,13 @@ def create_app(
         offset: int = Query(default=0, ge=0),
     ) -> DatabaseOverview:
         return active_overview.get_overview(limit, offset)
+
+    @application.get("/database/resume-point", response_model=ChannelResumePoint)
+    def database_resume_point(
+        channel_id: str = Query(min_length=1, max_length=128),
+        channel: Optional[str] = Query(default=None, max_length=300),
+    ) -> ChannelResumePoint:
+        return active_overview.get_resume_point(channel_id, channel)
 
     @application.delete("/database", response_model=ClearDatabaseResponse)
     def clear_database(_request: ClearDatabaseRequest) -> ClearDatabaseResponse:

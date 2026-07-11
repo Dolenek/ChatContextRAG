@@ -77,6 +77,7 @@ function registerIpcHandlers() {
     (messages) => postJson("/messages/import", { messages }),
     (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
   ));
+  ipcMain.handle("discord:scan:resume", () => resumeDiscordChannelScan());
   ipcMain.handle("discord:scan:stop", () => {
     discordController.stopChannelScan();
     return { stopping: true };
@@ -87,6 +88,22 @@ function registerIpcHandlers() {
     return getJson(`/database/overview?${parameters}`);
   });
   ipcMain.handle("database:clear", (_event, request) => deleteJson("/database", request));
+}
+
+async function resumeDiscordChannelScan() {
+  const context = await discordController.getCurrentChannelContext();
+  const parameters = new URLSearchParams({
+    channel_id: context.channelId, channel: context.channel,
+  });
+  const resumePoint = await getJson(`/database/resume-point?${parameters}`);
+  if (!resumePoint.message_id) {
+    throw new Error("Pro tento kanál zatím v databázi není žádná zpráva.");
+  }
+  await discordController.jumpToMessage(resumePoint.message_id);
+  return discordController.startChannelScan(
+    (messages) => postJson("/messages/import", { messages }),
+    (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
+  );
 }
 
 app.whenReady().then(async () => {

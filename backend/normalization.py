@@ -17,6 +17,8 @@ class DiscordMessageNormalizer:
             content=self._normalize_content(message.content),
             timestamp=message.timestamp,
             channel=self._normalize_inline_text(message.channel) if message.channel else None,
+            channel_id=message.channel_id.strip() if message.channel_id else None,
+            guild_id=message.guild_id.strip() if message.guild_id else None,
         )
 
     @staticmethod

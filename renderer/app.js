@@ -10,6 +10,9 @@ const conversationHistory = [];
 const overviewPageSize = 50;
 let overviewOffset = 0;
 let channelScanRunning = false;
+let scanStartedAt = null;
+let scanTimerHandle = null;
+let latestScanProgress = null;
 
 function showScreen(screenName) {
   Object.entries(screens).forEach(([name, element]) => {
@@ -43,30 +46,71 @@ async function captureDiscordMessages() {
 
 async function toggleChannelScan() {
   if (channelScanRunning) {
-    document.querySelector("#scan-progress").textContent = "Zastavuji procházení…";
+    latestScanProgress = { ...latestScanProgress, state: "stopping" };
+    renderScanProgress(latestScanProgress);
     await window.chatContext.stopDiscordScan();
     return;
   }
+  await runChannelScan(() => window.chatContext.startDiscordScan());
+}
+
+async function resumeChannelScan() {
+  if (channelScanRunning) return;
+  await runChannelScan(() => window.chatContext.resumeDiscordScan());
+}
+
+async function runChannelScan(startOperation) {
   channelScanRunning = true;
+  startScanTimer();
   updateScanButton();
   try {
-    const summary = await window.chatContext.startDiscordScan();
+    const summary = await startOperation();
+    latestScanProgress = summary;
+    renderScanProgress(summary);
     showToast(scanCompletionMessage(summary));
   } catch (error) {
     showToast(error.message, true);
   } finally {
     channelScanRunning = false;
+    stopScanTimer();
     updateScanButton();
   }
 }
 
+function startScanTimer() {
+  scanStartedAt = Date.now();
+  latestScanProgress = {
+    discoveredMessages: 0, importedMessages: 0, storedChunks: 0, state: "preparing",
+  };
+  renderScanProgress(latestScanProgress);
+  scanTimerHandle = window.setInterval(() => renderScanProgress(latestScanProgress), 1000);
+}
+
+function stopScanTimer() {
+  if (scanTimerHandle) window.clearInterval(scanTimerHandle);
+  scanTimerHandle = null;
+}
+
 function renderScanProgress(progress) {
+  latestScanProgress = progress;
   const status = document.querySelector("#scan-progress");
   const waitingStates = ["waiting", "retrying", "waiting-channel"];
-  const suffix = waitingStates.includes(progress.state)
+  const waitingSuffix = waitingStates.includes(progress.state)
     ? ` · čekám a zkouším dál${progress.lastError ? `: ${progress.lastError}` : "…"}`
     : "";
-  status.textContent = `Nalezeno ${progress.discoveredMessages} · nově uloženo ${progress.importedMessages} · chunky ${progress.storedChunks}${suffix}`;
+  const stoppingSuffix = progress.state === "stopping" ? " · zastavuji…" : "";
+  const pendingSuffix = progress.pendingMessages ? ` · čeká na uložení ${progress.pendingMessages}` : "";
+  const elapsed = scanStartedAt ? ` · čas ${formatElapsed(Date.now() - scanStartedAt)}` : "";
+  status.textContent = `Nalezeno ${progress.discoveredMessages || 0} · nově uloženo ${progress.importedMessages || 0} · chunky ${progress.storedChunks || 0}${pendingSuffix}${elapsed}${waitingSuffix}${stoppingSuffix}`;
+  status.title = status.textContent;
+}
+
+function formatElapsed(milliseconds) {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
 function updateScanButton() {
@@ -74,6 +118,7 @@ function updateScanButton() {
   button.textContent = channelScanRunning ? "Zastavit" : "Procházet do databáze";
   button.classList.toggle("scanning", channelScanRunning);
   document.querySelector("#capture-button").disabled = channelScanRunning;
+  document.querySelector("#resume-scan-button").disabled = channelScanRunning;
 }
 
 function scanCompletionMessage(summary) {
@@ -282,6 +327,7 @@ function escapeHtml(value) {
 document.querySelector("#open-discord-button").addEventListener("click", openDiscord);
 document.querySelector("#capture-button").addEventListener("click", captureDiscordMessages);
 document.querySelector("#scan-channel-button").addEventListener("click", toggleChannelScan);
+document.querySelector("#resume-scan-button").addEventListener("click", resumeChannelScan);
 document.querySelector("#open-chat-button").addEventListener("click", () => showScreen("chat"));
 document.querySelector("#open-overview-button").addEventListener("click", openDatabaseOverview);
 document.querySelector("#chat-after-import-button").addEventListener("click", () => showScreen("chat"));
