@@ -1,5 +1,5 @@
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Iterable, Iterator, List, Optional
 
 from backend.vector_models import ConversationChunk, NormalizedMessage
@@ -31,11 +31,23 @@ class ConversationAwareChunker:
             return True
         if previous.channel_id != message.channel_id:
             return True
-        if previous.timestamp and message.timestamp:
-            if message.timestamp - previous.timestamp > self.max_gap:
+        previous_timestamp = self._latest_timestamp(previous)
+        message_timestamp = self._earliest_timestamp(message)
+        if previous_timestamp and message_timestamp:
+            if message_timestamp - previous_timestamp > self.max_gap:
                 return True
         projected = len(self._render_messages(current + [message]))
         return projected > self.max_characters
+
+    @staticmethod
+    def _latest_timestamp(message: NormalizedMessage) -> Optional[datetime]:
+        timestamps = (message.timestamp,) + message.related_timestamps
+        return max((timestamp for timestamp in timestamps if timestamp), default=None)
+
+    @staticmethod
+    def _earliest_timestamp(message: NormalizedMessage) -> Optional[datetime]:
+        timestamps = (message.timestamp,) + message.related_timestamps
+        return min((timestamp for timestamp in timestamps if timestamp), default=None)
 
     def _build_chunks(self, messages: List[NormalizedMessage]) -> List[ConversationChunk]:
         rendered = self._render_messages(messages)
@@ -51,7 +63,11 @@ class ConversationAwareChunker:
         ]
         identity = "|".join(source_ids + [str(part_index), content])
         chunk_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-        timestamps = [message.timestamp for message in messages if message.timestamp]
+        timestamps = [
+            timestamp for message in messages
+            for timestamp in ((message.timestamp,) + message.related_timestamps)
+            if timestamp
+        ]
         return ConversationChunk(
             chunk_id=chunk_id,
             content=content,

@@ -12,31 +12,59 @@ Discord traversal and RAG indexing are intentionally decoupled:
 Discord DOM -> normalization -> canonical content + raw occurrence storage
             -> close ingestion session -> persistent indexing job
             -> chronological conversation chunking -> OpenAI embeddings
-            -> halfvec HNSW storage + normalized chunk/message links
+            -> durable staging -> atomic halfvec index replacement
 ```
 
 `message_contents` stores one normalized copy of each exact text, its occurrence
 count, and a generated `simple` PostgreSQL full-text vector. `discord_messages`
 stores every occurrence with Discord identity, author, channel, snowflake order,
 and timestamp. Exact duplicate text is never discarded; occurrences share a
-canonical content row.
+canonical content row. A request containing the same Discord ID more than once
+uses the last value and counts the occurrence once. Editing an existing message
+refreshes both the old and new content counts and removes unreferenced canonical
+text so it cannot occupy full-text result slots. Concurrent requests that touch
+the same Discord ID are serialized for the transaction, including the first
+insert, so intermediate edits cannot leave stale canonical content. Each raw
+write also holds the ingestion-session row until message links and counts commit.
+Session finalization takes the same row lock and can therefore neither overtake
+an in-flight batch nor create an incomplete indexing snapshot.
 
 Electron writes up to 400 messages per request during traversal. These requests
 perform no OpenAI calls. A scan creates an `ingestion_session`; stopping or
 reaching the channel beginning closes it and queues a durable `indexing_job`.
-Running jobs return to `queued` after a backend restart. Failed jobs retain raw
-data and can be retried; active jobs can be cancelled.
+Each claim assigns a unique worker ID and a renewable 90-second lease. Queued
+jobs and running jobs with expired leases are claimable with `SKIP LOCKED`, so a
+job abandoned by a stopped backend is recovered without resetting work owned by
+another healthy process. A heartbeat renews the lease during slow embedding
+calls. Failed, cancelled, and completed jobs can be retried; queued or running
+jobs reject retry and active jobs can instead be cancelled. Transient polling
+failures are isolated to one worker iteration and do not mutate other jobs.
+
+Embedding batches are written to `rag_staged_chunks` and
+`rag_staged_chunk_messages`. Existing searchable chunks remain untouched while
+the job is running. The final replacement, source-link update, and job completion
+occur in one PostgreSQL transaction guarded by both the job row and worker ID.
+Only the current lease owner can prepare, write, fail, or publish staging data;
+a late operation from an expired worker cannot delete its successor's staging.
+Failure or cancellation discards staging data and leaves the previous searchable
+index intact. Cancellation changes the job state and deletes its staging rows in
+one transaction. A concurrent or late processing failure cannot overwrite
+`cancelled` or another worker's claim with `failed`. Retried jobs atomically
+clear stale staging, ownership, progress, and timing fields before processing.
 
 The indexer uses a server-side PostgreSQL cursor and streams messages in
 snowflake order. Memory is bounded by the cursor page, one unfinished chunk,
-and one embedding batch. Adjacent identical messages from the same author are
-rendered once with a repetition count while all source IDs remain linked.
-Conversation boundaries use a 20-minute gap and an 1,800-character cap.
+and one embedding batch. Adjacent identical messages from the same author and
+channel are rendered once with a repetition count while all source IDs and
+timestamp bounds remain linked. Messages across a 20-minute boundary are never
+collapsed. Chunk boundaries compare the final timestamp in a collapsed group
+with the first timestamp in the next group. Conversation chunks use an
+1,800-character cap.
 
 When a later session overlaps an indexed message, the job snapshots all source
-messages from affected chunks, removes those chunks, and rebuilds the combined
-boundary. This preserves context across scan sessions and handles edited
-messages without leaving stale vectors.
+messages from affected chunks and rebuilds the combined boundary in staging.
+The atomic replacement preserves context across scan sessions and handles edited
+messages without exposing a partially rebuilt index.
 
 ## Vector storage
 
@@ -49,13 +77,17 @@ deletes data.
 `rag_chunk_messages` provides normalized source links for boundary rebuilding,
 indexed-message statistics, and retrieval diversity. Chunk IDs remain
 deterministic from source IDs and rendered content, making retries idempotent.
+The two `rag_staged_*` tables are working storage only and are cleared by their
+current owner on preparation or commit, by cancellation and terminal retry, and
+by explicit database deletion.
 
 ## Hybrid retrieval
 
 Each chat question produces 30 HNSW candidates and 30 `simple` full-text
 candidates. Full-text hits use their newest and earliest occurrences and expand
 to four neighboring messages on either side, capped at 12 messages and stopped
-by a 20-minute gap.
+by a 20-minute gap. Gap trimming expands outward from the matching anchor, so an
+older disconnected message cannot displace the actual full-text hit.
 
 Candidates are combined with reciprocal-rank fusion using constant 60. Exact
 canonical-content matches merge into their vector candidate instead of filling

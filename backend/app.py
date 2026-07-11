@@ -41,7 +41,14 @@ def create_app(
     active_ingestion, active_chat, active_overview = _resolve_services(
         ingestion_service, chat_service, overview_service
     )
+    _register_exception_handlers(application)
+    _register_ingestion_routes(application, active_ingestion)
+    _register_chat_routes(application, active_chat)
+    _register_database_routes(application, active_overview)
+    return application
 
+
+def _register_exception_handlers(application: FastAPI) -> None:
     @application.exception_handler(ExternalIntegrationError)
     async def integration_error_handler(
         _request: Request, error: ExternalIntegrationError
@@ -58,17 +65,21 @@ def create_app(
     async def value_error_handler(_request: Request, error: ValueError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(error)})
 
+
+def _register_ingestion_routes(
+    application: FastAPI, ingestion_service: MessageIngestionService,
+) -> None:
     @application.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
     @application.post("/messages/import", response_model=ImportResponse)
     def import_messages(request: ImportRequest) -> ImportResponse:
-        return active_ingestion.ingest(request)
+        return ingestion_service.ingest(request)
 
     @application.post("/ingestion/sessions", response_model=IngestionSessionView)
     def create_ingestion_session(request: IngestionSessionRequest) -> IngestionSessionView:
-        return active_ingestion.create_session(request)
+        return ingestion_service.create_session(request)
 
     @application.post(
         "/ingestion/sessions/{session_id}/finish", response_model=IngestionSessionView,
@@ -76,49 +87,52 @@ def create_app(
     def finish_ingestion_session(
         session_id: str, request: FinishIngestionRequest,
     ) -> IngestionSessionView:
-        return active_ingestion.finish_session(session_id, request)
+        return ingestion_service.finish_session(session_id, request)
 
     @application.get("/indexing/jobs/{job_id}", response_model=IndexingJobView)
     def indexing_job(job_id: str) -> IndexingJobView:
-        return active_ingestion.get_job(job_id)
+        return ingestion_service.get_job(job_id)
 
     @application.post("/indexing/jobs/{job_id}/retry", response_model=IndexingJobView)
     def retry_indexing_job(job_id: str) -> IndexingJobView:
-        return active_ingestion.retry_job(job_id)
+        return ingestion_service.retry_job(job_id)
 
     @application.post("/indexing/jobs/{job_id}/cancel", response_model=IndexingJobView)
     def cancel_indexing_job(job_id: str) -> IndexingJobView:
-        return active_ingestion.cancel_job(job_id)
+        return ingestion_service.cancel_job(job_id)
 
+
+def _register_chat_routes(application: FastAPI, chat_service: DatabaseChatService) -> None:
     @application.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
-        return active_chat.answer(request)
+        return chat_service.answer(request)
 
+
+def _register_database_routes(
+    application: FastAPI, overview_service: DatabaseOverviewService,
+) -> None:
     @application.get("/database/overview", response_model=DatabaseOverview)
     def database_overview(
         limit: int = Query(default=50, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
     ) -> DatabaseOverview:
-        return active_overview.get_overview(limit, offset)
+        return overview_service.get_overview(limit, offset)
 
     @application.get("/database/resume-point", response_model=ChannelResumePoint)
     def database_resume_point(
         channel_id: str = Query(min_length=1, max_length=128),
         channel: Optional[str] = Query(default=None, max_length=300),
     ) -> ChannelResumePoint:
-        return active_overview.get_resume_point(channel_id, channel)
+        return overview_service.get_resume_point(channel_id, channel)
 
     @application.delete("/database", response_model=ClearDatabaseResponse)
     def clear_database(_request: ClearDatabaseRequest) -> ClearDatabaseResponse:
-        result = active_overview.clear_database()
+        result = overview_service.clear_database()
         if isinstance(result, tuple):
             return ClearDatabaseResponse(
                 deleted_chunks=result[0], deleted_messages=result[1],
             )
         return ClearDatabaseResponse(deleted_chunks=result)
-
-    return application
-
 
 def _resolve_services(
     ingestion_service: Optional[MessageIngestionService],

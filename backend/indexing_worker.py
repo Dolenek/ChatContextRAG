@@ -1,12 +1,19 @@
+import logging
 import threading
+import uuid
 from dataclasses import replace
-from typing import Iterable, Iterator, List
+from datetime import timedelta
+from typing import Iterable, Iterator, List, Optional
 
 from backend.chunking import ConversationAwareChunker
 from backend.hybrid_repository import PostgresHybridRepository
+from backend.job_lease import JobLeaseKeeper
 from backend.openai_gateway import EmbeddingProvider
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.vector_models import EmbeddedChunk, NormalizedMessage
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class PersistentIndexingWorker:
@@ -17,59 +24,112 @@ class PersistentIndexingWorker:
         chunker: ConversationAwareChunker,
         embedding_provider: EmbeddingProvider,
         embedding_batch_size: int = 64,
+        worker_id: Optional[str] = None,
+        lease_renewal_seconds: float = 20,
     ) -> None:
         self.raw_repository = raw_repository
         self.hybrid_repository = hybrid_repository
         self.chunker = chunker
         self.embedding_provider = embedding_provider
         self.embedding_batch_size = embedding_batch_size
+        self.worker_id = worker_id or str(uuid.uuid4())
+        self.lease_renewal_seconds = lease_renewal_seconds
         self._wake_event = threading.Event()
+        self._shutdown_event = threading.Event()
         self._thread = None
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
-        self.raw_repository.reset_running_jobs()
+        self._shutdown_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="rag-indexer")
         self._thread.start()
 
     def wake(self) -> None:
         self._wake_event.set()
 
+    def stop(self) -> None:
+        self._shutdown_event.set()
+        self.wake()
+
     def _run(self) -> None:
-        while True:
-            job = self.raw_repository.claim_next_job()
-            if not job:
-                self._wake_event.wait(2)
-                self._wake_event.clear()
-                continue
-            self._process_job(job.job_id, job.session_id)
+        while not self._shutdown_event.is_set():
+            try:
+                self._process_next_job()
+            except Exception:
+                LOGGER.exception("Indexing worker iteration failed; retrying.")
+                self._wait_for_work()
+
+    def _process_next_job(self) -> None:
+        job = self.raw_repository.claim_next_job(self.worker_id)
+        if not job:
+            self._wait_for_work()
+            return
+        self._process_job(job.job_id, job.session_id)
+
+    def _wait_for_work(self) -> None:
+        self._wake_event.wait(2)
+        self._wake_event.clear()
 
     def _process_job(self, job_id: str, session_id: str) -> None:
         try:
-            stored_chunks = 0
-            processed_messages = 0
-            self.raw_repository.prepare_job_total(job_id, session_id)
-            messages = self.raw_repository.iter_indexing_messages(job_id)
-            collapsed = self._collapse_stream(messages)
-            chunk_stream = self.chunker.chunk_stream(collapsed)
-            self.hybrid_repository.delete_chunks_affected_by_session(session_id)
-            for batch in self._batched(chunk_stream):
-                if self.raw_repository.get_job(job_id).status == "cancelled":
-                    return
-                embeddings = self.embedding_provider.embed_texts([chunk.content for chunk in batch])
-                embedded = [EmbeddedChunk(
-                    chunk=chunk, embedding=embedding,
-                    embedding_model=self.embedding_provider.model_name,
-                ) for chunk, embedding in zip(batch, embeddings)]
-                stored_chunks += self.hybrid_repository.upsert_chunks(embedded)
-                processed_messages += sum(len(chunk.source_message_ids) for chunk in batch)
-                self.raw_repository.update_job_progress(
-                    job_id, processed_messages, stored_chunks,
-                )
-            self.raw_repository.complete_job(job_id)
+            with JobLeaseKeeper(
+                self.raw_repository, job_id, self.worker_id, self.lease_renewal_seconds,
+            ) as lease:
+                self._process_owned_job(job_id, session_id, lease)
         except Exception as error:
-            self.raw_repository.fail_job(job_id, str(error))
+            self.raw_repository.fail_job(job_id, self.worker_id, str(error))
+
+    def _process_owned_job(
+        self, job_id: str, session_id: str, lease: JobLeaseKeeper,
+    ) -> None:
+        total_messages = self.raw_repository.prepare_job_total(
+            job_id, session_id, self.worker_id,
+        )
+        if not lease.renew_now():
+            return
+        self.hybrid_repository.prepare_staging(job_id, self.worker_id)
+        messages = self.raw_repository.iter_indexing_messages(job_id)
+        collapsed = self._collapse_stream(messages, self.chunker.max_gap)
+        chunk_stream = self.chunker.chunk_stream(collapsed)
+        completed = self._process_batches(job_id, total_messages, chunk_stream, lease)
+        if completed and lease.renew_now():
+            self.hybrid_repository.commit_staged_chunks(
+                job_id, session_id, self.worker_id,
+            )
+
+    def _process_batches(
+        self, job_id: str, total_messages: int, chunks: Iterable,
+        lease: JobLeaseKeeper,
+    ) -> bool:
+        stored_chunks = 0
+        processed_messages = 0
+        for batch in self._batched(chunks):
+            if not lease.renew_now():
+                return False
+            embeddings = self.embedding_provider.embed_texts(
+                [chunk.content for chunk in batch],
+            )
+            if not lease.renew_now():
+                return False
+            embedded = self._attach_embeddings(batch, embeddings)
+            stored_chunks += self.hybrid_repository.stage_chunks(
+                job_id, self.worker_id, embedded,
+            )
+            processed_messages = min(
+                processed_messages + self._batch_message_count(batch), total_messages,
+            )
+            if not self.raw_repository.update_job_progress(
+                job_id, self.worker_id, processed_messages, stored_chunks,
+            ):
+                return False
+        return True
+
+    def _attach_embeddings(self, chunks: list, embeddings: list) -> list:
+        return [EmbeddedChunk(
+            chunk=chunk, embedding=embedding,
+            embedding_model=self.embedding_provider.model_name,
+        ) for chunk, embedding in zip(chunks, embeddings)]
 
     @staticmethod
     def _collapse_consecutive_duplicates(
@@ -80,27 +140,58 @@ class PersistentIndexingWorker:
     @staticmethod
     def _collapse_stream(
         messages: Iterable[NormalizedMessage],
+        max_gap: timedelta = timedelta(minutes=20),
     ) -> Iterator[NormalizedMessage]:
         current = None
-        related_ids = []
+        previous = None
+        related_messages = []
         for message in messages:
-            if current and message.author == current.author and message.content == current.content:
-                related_ids.append(message.external_id)
+            if current and PersistentIndexingWorker._can_collapse(previous, message, max_gap):
+                related_messages.append(message)
+                previous = message
                 continue
             if current:
-                yield PersistentIndexingWorker._with_repetition(current, related_ids)
+                yield PersistentIndexingWorker._with_repetition(current, related_messages)
             current = message
-            related_ids = []
+            previous = message
+            related_messages = []
         if current:
-            yield PersistentIndexingWorker._with_repetition(current, related_ids)
+            yield PersistentIndexingWorker._with_repetition(current, related_messages)
 
     @staticmethod
-    def _with_repetition(message: NormalizedMessage, related_ids: list) -> NormalizedMessage:
-        if not related_ids:
+    def _can_collapse(
+        previous: NormalizedMessage, message: NormalizedMessage, max_gap: timedelta,
+    ) -> bool:
+        if previous.author != message.author or previous.content != message.content:
+            return False
+        if (previous.guild_id, previous.channel_id, previous.channel) != (
+            message.guild_id, message.channel_id, message.channel,
+        ):
+            return False
+        if previous.timestamp and message.timestamp:
+            return abs(message.timestamp - previous.timestamp) <= max_gap
+        return True
+
+    @staticmethod
+    def _with_repetition(
+        message: NormalizedMessage, related_messages: List[NormalizedMessage],
+    ) -> NormalizedMessage:
+        if not related_messages:
             return message
         return replace(
-            message, content=f"{message.content}\n[Opakováno {len(related_ids) + 1}×]",
-            related_external_ids=tuple(related_ids),
+            message,
+            content=f"{message.content}\n[Opakováno {len(related_messages) + 1}×]",
+            related_external_ids=tuple(item.external_id for item in related_messages),
+            related_timestamps=tuple(
+                item.timestamp for item in related_messages if item.timestamp
+            ),
+        )
+
+    @staticmethod
+    def _batch_message_count(batch: list) -> int:
+        return sum(
+            len(chunk.source_message_ids)
+            for chunk in batch if chunk.metadata.get("part_index", 0) == 0
         )
 
     def _batched(self, chunks: Iterable) -> Iterator[list]:

@@ -64,28 +64,22 @@ class FakeOverviewService:
 
 
 def test_import_and_chat() -> None:
-    client = TestClient(
-        create_app(FakeIngestionService(), FakeChatService(), FakeOverviewService())
-    )
-    message = {
-        "external_id": "123", "author": "Ada", "content": "Termín je v pátek.",
-        "timestamp": "2026-07-10T10:00:00Z", "channel": "projekt",
-    }
-
-    import_response = client.post("/messages/import", json={"messages": [message]})
+    client = _client()
+    import_response = client.post("/messages/import", json={"messages": [_message()]})
     chat_response = client.post(
         "/chat", json={"question": "Kdy je termín?", "history": []}
     )
-
     assert import_response.status_code == 200
     assert import_response.json()["chunk_count"] == 1
     assert chat_response.status_code == 200
     assert "pátek" in chat_response.json()["answer"]
 
+
+def test_overview_and_ingestion_job_routes() -> None:
+    client = _client()
     overview_response = client.get("/database/overview?limit=25&offset=0")
     assert overview_response.status_code == 200
     assert overview_response.json()["total_chunks"] == 0
-
     session_response = client.post("/ingestion/sessions", json={
         "guild_id": "10", "channel_id": "20", "channel": "projekt",
     })
@@ -97,12 +91,14 @@ def test_import_and_chat() -> None:
     assert finish_response.json()["indexing_job_id"] == "job-1"
     assert job_response.json()["status"] == "queued"
 
+
+def test_resume_and_database_clear_routes() -> None:
+    client = _client()
     resume_response = client.get(
         "/database/resume-point?channel_id=456&channel=projekt"
     )
     assert resume_response.status_code == 200
     assert resume_response.json()["message_id"] == "100"
-
     invalid_clear_response = client.request(
         "DELETE", "/database", json={"confirmation": "NE"}
     )
@@ -111,3 +107,16 @@ def test_import_and_chat() -> None:
     )
     assert invalid_clear_response.status_code == 422
     assert valid_clear_response.status_code == 200
+
+
+def _client() -> TestClient:
+    return TestClient(
+        create_app(FakeIngestionService(), FakeChatService(), FakeOverviewService())
+    )
+
+
+def _message() -> dict:
+    return {
+        "external_id": "123", "author": "Ada", "content": "Termín je v pátek.",
+        "timestamp": "2026-07-10T10:00:00Z", "channel": "projekt",
+    }

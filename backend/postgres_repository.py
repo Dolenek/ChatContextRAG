@@ -151,7 +151,10 @@ class PostgresVectorRepository(VectorRepository):
             (id, content, authors, source_message_ids, channel, started_at, ended_at,
              embedding_model, embedding, metadata)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding,
+            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content,
+              authors = EXCLUDED.authors, source_message_ids = EXCLUDED.source_message_ids,
+              channel = EXCLUDED.channel, started_at = EXCLUDED.started_at,
+              ended_at = EXCLUDED.ended_at, embedding = EXCLUDED.embedding,
               embedding_model = EXCLUDED.embedding_model, metadata = EXCLUDED.metadata,
               updated_at = NOW()
         """

@@ -21,11 +21,15 @@ batches of 64, and PostgreSQL port 5433.
 
 ## Starting the application
 
-Run `run.bat` from the repository root. It validates dependencies, starts the
-pgvector Docker service, and opens Electron. For a manual start:
+Run `run.bat` from the repository root. It verifies Node.js 20 or newer and an
+exact Python 3.9 runtime, refreshes dependencies after application files change,
+starts the pgvector Docker service, waits up to 60 seconds for its healthcheck,
+and opens Electron. A failure in the rebuild or readiness check stops startup
+instead of opening the application against unavailable infrastructure. For a
+manual start:
 
 ```powershell
-docker compose up -d
+docker compose up -d --wait --wait-timeout 60
 npm.cmd start
 ```
 
@@ -45,10 +49,15 @@ Electron starts FastAPI on `127.0.0.1:8765`.
 
 Traversal stores raw data only and therefore does not wait for OpenAI. After a
 session closes, indexing streams the complete session chronologically, creates
-conversation chunks, and stores `halfvec(1536)` vectors. The database overview
+conversation chunks, stages `halfvec(1536)` vectors, and atomically publishes
+them only after every embedding batch succeeds. Cancelling or failing a job
+keeps the previous searchable index intact. The database overview
 shows raw messages, unique texts, duplicates, indexed and pending messages,
 database size, and recent jobs. Failed jobs can be retried and active jobs can
-be cancelled there.
+be cancelled there. Indexing claims use renewable leases, allowing multiple
+backend processes to share the queue without resetting or publishing each
+other's jobs; work abandoned by a stopped process becomes claimable after the
+90-second lease expires.
 
 Legacy chunks remain available until **Vymazat databázi** is confirmed with
 `VYMAZAT`. Clearing removes legacy chunks, raw messages, jobs, and new vectors,

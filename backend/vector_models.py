@@ -13,6 +13,7 @@ class NormalizedMessage:
     channel_id: Optional[str]
     guild_id: Optional[str]
     related_external_ids: Tuple[str, ...] = ()
+    related_timestamps: Tuple[datetime, ...] = ()
 
 
 @dataclass(frozen=True)
