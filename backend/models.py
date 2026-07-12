@@ -248,6 +248,8 @@ class EmbeddingIndexView(BaseModel):
 
 class EmbeddingSettingsView(BaseModel):
     active_embedding_index_id: Optional[str] = None
+    default_chat_provider_id: str = "openai"
+    default_chat_model: Optional[str] = None
     indexes: List[EmbeddingIndexView] = Field(default_factory=list)
 
 

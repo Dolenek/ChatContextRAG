@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 from backend.hybrid_repository import PostgresHybridRepository
@@ -19,12 +19,16 @@ class ApplicationSettingsService:
         hybrid_repository: PostgresHybridRepository,
         raw_repository: PostgresRawMessageRepository,
         indexing_worker: PersistentIndexingWorker,
+        default_chat_provider_id: str = "openai",
+        default_chat_model: Optional[str] = None,
     ) -> None:
         self.registry = registry
         self.indexes = indexes
         self.hybrid_repository = hybrid_repository
         self.raw_repository = raw_repository
         self.indexing_worker = indexing_worker
+        self.default_chat_provider_id = default_chat_provider_id
+        self.default_chat_model = default_chat_model
 
     def list_providers(self) -> List[ProviderProfileView]:
         return self.registry.list_views()
@@ -57,6 +61,8 @@ class ApplicationSettingsService:
         active = self.indexes.active()
         return EmbeddingSettingsView(
             active_embedding_index_id=(active.embedding_index_id if active else None),
+            default_chat_provider_id=self.default_chat_provider_id,
+            default_chat_model=self.default_chat_model,
             indexes=self.indexes.list(),
         )
 

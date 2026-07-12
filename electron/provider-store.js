@@ -46,21 +46,22 @@ class ProviderStore {
   delete(providerId) {
     const state = this._read();
     state.providers = state.providers.filter((item) => item.providerId !== providerId);
-    if (state.defaults.chatProviderId === providerId) {
-      state.defaults = { chatProviderId: "openai", chatModel: "" };
+    if (state.defaults?.chatProviderId === providerId) {
+      state.defaults = null;
     }
     this._write(state);
   }
 
-  getDefaults() {
-    return this._read().defaults;
+  getDefaults(fallback = { chatProviderId: "openai", chatModel: "" }) {
+    return this._read().defaults || fallback;
   }
 
   setDefaults(chatProviderId, chatModel) {
     const state = this._read();
-    state.defaults = { chatProviderId, chatModel };
+    state.defaults = chatProviderId === "openai" && !chatModel
+      ? null : { chatProviderId, chatModel };
     this._write(state);
-    return state.defaults;
+    return state.defaults || { chatProviderId: "openai", chatModel: "" };
   }
 
   _encrypt(apiKey) {
@@ -76,12 +77,14 @@ class ProviderStore {
 
   _read() {
     if (!fs.existsSync(this.filePath)) {
-      return { providers: [], defaults: { chatProviderId: "openai", chatModel: "" } };
+      return { providers: [], defaults: null };
     }
     const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+    const defaults = parsed.defaults || null;
     return {
       providers: Array.isArray(parsed.providers) ? parsed.providers : [],
-      defaults: parsed.defaults || { chatProviderId: "openai", chatModel: "" },
+      defaults: defaults?.chatProviderId === "openai" && !defaults.chatModel
+        ? null : defaults,
     };
   }
 

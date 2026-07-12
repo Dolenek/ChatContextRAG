@@ -40,6 +40,22 @@ test("provider store encrypts API keys and never returns them in public profiles
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("provider store keeps environment chat model until an explicit override", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-default-"));
+  const store = new ProviderStore(directory, {});
+  const environmentDefault = {
+    chatProviderId: "openai", chatModel: "previous-chat-model",
+  };
+
+  assert.deepEqual(store.getDefaults(environmentDefault), environmentDefault);
+  store.setDefaults("custom", "custom-model");
+  assert.deepEqual(store.getDefaults(environmentDefault), {
+    chatProviderId: "custom", chatModel: "custom-model",
+  });
+
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8");
 }

@@ -28,7 +28,8 @@ class FakeSettingsService:
 
     def embedding_settings(self):
         return EmbeddingSettingsView(
-            active_embedding_index_id="index-1", indexes=[self._index()],
+            active_embedding_index_id="index-1",
+            default_chat_model="previous-chat-model", indexes=[self._index()],
         )
 
     def activate_index(self, _update):
@@ -51,6 +52,8 @@ def test_settings_routes_redact_provider_keys_and_expose_active_index() -> None:
     assert providers[0]["has_api_key"] is True
     assert "api_key" not in providers[0]
     assert embeddings["active_embedding_index_id"] == "index-1"
+    assert embeddings["default_chat_provider_id"] == "openai"
+    assert embeddings["default_chat_model"] == "previous-chat-model"
 
 
 def test_internal_provider_registry_requires_bootstrap_token() -> None:

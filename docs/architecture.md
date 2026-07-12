@@ -130,6 +130,11 @@ Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
 metadata live below Electron `userData`; only the main process decrypts them.
 Electron synchronizes the runtime registry through a token-protected loopback
 endpoint. Backend and preload responses expose only `has_api_key`.
+Until Electron has persisted an explicit chat selection, the renderer uses the
+built-in provider and `OPENAI_CHAT_MODEL` reported by the backend. Database
+bootstrap likewise seeds the initial embedding index from
+`OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS`; conflict-safe inserts
+preserve an existing active index and any saved user choice.
 
 `POST /chat` returns `source_type`, `conversation_id`, source message IDs, and
 legacy Discord deep-link fields. The renderer groups selectable scopes into

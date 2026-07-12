@@ -233,7 +233,10 @@ def _resolve_services(
 def _build_default_services() -> tuple:
     settings = ApplicationSettings.from_environment()
     repository = PostgresVectorRepository(settings.postgres_dsn, settings.embedding_dimensions)
-    raw_repository = PostgresRawMessageRepository(settings.postgres_dsn)
+    raw_repository = PostgresRawMessageRepository(
+        settings.postgres_dsn, settings.embedding_model,
+        settings.embedding_dimensions,
+    )
     raw_repository.ensure_schema()
     provider_registry, index_repository, hybrid_repository, indexing_worker = (
         _build_model_stack(settings, raw_repository)
@@ -257,7 +260,7 @@ def _build_default_services() -> tuple:
     overview = DatabaseOverviewService(repository, raw_repository)
     settings_service = ApplicationSettingsService(
         provider_registry, index_repository, hybrid_repository, raw_repository,
-        indexing_worker,
+        indexing_worker, default_chat_model=settings.chat_model,
     )
     return ingestion, chat, overview, settings_service, settings.internal_token
 

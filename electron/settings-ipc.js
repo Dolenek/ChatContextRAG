@@ -57,7 +57,14 @@ class SettingsIpcController {
       this.request("GET", "/settings/providers"),
       this.request("GET", "/settings/embedding-indexes"),
     ]);
-    return { providers, embeddings, chatDefaults: this.providerStore.getDefaults() };
+    const environmentDefaults = {
+      chatProviderId: embeddings.default_chat_provider_id || "openai",
+      chatModel: embeddings.default_chat_model || "",
+    };
+    return {
+      providers, embeddings,
+      chatDefaults: this.providerStore.getDefaults(environmentDefaults),
+    };
   }
 
   async saveProvider(profile) {

@@ -1,12 +1,28 @@
 from typing import List
 
 
-def raw_schema_statements() -> List[str]:
+def raw_schema_statements(
+    default_embedding_model: str = "text-embedding-3-small",
+    default_embedding_dimensions: int = 1536,
+) -> List[str]:
+    dimensions = _validated_dimensions(default_embedding_dimensions)
     return (
         _message_schema_statements() + _session_schema_statements()
-        + _embedding_schema_statements() + _job_schema_statements()
+        + _embedding_schema_statements(default_embedding_model, dimensions)
+        + _job_schema_statements()
         + _integration_schema_statements()
     )
+
+
+def _validated_dimensions(dimensions: int) -> int:
+    parsed_dimensions = int(dimensions)
+    if not 1 <= parsed_dimensions <= 4000:
+        raise ValueError("Default embedding dimensions must be between 1 and 4000.")
+    return parsed_dimensions
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _message_schema_statements() -> List[str]:
@@ -86,7 +102,8 @@ def _session_schema_statements() -> List[str]:
     ]
 
 
-def _embedding_schema_statements() -> List[str]:
+def _embedding_schema_statements(model: str, dimensions: int) -> List[str]:
+    model_literal = _sql_literal(model)
     return [
         """CREATE TABLE IF NOT EXISTS embedding_indexes (
             id TEXT PRIMARY KEY,name TEXT NOT NULL,provider_id TEXT NOT NULL,model TEXT NOT NULL,
@@ -96,10 +113,10 @@ def _embedding_schema_statements() -> List[str]:
         """CREATE TABLE IF NOT EXISTS rag_application_settings (
             id INTEGER PRIMARY KEY CHECK(id=1),active_embedding_index_id TEXT
             REFERENCES embedding_indexes(id) ON DELETE SET NULL)""",
-        """INSERT INTO embedding_indexes
+        f"""INSERT INTO embedding_indexes
             (id,name,provider_id,model,dimensions,requested_dimensions,status,auto_sync)
             VALUES ('default-openai','Default OpenAI index','openai',
-                    'text-embedding-3-small',1536,1536,'ready',TRUE)
+                    {model_literal},{dimensions},{dimensions},'ready',TRUE)
             ON CONFLICT(id) DO NOTHING""",
         """INSERT INTO rag_application_settings(id,active_embedding_index_id)
             VALUES(1,'default-openai') ON CONFLICT(id) DO NOTHING""",

@@ -17,8 +17,14 @@ from backend.vector_models import NormalizedMessage
 
 
 class PostgresRawMessageRepository:
-    def __init__(self, database_dsn: str) -> None:
+    def __init__(
+        self, database_dsn: str,
+        default_embedding_model: str = "text-embedding-3-small",
+        default_embedding_dimensions: int = 1536,
+    ) -> None:
         self.database_dsn = database_dsn
+        self.default_embedding_model = default_embedding_model
+        self.default_embedding_dimensions = default_embedding_dimensions
         self._initialized = False
         self._lock = threading.Lock()
         self.message_writer = RawMessageWriter()
@@ -287,9 +293,10 @@ class PostgresRawMessageRepository:
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL raw schema initialization failed.") from error
 
-    @staticmethod
-    def _schema_statements() -> List[str]:
-        return raw_schema_statements()
+    def _schema_statements(self) -> List[str]:
+        return raw_schema_statements(
+            self.default_embedding_model, self.default_embedding_dimensions,
+        )
 
     def _connect(self):
         return psycopg.connect(self.database_dsn)

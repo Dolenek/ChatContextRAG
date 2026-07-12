@@ -41,6 +41,12 @@ protocol. Custom keys are encrypted with Electron `safeStorage`; the renderer,
 PostgreSQL, API responses, and logs never receive them in plaintext. A platform
 without a secure OS key store cannot persist custom provider keys.
 
+The chat selector initially shows `OPENAI_CHAT_MODEL`, and the initial embedding
+index uses `OPENAI_EMBEDDING_MODEL` plus `OPENAI_EMBEDDING_DIMENSIONS`. These
+environment values remain effective until the user explicitly selects another
+chat model or activates another ready embedding index. Existing saved choices
+are never overwritten during startup.
+
 Model fields load suggestions from the provider's `/models` endpoint and still
 accept a model ID typed by hand. The chat screen remembers the last provider and
 model. Changing either one starts a fresh visible chat history.

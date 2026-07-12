@@ -20,6 +20,13 @@ def test_raw_schema_indexes_content_occurrences_in_message_order() -> None:
     assert "ALTER COLUMN channel_id DROP NOT NULL" in schema
 
 
+def test_raw_schema_seeds_current_environment_embedding_defaults() -> None:
+    schema = "\n".join(raw_schema_statements("previous-model's-id", 768))
+
+    assert "'previous-model''s-id',768,768,'ready'" in schema
+    assert "ON CONFLICT(id) DO NOTHING" in schema
+
+
 def test_vector_candidates_are_limited_before_source_hash_aggregation() -> None:
     query = PostgresHybridRetrieval._vector_search_sql()
 
