@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 
 from backend.indexing_worker import PersistentIndexingWorker
-from backend.models import DiscordMessageInput, ImportRequest, IngestionSessionView
+from backend.models import (
+    DiscordMessageInput, ImportRequest, IndexingJobView, IngestionSessionView,
+)
 from backend.normalization import DiscordMessageNormalizer
 from backend.services import MessageIngestionService
 from backend.vector_models import NormalizedMessage
@@ -24,6 +26,11 @@ class FakeRawRepository:
         self.finished.append((session_id, reason))
         return IngestionSessionView(
             session_id=session_id, status=reason, indexing_job_id="job-1",
+        )
+
+    def queue_pending_messages(self):
+        return IndexingJobView(
+            job_id="job-pending", session_id="pending-session", status="queued",
         )
 
 
@@ -66,6 +73,17 @@ def test_implicit_manual_import_finishes_session_and_wakes_indexer() -> None:
 
     assert result.imported_count == 1
     assert repository.finished == [("session-1", "completed")]
+    assert worker.wake_count == 1
+
+
+def test_queueing_pending_messages_wakes_indexer() -> None:
+    repository = FakeRawRepository()
+    worker = FakeWorker()
+    service = MessageIngestionService(DiscordMessageNormalizer(), repository, worker)
+
+    result = service.queue_pending_messages()
+
+    assert result.job_id == "job-pending"
     assert worker.wake_count == 1
 
 

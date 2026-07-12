@@ -7,6 +7,7 @@ import psycopg
 from backend.indexing_job_repository import PostgresIndexingJobRepository
 from backend.models import IndexingJobView, IngestionSessionRequest, IngestionSessionView
 from backend.openai_gateway import ExternalIntegrationError
+from backend.pending_indexing import PostgresPendingIndexingJobCreator
 from backend.raw_message_writer import RawMessageWriter
 from backend.raw_schema import raw_schema_statements
 from backend.vector_models import NormalizedMessage
@@ -19,6 +20,9 @@ class PostgresRawMessageRepository:
         self._lock = threading.Lock()
         self.message_writer = RawMessageWriter()
         self.job_repository = PostgresIndexingJobRepository(self.ensure_schema, self._connect)
+        self.pending_job_creator = PostgresPendingIndexingJobCreator(
+            self.ensure_schema, self._connect,
+        )
 
     def create_session(self, request: IngestionSessionRequest) -> IngestionSessionView:
         self.ensure_schema()
@@ -56,6 +60,10 @@ class PostgresRawMessageRepository:
 
     def cancel_job(self, job_id: str) -> IndexingJobView:
         return self.job_repository.cancel(job_id)
+
+    def queue_pending_messages(self) -> IndexingJobView:
+        job_id = self.pending_job_creator.queue()
+        return self.job_repository.get(job_id)
 
     def claim_next_job(self, worker_id: str) -> Optional[IndexingJobView]:
         return self.job_repository.claim_next(worker_id)

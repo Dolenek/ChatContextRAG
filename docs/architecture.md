@@ -38,6 +38,11 @@ and traversal resumes after a backoff instead of spinning indefinitely. DOM
 reads and scroll commands have a bounded wait and are cancellation-aware, so a
 stalled Discord renderer can be retried or interrupted before the pending raw
 batch is flushed and the session is finalized.
+The database overview can also create a maintenance session for raw messages
+that have no `rag_chunk_messages` link. Creation is serialized with a PostgreSQL
+advisory transaction lock and excludes messages already assigned to queued or
+running jobs. This recovers raw data left behind by an interrupted session
+without duplicating active indexing work.
 Each claim assigns a unique worker ID and a renewable 90-second lease. Queued
 jobs and running jobs with expired leases are claimable with `SKIP LOCKED`, so a
 job abandoned by a stopped backend is recovered without resetting work owned by
@@ -128,6 +133,8 @@ keeps the current database usable until an explicit clear and re-import.
 - `POST /ingestion/sessions/{id}/finish` queues indexing.
 - `GET /indexing/jobs/{id}` reports durable progress.
 - `POST /indexing/jobs/{id}/retry` and `/cancel` control a job.
+- `POST /indexing/jobs/pending` queues raw messages not covered by the index or
+  an active indexing job.
 - `POST /chat` performs hybrid RAG with legacy fallback.
 - `GET /database/resume-point` reads the oldest raw message, then legacy data.
 - `GET /database/overview` reports raw, deduplication, index, job, and size data.
@@ -138,6 +145,11 @@ keeps the current database usable until an explicit clear and re-import.
 The automated test suite includes a 100,000-message synthetic test that verifies
 streaming and the 64-chunk embedding bound. The worker rejects missing vectors
 or unexpected embedding dimensions before any staged generation can publish.
+While the database overview is visible, Electron polls the active job every 1.5
+seconds through `GET /indexing/jobs/{id}`. The job card distinguishes queueing,
+initial snapshot or first-batch preparation, embedding progress, and terminal
+states. A terminal response triggers one full overview refresh so atomically
+published chunk and message counts become visible without manual reload.
 An optional PostgreSQL integration test verifies that the old generation stays
 searchable throughout staging and is replaced only by the final transaction.
 

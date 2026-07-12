@@ -97,6 +97,13 @@ function registerIpcHandlers() {
     postJson(`/indexing/jobs/${jobId}/retry`, {}));
   ipcMain.handle("indexing:cancel", (_event, jobId) =>
     postJson(`/indexing/jobs/${jobId}/cancel`, {}));
+  ipcMain.handle("indexing:get", (_event, jobId) =>
+    getJson(`/indexing/jobs/${jobId}`));
+  ipcMain.handle("indexing:pending", async () => {
+    const job = await postJson("/indexing/jobs/pending", {});
+    monitorIndexingJob(job.job_id);
+    return job;
+  });
 }
 
 async function runManagedDiscordScan(shouldResume) {

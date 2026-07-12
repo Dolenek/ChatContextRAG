@@ -17,7 +17,7 @@ document.querySelector("#cancel-clear-button").addEventListener("click", closeCl
 document.querySelector("#clear-confirmation-input")
   .addEventListener("input", updateClearConfirmation);
 document.querySelector("#confirm-clear-button").addEventListener("click", clearDatabase);
-document.querySelector("#indexing-jobs").addEventListener("click", handleIndexingJobAction);
+window.indexingControls.bind({ refreshOverview: openDatabaseOverview, showToast });
 document.querySelector("#home-button").addEventListener("click", async () => {
   await window.chatContext.hideDiscord();
   showScreen("home");

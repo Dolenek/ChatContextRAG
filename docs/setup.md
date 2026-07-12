@@ -60,7 +60,14 @@ them only after every embedding batch succeeds. Cancelling or failing a job
 keeps the previous searchable index intact. The database overview
 shows raw messages, unique texts, duplicates, indexed and pending messages,
 database size, and recent jobs. Failed jobs can be retried and active jobs can
-be cancelled there. Indexing claims use renewable leases, allowing multiple
+be cancelled there. When no job is active, **Zaindexovat čekající** creates a
+new durable job for every raw message that is still missing from the index.
+This also recovers messages left by an interrupted scan session. Progress
+refreshes automatically while the overview is open. The job card shows its
+phase, processed and total messages, chunk count, percentage, and a progress
+bar. A zero count with **Připravuji index** means the worker is building the
+message snapshot or waiting for the first embedding batch; it does not mean the
+job has stopped. Indexing claims use renewable leases, allowing multiple
 backend processes to share the queue without resetting or publishing each
 other's jobs; work abandoned by a stopped process becomes claimable after the
 90-second lease expires.

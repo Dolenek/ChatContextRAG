@@ -25,4 +25,6 @@ contextBridge.exposeInMainWorld("chatContext", {
     ipcRenderer.invoke("database:clear", { confirmation }),
   retryIndexingJob: (jobId) => ipcRenderer.invoke("indexing:retry", jobId),
   cancelIndexingJob: (jobId) => ipcRenderer.invoke("indexing:cancel", jobId),
+  getIndexingJob: (jobId) => ipcRenderer.invoke("indexing:get", jobId),
+  indexPendingMessages: () => ipcRenderer.invoke("indexing:pending"),
 });

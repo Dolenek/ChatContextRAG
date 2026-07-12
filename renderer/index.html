@@ -59,7 +59,7 @@
       <section id="overview-screen" class="screen overview-screen hidden">
         <div class="overview-heading">
           <div><div class="eyebrow">PŘEHLED DATABÁZE</div><h2>Co je uložené?</h2><p>Souhrn zdrojů, metadat a vektorových chunků.</p></div>
-          <div class="overview-actions"><button id="refresh-overview-button" class="secondary-button" type="button">Obnovit</button><button id="open-clear-database-button" class="danger-button" type="button">Vymazat databázi</button></div>
+          <div class="overview-actions"><button id="index-pending-button" class="secondary-button" type="button" disabled>Načítám stav indexu…</button><button id="refresh-overview-button" class="secondary-button" type="button">Obnovit</button><button id="open-clear-database-button" class="danger-button" type="button">Vymazat databázi</button></div>
         </div>
         <div id="overview-stats" class="stats-grid"></div>
         <div class="overview-breakdowns">
@@ -85,6 +85,7 @@
     </div>
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="chat-sources.js"></script>
+    <script src="indexing-controls.js"></script>
     <script src="app.js"></script>
     <script src="event-bindings.js"></script>
   </body>

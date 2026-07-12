@@ -214,7 +214,9 @@ function renderOverview(overview, append) {
   renderCountList("#channel-counts", overview.channels);
   renderCountList("#author-counts", overview.authors);
   renderCountList("#model-counts", overview.embedding_models);
-  renderIndexingJobs(overview.indexing_jobs || []);
+  window.indexingControls.render(
+    overview.indexing_jobs || [], overview.pending_message_count || 0,
+  );
   const chunkCards = overview.chunks.map(createDatabaseChunkCard);
   const chunkList = document.querySelector("#database-chunks");
   append ? chunkList.append(...chunkCards) : chunkList.replaceChildren(...chunkCards);
@@ -238,34 +240,6 @@ function renderOverviewStats(overview) {
   ];
   const cards = stats.map(([label, value]) => createStatCard(label, value));
   document.querySelector("#overview-stats").replaceChildren(...cards);
-}
-
-function renderIndexingJobs(jobs) {
-  const rows = jobs.map((job) => {
-    const row = document.createElement("div");
-    const action = ["queued", "running"].includes(job.status) ? "cancel" : "retry";
-    const label = action === "cancel" ? "Zrušit" : "Opakovat";
-    row.innerHTML = `<span>${escapeHtml(job.status)} · ${job.processed_messages}/${job.total_messages}</span><strong>${job.stored_chunks} chunků</strong><button class="job-action" data-job-id="${escapeHtml(job.job_id)}" data-action="${action}" type="button">${label}</button>`;
-    return row;
-  });
-  if (!rows.length) rows.push(createEmptyLabel("Žádné indexovací úlohy"));
-  document.querySelector("#indexing-jobs").replaceChildren(...rows);
-}
-
-async function handleIndexingJobAction(event) {
-  const button = event.target.closest(".job-action");
-  if (!button) return;
-  button.disabled = true;
-  try {
-    if (button.dataset.action === "cancel") {
-      await window.chatContext.cancelIndexingJob(button.dataset.jobId);
-    } else {
-      await window.chatContext.retryIndexingJob(button.dataset.jobId);
-    }
-    await openDatabaseOverview();
-  } catch (error) {
-    showToast(error.message, true);
-  }
 }
 
 function createStatCard(label, value) {

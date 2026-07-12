@@ -30,6 +30,12 @@ class FakeIngestionService:
     def cancel_job(self, job_id):
         return IndexingJobView(job_id=job_id, session_id="session-1", status="cancelled")
 
+    def queue_pending_messages(self):
+        return IndexingJobView(
+            job_id="job-pending", session_id="pending-session", status="queued",
+            total_messages=84,
+        )
+
 
 class FakeChatService:
     def answer(self, request):
@@ -87,9 +93,11 @@ def test_overview_and_ingestion_job_routes() -> None:
         "/ingestion/sessions/session-1/finish", json={"reason": "completed"},
     )
     job_response = client.get("/indexing/jobs/job-1")
+    pending_response = client.post("/indexing/jobs/pending")
     assert session_response.status_code == 200
     assert finish_response.json()["indexing_job_id"] == "job-1"
     assert job_response.json()["status"] == "queued"
+    assert pending_response.json()["total_messages"] == 84
 
 
 def test_resume_and_database_clear_routes() -> None:

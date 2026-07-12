@@ -101,6 +101,10 @@ def _register_ingestion_routes(
     def cancel_indexing_job(job_id: str) -> IndexingJobView:
         return ingestion_service.cancel_job(job_id)
 
+    @application.post("/indexing/jobs/pending", response_model=IndexingJobView)
+    def queue_pending_indexing_job() -> IndexingJobView:
+        return ingestion_service.queue_pending_messages()
+
 
 def _register_chat_routes(application: FastAPI, chat_service: DatabaseChatService) -> None:
     @application.post("/chat", response_model=ChatResponse)

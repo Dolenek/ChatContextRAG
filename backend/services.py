@@ -60,6 +60,11 @@ class MessageIngestionService:
     def cancel_job(self, job_id: str) -> IndexingJobView:
         return self.raw_repository.cancel_job(job_id)
 
+    def queue_pending_messages(self) -> IndexingJobView:
+        job = self.raw_repository.queue_pending_messages()
+        self.indexing_worker.wake()
+        return job
+
     def _resolve_session(self, request, messages) -> tuple:
         if request.session_id:
             return request.session_id, False
