@@ -48,19 +48,26 @@ def test_staged_index_replacement_is_atomic_in_postgres() -> None:
     hybrid_repository.ensure_schema()
     try:
         _seed_old_index(TEST_DSN, values)
+        hybrid_repository.ensure_model_index(values.index_id, 2)
         replacement = _replacement_chunk(values)
-        hybrid_repository.prepare_staging(values.job_id, values.worker_id)
+        hybrid_repository.prepare_staging(
+            values.job_id, values.worker_id, values.index_id,
+        )
         hybrid_repository.stage_chunks(
-            values.job_id, values.worker_id, [replacement],
+            values.job_id, values.worker_id, values.index_id, [replacement],
         )
 
         assert _chunk_ids(TEST_DSN, values) == [values.old_chunk_id]
         assert hybrid_repository.commit_staged_chunks(
             values.job_id, values.session_id, values.worker_id,
+            values.index_id, "incremental",
         )
         assert _chunk_ids(TEST_DSN, values) == [values.new_chunk_id]
         assert raw_repository.get_job(values.job_id).status == "completed"
-        retrieved = hybrid_repository.search_hybrid("replacement", [0.2, 0.1], 1)
+        retrieved = hybrid_repository.search_hybrid(
+            values.identity, [0.2, 0.1], 1,
+            embedding_index_id=values.index_id, dimensions=2,
+        )
         assert retrieved[0].source_message_ids == [values.message_id]
         assert retrieved[0].channel_id == "20"
         assert retrieved[0].guild_id == "10"
@@ -68,13 +75,47 @@ def test_staged_index_replacement_is_atomic_in_postgres() -> None:
         _cleanup(TEST_DSN, values)
 
 
+@pytest.mark.skipif(not TEST_DSN, reason="POSTGRES_TEST_DSN is not configured")
+def test_finished_session_fans_out_to_every_auto_sync_index() -> None:
+    identity = uuid.uuid4().hex
+    index_ids = [f"fanout-a-{identity}", f"fanout-b-{identity}"]
+    repository = PostgresRawMessageRepository(TEST_DSN)
+    repository.ensure_schema()
+    with psycopg.connect(TEST_DSN) as connection:
+        for index_id in index_ids:
+            connection.execute(
+                """INSERT INTO embedding_indexes
+                   (id,name,provider_id,model,dimensions,status,auto_sync)
+                   VALUES(%s,%s,'openai','test',2,'ready',TRUE)""",
+                (index_id, index_id),
+            )
+    session = repository.create_session(IngestionSessionRequest(
+        source_type="test", conversation_id=identity,
+    ))
+    try:
+        finished = repository.finish_session(session.session_id, "completed")
+        with psycopg.connect(TEST_DSN) as connection:
+            job_indexes = {row[0] for row in connection.execute(
+                "SELECT embedding_index_id FROM indexing_jobs WHERE session_id=%s",
+                (session.session_id,),
+            ).fetchall()}
+        assert set(index_ids).issubset(job_indexes)
+        assert len(finished.indexing_job_ids) == len(job_indexes)
+    finally:
+        repository.delete_session(session.session_id)
+        with psycopg.connect(TEST_DSN) as connection:
+            connection.execute("DELETE FROM embedding_indexes WHERE id=ANY(%s)", (index_ids,))
+
+
 class _TestIdentity:
     def __init__(self, identity: str) -> None:
+        self.identity = identity
         self.message_id = str(int(identity[:15], 16))
         self.content_hash = RawMessageWriter.content_hash(identity)
         self.session_id = f"session-{identity}"
         self.job_id = f"job-{identity}"
         self.worker_id = f"worker-{identity}"
+        self.index_id = f"index-{identity}"
         self.old_chunk_id = f"old-{identity}"
         self.new_chunk_id = f"new-{identity}"
 
@@ -82,8 +123,13 @@ class _TestIdentity:
 def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
     with _connection(database_dsn) as connection:
         connection.execute(
+            """INSERT INTO embedding_indexes
+               (id,name,provider_id,model,dimensions,status,auto_sync)
+               VALUES(%s,'Test','openai','test',2,'ready',FALSE)""", (values.index_id,),
+        )
+        connection.execute(
             "INSERT INTO message_contents(content_hash,content) VALUES (%s,%s)",
-            (values.content_hash, "old content"),
+            (values.content_hash, values.identity),
         )
         connection.execute(
             """INSERT INTO source_messages
@@ -105,28 +151,32 @@ def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
 
 def _insert_running_job(connection, values: _TestIdentity) -> None:
     connection.execute(
-        """INSERT INTO indexing_jobs(id,session_id,status,worker_id,lease_expires_at)
-           VALUES (%s,%s,'running',%s,NOW()+INTERVAL '5 minutes')""",
-        (values.job_id, values.session_id, values.worker_id),
+        """INSERT INTO indexing_jobs
+           (id,session_id,embedding_index_id,status,worker_id,lease_expires_at)
+           VALUES (%s,%s,%s,'running',%s,NOW()+INTERVAL '5 minutes')""",
+        (values.job_id, values.session_id, values.index_id, values.worker_id),
     )
 
 
 def _insert_old_chunk(connection, values: _TestIdentity) -> None:
     connection.execute(
         """INSERT INTO rag_chunks
-           (id,content,authors,source_message_ids,embedding_model,embedding,metadata)
-           VALUES (%s,'old',ARRAY['Ada'],ARRAY[%s],'test',%s,%s)""",
-        (values.old_chunk_id, values.message_id, HalfVector([0.1, 0.2]), Jsonb({})),
+           (embedding_index_id,id,content,authors,source_message_ids,
+            embedding_model,embedding,metadata)
+           VALUES (%s,%s,'old',ARRAY['Ada'],ARRAY[%s],'test',%s,%s)""",
+        (values.index_id, values.old_chunk_id, values.message_id,
+         HalfVector([0.1, 0.2]), Jsonb({})),
     )
     connection.execute(
-        "INSERT INTO rag_chunk_messages VALUES (%s,%s,0)",
-        (values.old_chunk_id, values.message_id),
+        """INSERT INTO rag_chunk_messages
+           (embedding_index_id,chunk_id,message_id,position) VALUES (%s,%s,%s,0)""",
+        (values.index_id, values.old_chunk_id, values.message_id),
     )
 
 
 def _replacement_chunk(values: _TestIdentity) -> EmbeddedChunk:
     chunk = ConversationChunk(
-        chunk_id=values.new_chunk_id, content="new", authors=["Ada"],
+        chunk_id=values.new_chunk_id, content=values.identity, authors=["Ada"],
         source_message_ids=[values.message_id], channel="guide",
         started_at=None, ended_at=None,
         metadata={"channel_id": "20", "guild_id": "10"},
@@ -150,9 +200,15 @@ def _cleanup(database_dsn: str, values: _TestIdentity) -> None:
             ([values.old_chunk_id, values.new_chunk_id],),
         )
         connection.execute("DELETE FROM indexing_jobs WHERE id=%s", (values.job_id,))
+        connection.execute("DELETE FROM embedding_indexes WHERE id=%s", (values.index_id,))
         connection.execute("DELETE FROM ingestion_sessions WHERE id=%s", (values.session_id,))
         connection.execute("DELETE FROM source_messages WHERE external_id=%s", (values.message_id,))
         connection.execute("DELETE FROM message_contents WHERE content_hash=%s", (values.content_hash,))
+        connection.execute(
+            psycopg.sql.SQL("DROP INDEX IF EXISTS {}").format(psycopg.sql.Identifier(
+                "rag_embedding_" + values.index_id.replace("-", "_") + "_hnsw"
+            )),
+        )
 
 
 def _connection(database_dsn: str):

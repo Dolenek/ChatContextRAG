@@ -1,4 +1,5 @@
 const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 
 const BACKEND_URL = "http://127.0.0.1:8765";
 
@@ -6,6 +7,7 @@ class BackendProcess {
   constructor(projectRoot) {
     this.projectRoot = projectRoot;
     this.process = null;
+    this.internalToken = crypto.randomBytes(32).toString("hex");
     this.stderrLines = [];
   }
 
@@ -20,7 +22,11 @@ class BackendProcess {
     const child = spawn(
       "py",
       ["-3.9", "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8765"],
-      { cwd: this.projectRoot, env: process.env, windowsHide: true },
+      {
+        cwd: this.projectRoot,
+        env: { ...process.env, CHAT_CONTEXT_INTERNAL_TOKEN: this.internalToken },
+        windowsHide: true,
+      },
     );
     child.stderr.on("data", (chunk) => this.captureStderr(chunk));
     return child;

@@ -1,16 +1,19 @@
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
 
 const { BackendProcess, BACKEND_URL } = require("./backend-process");
 const { DiscordViewController } = require("./discord-view");
 const { IntegrationIpcController } = require("./integration-ipc");
 const { readBackendResponse } = require("./backend-response");
+const { ProviderStore } = require("./provider-store");
+const { SettingsIpcController } = require("./settings-ipc");
 
 const projectRoot = path.resolve(__dirname, "..");
 const backendProcess = new BackendProcess(projectRoot);
 let mainWindow;
 let discordController;
 let integrationController;
+let settingsController;
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -89,7 +92,7 @@ function registerIpcHandlers() {
       session_id: session.session_id, messages,
     });
     const finished = await finishIngestionSession(session.session_id, "completed");
-    monitorIndexingJob(finished.indexing_job_id);
+    monitorIndexingJobs(finished);
     discordController.hide();
     return result;
   });
@@ -134,7 +137,7 @@ async function runManagedDiscordScan(shouldResume) {
   } finally {
     const reason = summary?.state === "completed" ? "completed" : "stopped";
     const finished = await finishIngestionSession(session.session_id, reason);
-    monitorIndexingJob(finished.indexing_job_id);
+    monitorIndexingJobs(finished);
     if (summary) summary.indexingJobId = finished.indexing_job_id;
   }
   return summary;
@@ -175,10 +178,22 @@ async function monitorIndexingJob(jobId) {
   }
 }
 
+function monitorIndexingJobs(session) {
+  const jobIds = session.indexing_job_ids?.length
+    ? session.indexing_job_ids : [session.indexing_job_id].filter(Boolean);
+  jobIds.forEach((jobId) => monitorIndexingJob(jobId));
+}
+
 app.whenReady().then(async () => {
   registerIpcHandlers();
   try {
     await backendProcess.start();
+    const providerStore = new ProviderStore(app.getPath("userData"), safeStorage);
+    settingsController = new SettingsIpcController(
+      providerStore, backendProcess.internalToken, monitorIndexingJob,
+    );
+    settingsController.register();
+    await settingsController.initializeRegistry();
     integrationController = new IntegrationIpcController({
       postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
     });

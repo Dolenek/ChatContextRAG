@@ -2,7 +2,9 @@
 
 Chat Context is a local Electron desktop application backed by FastAPI,
 PostgreSQL with pgvector, and the OpenAI API. It imports conversations through
-independent source connectors and exposes one source-neutral RAG index.
+independent source connectors and exposes multiple source-neutral embedding
+indexes over one canonical raw-message layer. One ready index is globally active
+for retrieval.
 
 ## Source connectors
 
@@ -22,14 +24,14 @@ The first `sync` walks the complete accessible channel history in 100-message
 pages. Durable sync state stores the oldest and newest cursors, backfill state,
 tracking state, active ingestion session, and the last error. An interrupted
 backfill resumes from its oldest cursor in the same durable ingestion session;
-already committed pages are deduplicated and the final indexing job covers the
+already committed pages are deduplicated and the final per-index jobs cover the
 complete scan. Startup catches up from the newest cursor before listening for live
 message create and update events. Discord deletes are intentionally ignored,
 because the local database is an archive.
 
 Live bot events are deduplicated by Discord message ID and flushed after 30
 seconds of inactivity, after a hard 60-second limit, or at 100 messages. Each
-flush closes an ingestion session and creates a durable indexing job. An edited
+flush closes an ingestion session and creates durable per-index jobs. An edited
 message uses the same external ID, so its raw content and affected RAG boundary
 are replaced rather than duplicated.
 
@@ -60,14 +62,15 @@ count, and a generated PostgreSQL full-text vector.
 
 The migration and schema creation execute in one database transaction. A failure
 therefore prevents application startup without leaving a partially migrated
-schema. Clearing the database removes messages, chunks, jobs, and integration
-cursors, while the encrypted Discord bot token and embedded Discord login remain.
+schema. Clearing the database removes messages, vectors, jobs, and integration
+cursors while preserving embedding-index definitions, provider profiles,
+encrypted secrets, the Discord bot token, and the embedded Discord login.
 
 Ingestion is source-neutral:
 
 ```text
 connector -> normalization -> source_messages -> ingestion session
-          -> durable indexing job -> staged chunks -> atomic publish
+          -> per-index durable jobs -> staged chunks -> atomic publish
 ```
 
 Electron writes at most 400 messages in each `/messages/import` request. Raw
@@ -78,9 +81,10 @@ transaction.
 ## Indexing
 
 Indexing is deliberately decoupled from collection. Closing an ingestion session
-queues a durable job and the background worker streams the job snapshot in
-chronological order. Jobs use renewable leases so an abandoned job can be
-claimed after its lease expires.
+queues a durable job for every ready embedding index whose auto-sync switch is
+enabled. The single background worker resolves the provider, model, and dimension
+from each job and streams its snapshot in chronological order. Jobs use renewable
+leases so an abandoned job can be claimed after its lease expires.
 
 The chunker never combines different `(source_type, conversation_id)` values.
 It also separates messages after a 20-minute gap or before the rendered content
@@ -95,6 +99,13 @@ remain untouched until every embedding succeeds. The final replacement, link
 update, and job completion occur in one transaction. Failed or cancelled jobs do
 not expose a partial generation.
 
+`embedding_indexes` stores immutable provider/model/dimension identity and
+lifecycle state. Chunks, source links, staging rows, and jobs carry an
+`embedding_index_id`, so identical chunk IDs can coexist in different vector
+spaces. Embeddings use an unbounded `halfvec` column; every configuration gets
+its own dimension cast and partial HNSW index. A rebuild keeps the published
+generation searchable until its complete staged generation commits.
+
 When a session includes an edited or overlapping message, the job snapshot also
 includes all messages from affected published chunks. The combined boundary is
 rebuilt and atomically replaces the old chunks.
@@ -108,9 +119,17 @@ filter.
 
 Full-text hits expand to neighboring raw messages only within the same source and
 conversation. Expansion is capped at 12 messages and stops at a 20-minute gap.
-Vector and full-text results are combined with reciprocal-rank fusion and a small
-recency multiplier. The best diverse contexts are sent to the OpenAI Responses
-API with source identity preserved.
+Vector candidates are restricted to the globally active embedding index and use
+that index's exact provider, model, and dimension. Vector and full-text results
+are combined with reciprocal-rank fusion and a small
+recency multiplier. The best diverse contexts are sent through the chat provider
+selected for the current conversation. Both Responses and OpenAI-compatible Chat
+Completions preserve the same grounding instructions and source identity.
+
+Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
+metadata live below Electron `userData`; only the main process decrypts them.
+Electron synchronizes the runtime registry through a token-protected loopback
+endpoint. Backend and preload responses expose only `has_api_key`.
 
 `POST /chat` returns `source_type`, `conversation_id`, source message IDs, and
 legacy Discord deep-link fields. The renderer groups selectable scopes into
@@ -122,7 +141,8 @@ Discord** action.
 
 - `POST /ingestion/sessions` starts a source-neutral raw ingestion session.
 - `POST /messages/import` stores up to 400 normalized source messages.
-- `POST /ingestion/sessions/{id}/finish` queues indexing.
+- `POST /ingestion/sessions/{id}/finish` queues per-index jobs and returns the
+  compatible first job ID plus all job IDs.
 - `GET /ingestion/conversations` lists raw conversations for a source.
 - `GET /integrations/sync-states` and `POST /integrations/sync-state` persist
   connector cursors.
@@ -130,7 +150,11 @@ Discord** action.
 - `POST /imports/whatsapp` imports a validated multipart export and queues it.
 - `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints manage jobs.
 - `GET /chat/scopes` lists searchable source conversations.
-- `POST /chat` performs source-scoped hybrid RAG with legacy vector fallback.
+- `POST /chat` performs source-scoped hybrid RAG with the active embedding index
+  and optional per-conversation chat provider/model.
+- `/settings/providers` lists redacted provider metadata and model suggestions.
+- `/settings/embedding-indexes` manages independent vector indexes, activation,
+  sync, rebuild, and deletion.
 - `GET /database/resume-point` remains the embedded Discord resume endpoint.
 - `GET /database/overview` reports raw, index, source, and job statistics.
 - `DELETE /database` requires `VYMAZAT` and clears stored conversation data.

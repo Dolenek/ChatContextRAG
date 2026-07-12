@@ -18,8 +18,12 @@ contextBridge.exposeInMainWorld("chatContext", {
     return () => ipcRenderer.removeListener("discord:index:progress", listener);
   },
   hideDiscord: () => ipcRenderer.invoke("discord:hide"),
-  askDatabase: (question, history, scope) =>
-    ipcRenderer.invoke("database:ask", { question, history, scope }),
+  askDatabase: (question, history, scope, chatSelection = {}) =>
+    ipcRenderer.invoke("database:ask", {
+      question, history, scope,
+      chat_provider_id: chatSelection.providerId,
+      chat_model: chatSelection.model,
+    }),
   getChatScopes: () => ipcRenderer.invoke("database:chat-scopes"),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
@@ -42,4 +46,17 @@ contextBridge.exposeInMainWorld("chatContext", {
   previewWhatsAppExport: (options) => ipcRenderer.invoke("whatsapp:preview", options),
   importWhatsAppExport: (options) => ipcRenderer.invoke("whatsapp:import", options),
   getWhatsAppConversations: () => ipcRenderer.invoke("whatsapp:conversations"),
+  getSettings: () => ipcRenderer.invoke("settings:get"),
+  saveProvider: (profile) => ipcRenderer.invoke("settings:provider:save", profile),
+  deleteProvider: (providerId) => ipcRenderer.invoke("settings:provider:delete", providerId),
+  listProviderModels: (providerId) => ipcRenderer.invoke("settings:models", providerId),
+  saveChatDefault: (providerId, model) =>
+    ipcRenderer.invoke("settings:chat-default", { providerId, model }),
+  createEmbeddingIndex: (input) => ipcRenderer.invoke("settings:index:create", input),
+  updateEmbeddingIndex: (indexId, update) =>
+    ipcRenderer.invoke("settings:index:update", { indexId, update }),
+  activateEmbeddingIndex: (indexId) => ipcRenderer.invoke("settings:index:activate", indexId),
+  syncEmbeddingIndex: (indexId) => ipcRenderer.invoke("settings:index:sync", indexId),
+  rebuildEmbeddingIndex: (indexId) => ipcRenderer.invoke("settings:index:rebuild", indexId),
+  deleteEmbeddingIndex: (indexId) => ipcRenderer.invoke("settings:index:delete", indexId),
 });

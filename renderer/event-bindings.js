@@ -4,6 +4,7 @@ document.querySelector("#scan-channel-button").addEventListener("click", toggleC
 document.querySelector("#resume-scan-button").addEventListener("click", resumeChannelScan);
 document.querySelector("#open-chat-button").addEventListener("click", window.chatController.open);
 document.querySelector("#open-overview-button").addEventListener("click", openDatabaseOverview);
+document.querySelector("#open-settings-button").addEventListener("click", window.settingsUi.open);
 document.querySelector("#chat-after-import-button")
   .addEventListener("click", window.chatController.open);
 document.querySelector("#import-more-button").addEventListener("click", openDiscord);
@@ -22,6 +23,9 @@ document.querySelector("#confirm-clear-button").addEventListener("click", clearD
 window.indexingControls.bind({ refreshOverview: openDatabaseOverview, showToast });
 window.chatController.bind({ showScreen, showToast });
 window.chatScopeSelector.bind(window.chatController.resetConversation);
+window.settingsUi.bind({
+  showScreen, showToast, resetConversation: window.chatController.resetConversation,
+});
 window.discordBotUi.bind({ showScreen, showToast });
 window.whatsappImportUi.bind({ showScreen, showToast });
 document.querySelector("#home-button").addEventListener("click", async () => {
@@ -30,4 +34,7 @@ document.querySelector("#home-button").addEventListener("click", async () => {
 });
 
 window.chatContext.onDiscordScanProgress(renderScanProgress);
-window.chatContext.onIndexingProgress(renderIndexingProgress);
+window.chatContext.onIndexingProgress((job) => {
+  renderIndexingProgress(job);
+  window.settingsUi.refreshIndexState().catch(() => {});
+});

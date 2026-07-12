@@ -65,6 +65,8 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     history: List[ChatHistoryTurn] = Field(default_factory=list, max_length=12)
     scope: Optional[ChatScope] = None
+    chat_provider_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    chat_model: Optional[str] = Field(default=None, min_length=1, max_length=200)
 
 
 class ChatSource(BaseModel):
@@ -83,6 +85,9 @@ class ChatSource(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: List[ChatSource]
+    chat_provider_id: Optional[str] = None
+    chat_model: Optional[str] = None
+    embedding_index_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -163,6 +168,7 @@ class IngestionSessionView(BaseModel):
     status: Literal["running", "completed", "stopped"]
     raw_message_count: int = 0
     indexing_job_id: Optional[str] = None
+    indexing_job_ids: List[str] = Field(default_factory=list)
 
 
 class FinishIngestionRequest(BaseModel):
@@ -179,6 +185,74 @@ class IndexingJobView(BaseModel):
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    embedding_index_id: Optional[str] = None
+    embedding_index_name: Optional[str] = None
+    job_type: Literal["incremental", "sync", "rebuild"] = "incremental"
+
+
+class ProviderProfileInput(BaseModel):
+    provider_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=100)
+    base_url: str = Field(min_length=8, max_length=1000)
+    api_key: str = Field(min_length=1, max_length=2000)
+    chat_api: Literal["responses", "chat_completions"] = "responses"
+
+
+class ProviderProfileView(BaseModel):
+    provider_id: str
+    name: str
+    base_url: str
+    chat_api: Literal["responses", "chat_completions"]
+    has_api_key: bool
+    builtin: bool = False
+
+
+class ProviderRegistryUpdate(BaseModel):
+    providers: List[ProviderProfileInput] = Field(default_factory=list, max_length=50)
+
+
+class ProviderModelList(BaseModel):
+    models: List[str] = Field(default_factory=list)
+    warning: Optional[str] = None
+
+
+class EmbeddingIndexCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    provider_id: str = Field(min_length=1, max_length=100)
+    model: str = Field(min_length=1, max_length=200)
+    requested_dimensions: Optional[int] = Field(default=None, ge=1, le=4000)
+    auto_sync: bool = True
+
+
+class EmbeddingIndexUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    auto_sync: Optional[bool] = None
+
+
+class EmbeddingIndexView(BaseModel):
+    embedding_index_id: str
+    name: str
+    provider_id: str
+    model: str
+    dimensions: int
+    requested_dimensions: Optional[int] = None
+    status: Literal["building", "ready", "failed"]
+    auto_sync: bool
+    chunk_count: int = 0
+    pending_message_count: int = 0
+    last_error: Optional[str] = None
+    active_job_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class EmbeddingSettingsView(BaseModel):
+    active_embedding_index_id: Optional[str] = None
+    indexes: List[EmbeddingIndexView] = Field(default_factory=list)
+
+
+class ActiveEmbeddingIndexUpdate(BaseModel):
+    embedding_index_id: str = Field(min_length=1, max_length=100)
 
 
 class SourceConversationView(BaseModel):

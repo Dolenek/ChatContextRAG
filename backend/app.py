@@ -27,22 +27,27 @@ from backend.services import DatabaseChatService, DatabaseOverviewService, Messa
 from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.whatsapp_import import WhatsAppImportCoordinator
 from backend.settings import ApplicationSettings
+from backend.provider_registry import ProviderRegistry
+from backend.embedding_indexes import PostgresEmbeddingIndexRepository
+from backend.settings_routes import register_settings_routes
+from backend.settings_service import ApplicationSettingsService
 
 
 def create_app(
     ingestion_service: Optional[MessageIngestionService] = None,
     chat_service: Optional[DatabaseChatService] = None,
     overview_service: Optional[DatabaseOverviewService] = None,
+    settings_service: Optional[ApplicationSettingsService] = None,
 ) -> FastAPI:
-    application = FastAPI(title="Chat Context RAG API", version="0.3.0")
+    application = FastAPI(title="Chat Context RAG API", version="0.4.0")
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost", "file://"],
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
-    active_ingestion, active_chat, active_overview = _resolve_services(
-        ingestion_service, chat_service, overview_service
+    active_ingestion, active_chat, active_overview, active_settings, internal_token = _resolve_services(
+        ingestion_service, chat_service, overview_service, settings_service,
     )
     _register_exception_handlers(application)
     _register_ingestion_routes(
@@ -50,6 +55,8 @@ def create_app(
     )
     _register_chat_routes(application, active_chat)
     _register_database_routes(application, active_overview)
+    if active_settings:
+        register_settings_routes(application, active_settings, internal_token)
     return application
 
 
@@ -216,40 +223,66 @@ def _resolve_services(
     ingestion_service: Optional[MessageIngestionService],
     chat_service: Optional[DatabaseChatService],
     overview_service: Optional[DatabaseOverviewService],
+    settings_service: Optional[ApplicationSettingsService],
 ) -> tuple:
     if ingestion_service and chat_service and overview_service:
-        return ingestion_service, chat_service, overview_service
+        return ingestion_service, chat_service, overview_service, settings_service, None
     return _build_default_services()
 
 
 def _build_default_services() -> tuple:
     settings = ApplicationSettings.from_environment()
-    api_key = settings.openai_api_key
     repository = PostgresVectorRepository(settings.postgres_dsn, settings.embedding_dimensions)
     raw_repository = PostgresRawMessageRepository(settings.postgres_dsn)
     raw_repository.ensure_schema()
-    hybrid_repository = PostgresHybridRepository(
-        settings.postgres_dsn, settings.embedding_dimensions,
+    provider_registry, index_repository, hybrid_repository, indexing_worker = (
+        _build_model_stack(settings, raw_repository)
     )
-    hybrid_repository.ensure_schema()
     embedding_provider = OpenAIEmbeddingProvider(
-        api_key, settings.embedding_model, settings.embedding_dimensions,
+        settings.openai_api_key, settings.embedding_model, settings.embedding_dimensions,
         settings.embedding_batch_size,
     )
-    chat_provider = OpenAIChatCompletionProvider(api_key, settings.chat_model)
-    indexing_worker = PersistentIndexingWorker(
-        raw_repository, hybrid_repository, ConversationAwareChunker(), embedding_provider,
-        settings.embedding_batch_size,
+    chat_provider = OpenAIChatCompletionProvider(
+        settings.openai_api_key, settings.chat_model,
     )
-    indexing_worker.start()
     ingestion = MessageIngestionService(
         SourceMessageNormalizer(), raw_repository, indexing_worker,
     )
     chat = DatabaseChatService(
         repository, embedding_provider, chat_provider, hybrid_repository,
         PostgresChatScopeCatalog(settings.postgres_dsn),
+        provider_registry=provider_registry, index_repository=index_repository,
+        default_chat_model=settings.chat_model,
     )
-    return ingestion, chat, DatabaseOverviewService(repository, raw_repository)
+    overview = DatabaseOverviewService(repository, raw_repository)
+    settings_service = ApplicationSettingsService(
+        provider_registry, index_repository, hybrid_repository, raw_repository,
+        indexing_worker,
+    )
+    return ingestion, chat, overview, settings_service, settings.internal_token
+
+
+def _build_model_stack(settings, raw_repository):
+    provider_registry = ProviderRegistry(
+        settings.openai_api_key, settings.embedding_batch_size,
+    )
+    index_repository = PostgresEmbeddingIndexRepository(
+        settings.postgres_dsn, provider_registry, settings.embedding_model,
+        settings.embedding_dimensions,
+    )
+    index_repository.ensure_schema()
+    hybrid_repository = PostgresHybridRepository(
+        settings.postgres_dsn, settings.embedding_dimensions,
+    )
+    hybrid_repository.ensure_schema()
+    indexing_worker = PersistentIndexingWorker(
+        raw_repository, hybrid_repository, ConversationAwareChunker(), None,
+        settings.embedding_batch_size,
+        provider_registry=provider_registry, index_repository=index_repository,
+    )
+    if not settings.internal_token:
+        indexing_worker.start()
+    return provider_registry, index_repository, hybrid_repository, indexing_worker
 
 
 app = create_app()

@@ -3,12 +3,15 @@ import threading
 import uuid
 from dataclasses import replace
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Iterable, Iterator, List, Optional
 
 from backend.chunking import ConversationAwareChunker
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.job_lease import JobLeaseKeeper
 from backend.openai_gateway import EmbeddingProvider
+from backend.provider_registry import ProviderRegistry
+from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.vector_models import EmbeddedChunk, NormalizedMessage
 
@@ -22,10 +25,12 @@ class PersistentIndexingWorker:
         raw_repository: PostgresRawMessageRepository,
         hybrid_repository: PostgresHybridRepository,
         chunker: ConversationAwareChunker,
-        embedding_provider: EmbeddingProvider,
+        embedding_provider: Optional[EmbeddingProvider],
         embedding_batch_size: int = 64,
         worker_id: Optional[str] = None,
         lease_renewal_seconds: float = 20,
+        provider_registry: Optional[ProviderRegistry] = None,
+        index_repository: Optional[PostgresEmbeddingIndexRepository] = None,
     ) -> None:
         self.raw_repository = raw_repository
         self.hybrid_repository = hybrid_repository
@@ -34,6 +39,8 @@ class PersistentIndexingWorker:
         self.embedding_batch_size = embedding_batch_size
         self.worker_id = worker_id or str(uuid.uuid4())
         self.lease_renewal_seconds = lease_renewal_seconds
+        self.provider_registry = provider_registry
+        self.index_repository = index_repository
         self._wake_event = threading.Event()
         self._shutdown_event = threading.Event()
         self._thread = None
@@ -65,57 +72,87 @@ class PersistentIndexingWorker:
         if not job:
             self._wait_for_work()
             return
-        self._process_job(job.job_id, job.session_id)
+        self._process_job(job)
 
     def _wait_for_work(self) -> None:
         self._wake_event.wait(2)
         self._wake_event.clear()
 
-    def _process_job(self, job_id: str, session_id: str) -> None:
+    def _process_job(self, job, session_id: Optional[str] = None) -> None:
+        if isinstance(job, str):
+            job = SimpleNamespace(
+                job_id=job, session_id=session_id,
+                embedding_index_id=None, job_type="incremental",
+            )
         try:
             with JobLeaseKeeper(
-                self.raw_repository, job_id, self.worker_id, self.lease_renewal_seconds,
+                self.raw_repository, job.job_id, self.worker_id, self.lease_renewal_seconds,
             ) as lease:
-                self._process_owned_job(job_id, session_id, lease)
+                self._process_owned_job(job, lease)
         except Exception as error:
-            self.raw_repository.fail_job(job_id, self.worker_id, str(error))
+            self.raw_repository.fail_job(job.job_id, self.worker_id, str(error))
+            if self.index_repository and job.embedding_index_id:
+                self.index_repository.mark_failed(job.embedding_index_id, str(error))
 
     def _process_owned_job(
-        self, job_id: str, session_id: str, lease: JobLeaseKeeper,
+        self, job, lease: JobLeaseKeeper,
     ) -> None:
+        provider = self._embedding_provider_for(job)
         total_messages = self.raw_repository.prepare_job_total(
-            job_id, session_id, self.worker_id,
+            job.job_id, job.session_id, self.worker_id,
         )
         if not lease.renew_now():
             return
-        self.hybrid_repository.prepare_staging(job_id, self.worker_id)
-        messages = self.raw_repository.iter_indexing_messages(job_id)
+        if job.embedding_index_id:
+            self.hybrid_repository.prepare_staging(
+                job.job_id, self.worker_id, job.embedding_index_id,
+            )
+        else:
+            self.hybrid_repository.prepare_staging(job.job_id, self.worker_id)
+        messages = self.raw_repository.iter_indexing_messages(job.job_id)
         collapsed = self._collapse_stream(messages, self.chunker.max_gap)
         chunk_stream = self.chunker.chunk_stream(collapsed)
-        completed = self._process_batches(job_id, total_messages, chunk_stream, lease)
+        completed = self._process_batches(
+            job.job_id, total_messages, chunk_stream, lease, provider,
+            job.embedding_index_id,
+        )
         if completed and lease.renew_now():
-            self.hybrid_repository.commit_staged_chunks(
-                job_id, session_id, self.worker_id,
-            )
+            if job.embedding_index_id:
+                committed = self.hybrid_repository.commit_staged_chunks(
+                    job.job_id, job.session_id, self.worker_id,
+                    job.embedding_index_id, job.job_type,
+                )
+                if committed and self.index_repository:
+                    self.index_repository.mark_ready(job.embedding_index_id)
+            else:
+                self.hybrid_repository.commit_staged_chunks(
+                    job.job_id, job.session_id, self.worker_id,
+                )
 
     def _process_batches(
         self, job_id: str, total_messages: int, chunks: Iterable,
-        lease: JobLeaseKeeper,
+        lease: JobLeaseKeeper, provider: EmbeddingProvider,
+        embedding_index_id: Optional[str],
     ) -> bool:
         stored_chunks = 0
         processed_messages = 0
         for batch in self._batched(chunks):
             if not lease.renew_now():
                 return False
-            embeddings = self.embedding_provider.embed_texts(
+            embeddings = provider.embed_texts(
                 [chunk.content for chunk in batch],
             )
             if not lease.renew_now():
                 return False
-            embedded = self._attach_embeddings(batch, embeddings)
-            stored_chunks += self.hybrid_repository.stage_chunks(
-                job_id, self.worker_id, embedded,
-            )
+            embedded = self._attach_embeddings(batch, embeddings, provider)
+            if embedding_index_id:
+                stored_chunks += self.hybrid_repository.stage_chunks(
+                    job_id, self.worker_id, embedding_index_id, embedded,
+                )
+            else:
+                stored_chunks += self.hybrid_repository.stage_chunks(
+                    job_id, self.worker_id, embedded,
+                )
             processed_messages = min(
                 processed_messages + self._batch_message_count(batch), total_messages,
             )
@@ -125,7 +162,11 @@ class PersistentIndexingWorker:
                 return False
         return True
 
-    def _attach_embeddings(self, chunks: list, embeddings: list) -> list:
+    def _attach_embeddings(
+        self, chunks: list, embeddings: list,
+        provider: Optional[EmbeddingProvider] = None,
+    ) -> list:
+        provider = provider or self.embedding_provider
         if len(embeddings) != len(chunks):
             raise ValueError(
                 f"Embedding provider returned {len(embeddings)} vectors for {len(chunks)} chunks."
@@ -139,6 +180,17 @@ class PersistentIndexingWorker:
             chunk=chunk, embedding=embedding,
             embedding_model=self.embedding_provider.model_name,
         ) for chunk, embedding in zip(chunks, embeddings)]
+
+    def _embedding_provider_for(self, job) -> EmbeddingProvider:
+        if job.embedding_index_id and self.provider_registry and self.index_repository:
+            configuration = self.index_repository.get_configuration(job.embedding_index_id)
+            requested = configuration.requested_dimensions
+            return self.provider_registry.create_embedding_provider(
+                configuration.provider_id, configuration.model, requested,
+            )
+        if not self.embedding_provider:
+            raise ValueError("No embedding provider is configured for the indexing job.")
+        return self.embedding_provider
 
     @staticmethod
     def _collapse_consecutive_duplicates(

@@ -200,7 +200,9 @@ class PostgresRawMessageRepository:
                            FROM rag_chunk_messages link JOIN source_messages message
                              ON message.external_id=link.message_id
                            WHERE message.source_type=state.source_type
-                             AND message.conversation_id=state.conversation_id)
+                             AND message.conversation_id=state.conversation_id
+                             AND link.embedding_index_id=(SELECT active_embedding_index_id
+                               FROM rag_application_settings WHERE id=1))
                    FROM integration_sync_states state
                    WHERE state.source_type=%s ORDER BY conversation_label""", (source_type,),
             ).fetchall()
@@ -252,6 +254,9 @@ class PostgresRawMessageRepository:
                                "rag_chunk_messages, rag_chunks, indexing_job_messages, indexing_jobs, "
                                "ingestion_session_messages, ingestion_sessions, "
                                "integration_sync_states, source_messages, message_contents CASCADE")
+            connection.execute(
+                "UPDATE embedding_indexes SET status='ready',last_error=NULL,updated_at=NOW()"
+            )
         return chunk_count, message_count
 
     def delete_session(self, session_id: str) -> None:

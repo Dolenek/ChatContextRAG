@@ -19,12 +19,15 @@ class PostgresHybridRetrieval:
     def search(
         self, query: str, query_embedding: Sequence[float], limit: int,
         scope: Optional[ChatScope] = None,
+        embedding_index_id: str = "default-openai", dimensions: int = 1536,
     ) -> List[RetrievedChunk]:
         self.ensure_schema()
+        if not 1 <= dimensions <= 4000:
+            raise ValueError("HNSW halfvec dimensions must be between 1 and 4000.")
         try:
             with self._connect() as connection:
                 vector_rows = connection.execute(
-                    self._vector_search_sql(),
+                    self._vector_search_sql(embedding_index_id, dimensions),
                     self._vector_parameters(query_embedding, scope),
                 ).fetchall()
                 text_rows = connection.execute(
@@ -38,15 +41,19 @@ class PostgresHybridRetrieval:
         return self._fuse_candidates(vector_rows, text_rows, text_candidates, limit)
 
     @staticmethod
-    def _vector_search_sql() -> str:
-        return """WITH vector_candidates AS MATERIALIZED (
+    def _vector_search_sql(
+        embedding_index_id: str = "default-openai", dimensions: int = 1536,
+    ) -> str:
+        escaped_index_id = embedding_index_id.replace("'", "''")
+        return f"""WITH vector_candidates AS MATERIALIZED (
               SELECT id,content,authors,source_message_ids,channel,started_at,metadata,
-                     1-(embedding <=> %s) similarity
+                     1-(embedding::halfvec({dimensions}) <=> %s) similarity
               FROM rag_chunks
-              WHERE (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
+              WHERE embedding_index_id='{escaped_index_id}'
+                AND (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
                 AND (%s::text IS NULL OR COALESCE(metadata->>'conversation_id',
                                              metadata->>'channel_id')=%s)
-              ORDER BY embedding <=> %s LIMIT %s)
+              ORDER BY embedding::halfvec({dimensions}) <=> %s LIMIT %s)
             SELECT candidate.id,candidate.content,candidate.authors,candidate.channel,
                    candidate.started_at,candidate.similarity,
                    candidate.source_message_ids,
@@ -59,7 +66,8 @@ class PostgresHybridRetrieval:
                    COALESCE((SELECT array_agg(DISTINCT message.content_hash)
                      FROM rag_chunk_messages link
                      JOIN source_messages message ON message.external_id=link.message_id
-                     WHERE link.chunk_id=candidate.id),'{}') content_hashes
+                     WHERE link.embedding_index_id='{escaped_index_id}'
+                       AND link.chunk_id=candidate.id),'{{}}') content_hashes
             FROM vector_candidates candidate ORDER BY candidate.similarity DESC"""
 
     @staticmethod

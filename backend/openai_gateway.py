@@ -1,4 +1,4 @@
-from typing import List, Optional, Protocol, Sequence
+from typing import List, Literal, Optional, Protocol, Sequence
 
 from openai import OpenAI, OpenAIError
 
@@ -22,6 +22,8 @@ class EmbeddingProvider(Protocol):
 
 
 class ChatCompletionProvider(Protocol):
+    model_name: str
+
     def answer(
         self, question: str, history: Sequence[ChatHistoryTurn], sources: Sequence[RetrievedChunk]
     ) -> str:
@@ -30,9 +32,10 @@ class ChatCompletionProvider(Protocol):
 
 class OpenAIEmbeddingProvider:
     def __init__(
-        self, api_key: Optional[str], model_name: str, dimensions: int, batch_size: int = 64
+        self, api_key: Optional[str], model_name: str, dimensions: Optional[int],
+        batch_size: int = 64, base_url: Optional[str] = None,
     ) -> None:
-        self.client = OpenAI(api_key=api_key) if api_key else None
+        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
         self.model_name = model_name
         self.dimensions = dimensions
         self.batch_size = batch_size
@@ -51,38 +54,63 @@ class OpenAIEmbeddingProvider:
     def _embed_batch(self, texts: Sequence[str]) -> List[List[float]]:
         if not self.client:
             raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
-        response = self.client.embeddings.create(
-            model=self.model_name,
-            input=list(texts),
-            dimensions=self.dimensions,
-            encoding_format="float",
-        )
+        parameters = {
+            "model": self.model_name,
+            "input": list(texts),
+            "encoding_format": "float",
+        }
+        if self.dimensions is not None:
+            parameters["dimensions"] = self.dimensions
+        response = self.client.embeddings.create(**parameters)
         ordered_items = sorted(response.data, key=lambda item: item.index)
         return [item.embedding for item in ordered_items]
 
 
 class OpenAIChatCompletionProvider:
-    def __init__(self, api_key: Optional[str], model_name: str) -> None:
-        self.client = OpenAI(api_key=api_key) if api_key else None
+    def __init__(
+        self, api_key: Optional[str], model_name: str,
+        base_url: Optional[str] = None,
+        chat_api: Literal["responses", "chat_completions"] = "responses",
+    ) -> None:
+        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
         self.model_name = model_name
+        self.chat_api = chat_api
 
     def answer(
         self, question: str, history: Sequence[ChatHistoryTurn], sources: Sequence[RetrievedChunk]
     ) -> str:
         if not self.client:
             raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
-        context = self._render_context(sources)
-        input_messages = self._build_input(question, history, context)
         try:
-            response = self.client.responses.create(
-                model=self.model_name,
-                instructions=self._instructions(),
-                input=input_messages,
-                reasoning={"effort": "low"},
-            )
+            if self.chat_api == "chat_completions":
+                return self._answer_with_chat_completions(question, history, sources)
+            return self._answer_with_responses(question, history, sources)
         except OpenAIError as error:
-            raise ExternalIntegrationError("OpenAI Responses API request failed.") from error
+            raise ExternalIntegrationError("OpenAI-compatible chat API request failed.") from error
+
+    def _answer_with_responses(self, question, history, sources) -> str:
+        context = self._render_context(sources)
+        response = self.client.responses.create(
+            model=self.model_name,
+            instructions=self._instructions(),
+            input=self._build_input(question, history, context),
+        )
         return response.output_text
+
+    def _answer_with_chat_completions(self, question, history, sources) -> str:
+        context = self._render_context(sources)
+        messages = [{
+            "role": "system",
+            "content": f"{self._instructions()}\n\nRetrieved context:\n{context}",
+        }]
+        messages.extend(
+            {"role": turn.role, "content": turn.content} for turn in history[-8:]
+        )
+        messages.append({"role": "user", "content": question})
+        response = self.client.chat.completions.create(
+            model=self.model_name, messages=messages,
+        )
+        return response.choices[0].message.content or ""
 
     @staticmethod
     def _build_input(question: str, history: Sequence[ChatHistoryTurn], context: str) -> list:

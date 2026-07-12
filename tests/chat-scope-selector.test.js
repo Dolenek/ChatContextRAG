@@ -17,7 +17,7 @@ test("chat scope selector is wired from UI through Electron to the API", () => {
   assert.match(selector, /source_type/);
   assert.match(selector, /conversation_id/);
   assert.match(chatController, /getSelectedScope\(\)/);
-  assert.match(chatController, /askDatabase\(question, requestHistory, scope\)/);
+  assert.match(chatController, /question, requestHistory, scope, chatSelection/);
   assert.match(preload, /getChatScopes/);
   assert.match(main, /\/chat\/scopes/);
 });

@@ -14,6 +14,8 @@ from backend.indexing_worker import PersistentIndexingWorker
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.repository import VectorRepository
 from backend.vector_models import RetrievedChunk
+from backend.provider_registry import ProviderRegistry
+from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 
 
 class MessageIngestionService:
@@ -102,6 +104,10 @@ class DatabaseChatService:
         hybrid_repository: Optional[PostgresHybridRepository] = None,
         scope_catalog: Optional[ChatScopeCatalog] = None,
         retrieval_limit: int = 8,
+        provider_registry: Optional[ProviderRegistry] = None,
+        index_repository: Optional[PostgresEmbeddingIndexRepository] = None,
+        default_chat_provider_id: str = "openai",
+        default_chat_model: Optional[str] = None,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
@@ -109,16 +115,47 @@ class DatabaseChatService:
         self.hybrid_repository = hybrid_repository
         self.scope_catalog = scope_catalog
         self.retrieval_limit = retrieval_limit
+        self.provider_registry = provider_registry
+        self.index_repository = index_repository
+        self.default_chat_provider_id = default_chat_provider_id
+        self.default_chat_model = default_chat_model
 
     def list_scopes(self) -> ChatScopeList:
         scopes = self.scope_catalog.list_scopes() if self.scope_catalog else []
         return ChatScopeList(scopes=scopes)
 
     def answer(self, request: ChatRequest) -> ChatResponse:
+        if self.provider_registry and self.index_repository:
+            return self._answer_with_selected_models(request)
         query_embedding = self.embedding_provider.embed_texts([request.question])[0]
         retrieved_chunks = self._retrieve(request.question, query_embedding, request.scope)
         answer = self.chat_provider.answer(request.question, request.history, retrieved_chunks)
         return ChatResponse(answer=answer, sources=self._to_sources(retrieved_chunks))
+
+    def _answer_with_selected_models(self, request: ChatRequest) -> ChatResponse:
+        active_index = self.index_repository.active()
+        if not active_index or active_index.status != "ready":
+            raise ValueError("No ready embedding index is active.")
+        embedding_provider = self.provider_registry.create_embedding_provider(
+            active_index.provider_id, active_index.model,
+            active_index.requested_dimensions,
+        )
+        query_embedding = embedding_provider.embed_texts([request.question])[0]
+        retrieved_chunks = self.hybrid_repository.search_hybrid(
+            request.question, query_embedding, self.retrieval_limit, request.scope,
+            active_index.embedding_index_id, active_index.dimensions,
+        )
+        provider_id = request.chat_provider_id or self.default_chat_provider_id
+        model = request.chat_model or self.default_chat_model
+        if not model:
+            raise ValueError("No chat model is configured.")
+        chat_provider = self.provider_registry.create_chat_provider(provider_id, model)
+        answer = chat_provider.answer(request.question, request.history, retrieved_chunks)
+        return ChatResponse(
+            answer=answer, sources=self._to_sources(retrieved_chunks),
+            chat_provider_id=provider_id, chat_model=model,
+            embedding_index_id=active_index.embedding_index_id,
+        )
 
     def _retrieve(
         self, question: str, query_embedding: List[float], scope: Optional[ChatScope],

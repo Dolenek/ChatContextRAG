@@ -17,6 +17,7 @@
         <button id="resume-scan-button" class="small-resume" type="button">Pokračovat od poslední načtené</button>
         <button id="scan-channel-button" class="small-scan" type="button">Procházet do databáze</button>
       </div>
+      <button id="open-settings-button" class="settings-button" type="button" aria-label="Nastavení">⚙</button>
     </header>
 
     <main id="app" class="app-shell">
@@ -116,6 +117,13 @@
             <option value="">Všechny uložené zprávy</option>
           </select>
           <small id="chat-scope-status">Načítám konverzace…</small>
+          <label for="chat-provider-select">API provider</label>
+          <select id="chat-provider-select"></select>
+          <small id="active-embedding-index">Načítám aktivní index…</small>
+          <label for="chat-model-input">Chat model</label>
+          <input id="chat-model-input" list="chat-model-options" maxlength="200" placeholder="Model ID" />
+          <datalist id="chat-model-options"></datalist>
+          <small>Změna založí nový chat.</small>
         </div>
         <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
         <form id="chat-form" class="chat-form"><input id="question-input" type="text" minlength="2" placeholder="Zeptejte se databáze…" autocomplete="off" required /><button type="submit" aria-label="Odeslat">↑</button></form>
@@ -137,6 +145,39 @@
         <div id="database-chunks" class="database-chunks"></div>
         <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
       </section>
+
+      <section id="settings-screen" class="screen settings-screen hidden">
+        <div class="settings-heading">
+          <div><div class="eyebrow">NASTAVENÍ MODELŮ</div><h2>API a embedding indexy</h2><p>API klíče zůstávají zašifrované v systémovém úložišti.</p></div>
+          <button id="refresh-settings-button" class="secondary-button" type="button">Obnovit</button>
+        </div>
+        <div class="settings-grid">
+          <section class="settings-panel">
+            <h3>API provideři</h3>
+            <div id="provider-list" class="settings-list"></div>
+            <form id="provider-form" class="settings-form">
+              <input id="provider-id" type="hidden" />
+              <label for="provider-name">Název</label><input id="provider-name" required maxlength="100" />
+              <label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="https://api.example.com/v1" />
+              <label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Při úpravě ponechte prázdné" />
+              <label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select>
+              <div class="form-actions"><button class="primary-button" type="submit">Uložit provider</button><button id="cancel-provider-edit" class="secondary-button" type="button">Zrušit</button></div>
+            </form>
+          </section>
+          <section class="settings-panel">
+            <h3>Embedding indexy</h3>
+            <div id="embedding-index-list" class="settings-list"></div>
+            <form id="embedding-index-form" class="settings-form">
+              <label for="embedding-index-name">Název indexu</label><input id="embedding-index-name" required maxlength="100" />
+              <label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select>
+              <label for="embedding-model-input">Embedding model</label><input id="embedding-model-input" list="embedding-model-options" required maxlength="200" placeholder="text-embedding-3-small" /><datalist id="embedding-model-options"></datalist>
+              <label for="embedding-dimensions">Rozměr</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Zjistit automaticky" />
+              <label class="checkbox-label"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky indexovat budoucí zprávy</label>
+              <button class="primary-button" type="submit">Vytvořit a naplnit index</button>
+            </form>
+          </section>
+        </div>
+      </section>
     </main>
     <div id="clear-database-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
       <section class="danger-dialog">
@@ -155,6 +196,7 @@
     <script src="discord-bot-ui.js"></script>
     <script src="whatsapp-import-ui.js"></script>
     <script src="app.js"></script>
+    <script src="settings-ui.js"></script>
     <script src="chat-controller.js"></script>
     <script src="event-bindings.js"></script>
   </body>

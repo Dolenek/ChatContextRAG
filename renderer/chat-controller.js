@@ -11,7 +11,9 @@ async function openChatScreen() {
   await window.chatContext.hideDiscord();
   showChatScreen("chat");
   try {
-    await window.chatScopeSelector.refresh();
+    await Promise.all([
+      window.chatScopeSelector.refresh(), window.settingsUi.prepareChat(),
+    ]);
   } catch (error) {
     showChatToast(error.message, true);
   }
@@ -28,7 +30,10 @@ async function submitChatQuestion(event) {
   input.value = "";
   try {
     const scope = window.chatScopeSelector.getSelectedScope();
-    const response = await window.chatContext.askDatabase(question, requestHistory, scope);
+    const chatSelection = window.settingsUi.getChatSelection();
+    const response = await window.chatContext.askDatabase(
+      question, requestHistory, scope, chatSelection,
+    );
     appendConversationEntry("assistant", response.answer, response.sources);
     conversationHistory.push({ role: "assistant", content: response.answer });
   } catch (error) {

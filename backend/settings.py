@@ -18,6 +18,7 @@ class ApplicationSettings:
     embedding_dimensions: int
     embedding_batch_size: int
     chat_model: str
+    internal_token: Optional[str] = None
 
     @classmethod
     def from_environment(cls) -> "ApplicationSettings":
@@ -31,6 +32,7 @@ class ApplicationSettings:
             embedding_dimensions=int(os.environ.get("OPENAI_EMBEDDING_DIMENSIONS", "1536")),
             embedding_batch_size=int(os.environ.get("OPENAI_EMBEDDING_BATCH_SIZE", "64")),
             chat_model=os.environ.get("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
+            internal_token=os.environ.get("CHAT_CONTEXT_INTERNAL_TOKEN") or None,
         )
 
     def require_openai_api_key(self) -> str:

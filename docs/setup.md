@@ -31,6 +31,27 @@ docker compose up -d --wait --wait-timeout 60
 npm.cmd start
 ```
 
+## Model and API settings
+
+The built-in **OpenAI** provider reads its API key and default model IDs from
+`.env`. Open **Settings** from the gear button to add OpenAI-compatible provider
+profiles. A profile supplies a display name, the complete API base URL (normally
+ending in `/v1`), an API key, and either the Responses or Chat Completions
+protocol. Custom keys are encrypted with Electron `safeStorage`; the renderer,
+PostgreSQL, API responses, and logs never receive them in plaintext. A platform
+without a secure OS key store cannot persist custom provider keys.
+
+Model fields load suggestions from the provider's `/models` endpoint and still
+accept a model ID typed by hand. The chat screen remembers the last provider and
+model. Changing either one starts a fresh visible chat history.
+
+Settings can keep multiple embedding indexes over the same canonical raw
+messages. Creating an index makes one small embedding request to validate its
+dimension, then queues all raw messages. Exactly one ready index is active for
+RAG search. **Sync** embeds missing raw messages, **Rebuild** atomically publishes
+a complete replacement, and deleting a non-active index removes only its
+vectors. Auto-sync applies to future ingestion and is controlled per index.
+
 ## Embedded Discord import
 
 Choose **Nahrát pomocí Discordu**, sign in, and open a channel. **Načíst poslední
@@ -86,7 +107,8 @@ compression ratios are rejected.
 
 ## Indexing and chat
 
-Every completed connector session creates a durable indexing job. The database
+Every completed connector session creates a durable job for each ready embedding
+index with auto-sync enabled. The database
 overview shows raw, duplicate, indexed, and pending counts plus recent job state.
 Failed jobs can be retried; active jobs can be cancelled. **Zaindexovat čekající**
 recovers raw messages not currently covered by an index or active job.
@@ -94,6 +116,10 @@ recovers raw messages not currently covered by an index or active job.
 Choose **Povídat s databází** and select a Discord channel, WhatsApp conversation,
 or all stored messages under **Chatovat nad**. Changing the scope clears visible
 chat history so turns from different sources cannot influence one another.
+
+Changing the chat scope, provider, or model resets visible history. Chat is
+disabled when the active embedding index or either required provider is
+unavailable.
 
 ## Verification
 

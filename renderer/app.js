@@ -5,6 +5,7 @@ const screens = {
   overview: document.querySelector("#overview-screen"),
   discordBot: document.querySelector("#discord-bot-screen"),
   whatsapp: document.querySelector("#whatsapp-screen"),
+  settings: document.querySelector("#settings-screen"),
 };
 const discordActions = document.querySelector("#discord-actions");
 const toast = document.querySelector("#toast");

@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from backend.openai_gateway import IntegrationConfigurationError, OpenAIEmbeddingProvider
+from backend.openai_gateway import (
+    IntegrationConfigurationError, OpenAIChatCompletionProvider, OpenAIEmbeddingProvider,
+)
+from backend.models import ChatHistoryTurn
 
 
 class FakeEmbeddingsEndpoint:
@@ -37,3 +40,38 @@ def test_embedding_provider_requires_api_key() -> None:
         assert "OPENAI_API_KEY" in str(error)
     else:
         raise AssertionError("Expected missing API key error")
+
+
+def test_embedding_dimensions_are_optional_for_compatible_providers() -> None:
+    provider = OpenAIEmbeddingProvider("test-key", "native-model", None)
+    endpoint = FakeEmbeddingsEndpoint()
+    provider.client = SimpleNamespace(embeddings=endpoint)
+
+    provider.embed_texts(["hello"])
+
+    assert "dimensions" not in endpoint.calls[0]
+
+
+def test_chat_completions_adapter_uses_system_context() -> None:
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content="answer"),
+        )])
+
+    provider = OpenAIChatCompletionProvider(
+        "test-key", "custom-chat", chat_api="chat_completions",
+    )
+    provider.client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+    )
+
+    answer = provider.answer(
+        "question", [ChatHistoryTurn(role="user", content="previous")], [],
+    )
+
+    assert answer == "answer"
+    assert calls[0]["messages"][0]["role"] == "system"
+    assert "reasoning" not in calls[0]

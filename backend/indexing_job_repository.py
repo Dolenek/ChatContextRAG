@@ -22,7 +22,6 @@ class PostgresIndexingJobRepository:
 
     def finish_session(self, session_id: str, reason: str) -> IngestionSessionView:
         self.ensure_schema()
-        job_id = str(uuid.uuid4())
         try:
             with self.connect() as connection:
                 row = connection.execute(
@@ -32,13 +31,27 @@ class PostgresIndexingJobRepository:
                 ).fetchone()
                 if not row:
                     self._raise_session_error(connection, session_id)
-                connection.execute(queue_job_sql(), (job_id, session_id, row[0]))
-                stored_job_id = connection.execute(
-                    "SELECT id FROM indexing_jobs WHERE session_id=%s", (session_id,)
-                ).fetchone()[0]
+                index_rows = connection.execute(
+                    """SELECT idx.id FROM embedding_indexes idx
+                       LEFT JOIN rag_application_settings settings ON settings.id=1
+                       WHERE idx.status='ready' AND idx.auto_sync
+                       ORDER BY (idx.id=settings.active_embedding_index_id) DESC,idx.created_at"""
+                ).fetchall()
+                job_ids = []
+                for index_row in index_rows:
+                    job_id = str(uuid.uuid4())
+                    connection.execute(
+                        queue_job_sql(), (job_id, session_id, index_row[0], row[0]),
+                    )
+                    stored = connection.execute(
+                        "SELECT id FROM indexing_jobs WHERE session_id=%s AND embedding_index_id=%s",
+                        (session_id, index_row[0]),
+                    ).fetchone()[0]
+                    job_ids.append(stored)
             return IngestionSessionView(
                 session_id=session_id, status=reason, raw_message_count=row[0],
-                indexing_job_id=stored_job_id,
+                indexing_job_id=job_ids[0] if job_ids else None,
+                indexing_job_ids=job_ids,
             )
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL ingestion finalization failed.") from error
@@ -88,6 +101,12 @@ class PostgresIndexingJobRepository:
             ).fetchone()
             if row:
                 self._discard_job_staging(connection, job_id)
+                connection.execute(
+                    """UPDATE embedding_indexes SET status='failed',
+                       last_error='Initial index build was cancelled.',updated_at=NOW()
+                       WHERE id=(SELECT embedding_index_id FROM indexing_jobs WHERE id=%s)
+                         AND status='building'""", (job_id,),
+                )
         return self.get(job_id)
 
     def claim_next(self, worker_id: str) -> Optional[IndexingJobView]:
@@ -124,7 +143,9 @@ class PostgresIndexingJobRepository:
         with self.connect() as connection:
             self._assert_owned_job(connection, job_id, worker_id)
             connection.execute("DELETE FROM indexing_job_messages WHERE job_id=%s", (job_id,))
-            connection.execute(snapshot_messages_sql(), (session_id, job_id))
+            connection.execute(
+                snapshot_messages_sql(), (session_id, job_id, job_id, job_id),
+            )
             count = connection.execute(
                 "SELECT COUNT(*) FROM indexing_job_messages WHERE job_id=%s", (job_id,),
             ).fetchone()[0]
@@ -181,8 +202,14 @@ class PostgresIndexingJobRepository:
 
     @staticmethod
     def _to_view(row) -> IndexingJobView:
+        embedding_index_id = row[10] if len(row) > 10 else None
+        embedding_index_name = row[11] if len(row) > 11 else None
+        job_type = row[12] if len(row) > 12 else "incremental"
         return IndexingJobView(
             job_id=row[0], session_id=row[1], status=row[2], total_messages=row[3],
             processed_messages=row[4], stored_chunks=row[5], last_error=row[6],
             started_at=row[7], finished_at=row[8],
+            embedding_index_id=embedding_index_id,
+            embedding_index_name=embedding_index_name,
+            job_type=job_type or "incremental",
         )

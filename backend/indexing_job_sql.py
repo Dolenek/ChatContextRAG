@@ -1,6 +1,7 @@
 def queue_job_sql() -> str:
-    return """INSERT INTO indexing_jobs (id,session_id,status,total_messages)
-        VALUES (%s,%s,'queued',%s) ON CONFLICT (session_id) DO UPDATE SET
+    return """INSERT INTO indexing_jobs
+        (id,session_id,embedding_index_id,status,total_messages)
+        VALUES (%s,%s,%s,'queued',%s) ON CONFLICT (session_id,embedding_index_id) DO UPDATE SET
         status='queued', total_messages=EXCLUDED.total_messages, processed_messages=0,
         stored_chunks=0, last_error=NULL, started_at=NULL, finished_at=NULL,
         worker_id=NULL, lease_expires_at=NULL"""
@@ -11,15 +12,20 @@ def snapshot_messages_sql() -> str:
         WITH session_ids AS (
           SELECT message_id FROM ingestion_session_messages WHERE session_id=%s),
         affected AS (SELECT chunk_id FROM rag_chunk_messages
-          WHERE message_id IN (SELECT message_id FROM session_ids)),
+          WHERE embedding_index_id=(SELECT embedding_index_id FROM indexing_jobs WHERE id=%s)
+            AND message_id IN (SELECT message_id FROM session_ids)),
         targets AS (SELECT message_id FROM session_ids UNION SELECT message_id
-          FROM rag_chunk_messages WHERE chunk_id IN (SELECT chunk_id FROM affected))
+          FROM rag_chunk_messages WHERE embedding_index_id=(
+            SELECT embedding_index_id FROM indexing_jobs WHERE id=%s)
+            AND chunk_id IN (SELECT chunk_id FROM affected))
         SELECT %s,message_id FROM targets ON CONFLICT DO NOTHING"""
 
 
 def select_jobs_sql(condition: str) -> str:
     return f"""SELECT id,session_id,status,total_messages,processed_messages,
-               stored_chunks,last_error,started_at,finished_at,created_at
+               stored_chunks,last_error,started_at,finished_at,created_at,
+               embedding_index_id,(SELECT name FROM embedding_indexes index
+                 WHERE index.id=indexing_jobs.embedding_index_id),job_type
                FROM indexing_jobs WHERE {condition}"""
 
 

@@ -2,6 +2,14 @@ from typing import List
 
 
 def raw_schema_statements() -> List[str]:
+    return (
+        _message_schema_statements() + _session_schema_statements()
+        + _embedding_schema_statements() + _job_schema_statements()
+        + _integration_schema_statements()
+    )
+
+
+def _message_schema_statements() -> List[str]:
     return [
         """DO $$ BEGIN
             IF to_regclass('source_messages') IS NULL
@@ -39,6 +47,11 @@ def raw_schema_statements() -> List[str]:
             ON source_messages(source_type,conversation_id,message_order)""",
         """CREATE INDEX IF NOT EXISTS source_messages_content_order
             ON source_messages(content_hash,message_order)""",
+    ]
+
+
+def _session_schema_statements() -> List[str]:
+    return [
         """CREATE TABLE IF NOT EXISTS ingestion_sessions (
             id TEXT PRIMARY KEY, guild_id TEXT, channel_id TEXT, channel TEXT,
             source_type TEXT NOT NULL DEFAULT 'discord', conversation_id TEXT,
@@ -70,13 +83,48 @@ def raw_schema_statements() -> List[str]:
             session_id TEXT REFERENCES ingestion_sessions(id) ON DELETE CASCADE,
             message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             PRIMARY KEY(session_id,message_id))""",
+    ]
+
+
+def _embedding_schema_statements() -> List[str]:
+    return [
+        """CREATE TABLE IF NOT EXISTS embedding_indexes (
+            id TEXT PRIMARY KEY,name TEXT NOT NULL,provider_id TEXT NOT NULL,model TEXT NOT NULL,
+            dimensions INTEGER NOT NULL CHECK(dimensions BETWEEN 1 AND 4000),
+            requested_dimensions INTEGER,status TEXT NOT NULL,auto_sync BOOLEAN NOT NULL DEFAULT TRUE,
+            last_error TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())""",
+        """CREATE TABLE IF NOT EXISTS rag_application_settings (
+            id INTEGER PRIMARY KEY CHECK(id=1),active_embedding_index_id TEXT
+            REFERENCES embedding_indexes(id) ON DELETE SET NULL)""",
+        """INSERT INTO embedding_indexes
+            (id,name,provider_id,model,dimensions,requested_dimensions,status,auto_sync)
+            VALUES ('default-openai','Default OpenAI index','openai',
+                    'text-embedding-3-small',1536,1536,'ready',TRUE)
+            ON CONFLICT(id) DO NOTHING""",
+        """INSERT INTO rag_application_settings(id,active_embedding_index_id)
+            VALUES(1,'default-openai') ON CONFLICT(id) DO NOTHING""",
+    ]
+
+
+def _job_schema_statements() -> List[str]:
+    return [
         """CREATE TABLE IF NOT EXISTS indexing_jobs (
-            id TEXT PRIMARY KEY, session_id TEXT UNIQUE REFERENCES ingestion_sessions(id),
+            id TEXT PRIMARY KEY, session_id TEXT REFERENCES ingestion_sessions(id),
+            embedding_index_id TEXT NOT NULL REFERENCES embedding_indexes(id) ON DELETE CASCADE,
+            job_type TEXT NOT NULL DEFAULT 'incremental',
             status TEXT NOT NULL, total_messages BIGINT DEFAULT 0,
             processed_messages BIGINT DEFAULT 0, stored_chunks BIGINT DEFAULT 0,
             last_error TEXT, created_at TIMESTAMPTZ DEFAULT NOW(),
             started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ,
             worker_id TEXT, lease_expires_at TIMESTAMPTZ)""",
+        """ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS embedding_index_id TEXT""",
+        """ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS job_type TEXT DEFAULT 'incremental'""",
+        """UPDATE indexing_jobs SET embedding_index_id='default-openai'
+            WHERE embedding_index_id IS NULL""",
+        """ALTER TABLE indexing_jobs ALTER COLUMN embedding_index_id SET NOT NULL""",
+        """ALTER TABLE indexing_jobs DROP CONSTRAINT IF EXISTS indexing_jobs_session_id_key""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS indexing_jobs_session_index_unique
+            ON indexing_jobs(session_id,embedding_index_id)""",
         """ALTER TABLE indexing_jobs ADD COLUMN IF NOT EXISTS worker_id TEXT""",
         """ALTER TABLE indexing_jobs
             ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ""",
@@ -86,6 +134,11 @@ def raw_schema_statements() -> List[str]:
             job_id TEXT REFERENCES indexing_jobs(id) ON DELETE CASCADE,
             message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             PRIMARY KEY(job_id,message_id))""",
+    ]
+
+
+def _integration_schema_statements() -> List[str]:
+    return [
         """CREATE TABLE IF NOT EXISTS integration_sync_states (
             source_type TEXT NOT NULL, conversation_id TEXT NOT NULL,
             container_id TEXT, conversation_label TEXT, container_label TEXT,

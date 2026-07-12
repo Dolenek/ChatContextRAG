@@ -106,8 +106,9 @@ class PostgresOverviewReader:
 
     @staticmethod
     def _active_chunk_table(connection) -> str:
-        has_rag = connection.execute("SELECT EXISTS(SELECT 1 FROM rag_chunks)").fetchone()[0]
-        return "rag_chunks" if has_rag else "conversation_chunks"
+        del connection
+        return "(SELECT * FROM rag_chunks WHERE embedding_index_id=(SELECT " \
+               "active_embedding_index_id FROM rag_application_settings WHERE id=1)) active_chunks"
 
     @staticmethod
     def _source_count(connection, table: str) -> int:
@@ -125,7 +126,9 @@ class PostgresOverviewReader:
                FROM source_messages"""
         ).fetchone()
         indexed = connection.execute(
-            "SELECT COUNT(DISTINCT message_id) FROM rag_chunk_messages"
+            """SELECT COUNT(DISTINCT message_id) FROM rag_chunk_messages
+               WHERE embedding_index_id=(SELECT active_embedding_index_id
+                 FROM rag_application_settings WHERE id=1)"""
         ).fetchone()[0]
         return {
             "raw_message_count": raw_count, "unique_content_count": unique_count,
@@ -143,12 +146,17 @@ class PostgresOverviewReader:
     def _read_jobs(connection):
         from backend.models import IndexingJobView
         rows = connection.execute(
-            """SELECT id,session_id,status,total_messages,processed_messages,
-                      stored_chunks,last_error,started_at,finished_at
-               FROM indexing_jobs ORDER BY created_at DESC LIMIT 10"""
+            """SELECT job.id,job.session_id,job.status,job.total_messages,
+                      job.processed_messages,job.stored_chunks,job.last_error,
+                      job.started_at,job.finished_at,job.embedding_index_id,
+                      idx.name,job.job_type
+               FROM indexing_jobs job JOIN embedding_indexes idx
+                 ON idx.id=job.embedding_index_id
+               ORDER BY job.created_at DESC LIMIT 10"""
         ).fetchall()
         return [IndexingJobView(
             job_id=row[0], session_id=row[1], status=row[2], total_messages=row[3],
             processed_messages=row[4], stored_chunks=row[5], last_error=row[6],
             started_at=row[7], finished_at=row[8],
+            embedding_index_id=row[9], embedding_index_name=row[10], job_type=row[11],
         ) for row in rows]
