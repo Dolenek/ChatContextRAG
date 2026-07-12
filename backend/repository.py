@@ -1,6 +1,6 @@
 from typing import Iterable, List, Optional, Protocol, Sequence, Set
 
-from backend.models import DatabaseOverview
+from backend.models import ChatScope, DatabaseOverview
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
 
@@ -9,7 +9,8 @@ class VectorRepository(Protocol):
         ...
 
     def search_similar(
-        self, query_embedding: Sequence[float], limit: int = 5
+        self, query_embedding: Sequence[float], limit: int = 5,
+        scope: Optional[ChatScope] = None,
     ) -> List[RetrievedChunk]:
         ...
 

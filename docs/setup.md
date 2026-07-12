@@ -76,6 +76,15 @@ Legacy chunks remain available until **Vymazat databázi** is confirmed with
 `VYMAZAT`. Clearing removes legacy chunks, raw messages, jobs, and new vectors,
 but preserves the Discord login partition and database schema.
 
+## Chatting over a selected conversation
+
+Open **Povídat s databází** and use **Chatovat nad** before asking a question.
+The default searches all indexed messages. Selecting a Discord channel restricts
+retrieval and answer evidence to that channel. Changing the selection clears the
+visible chat history so turns from different scopes cannot influence each other.
+Only conversations already present in a searchable index appear in the selector;
+finish or queue indexing first when a newly imported channel is missing.
+
 ## Verification and evaluation
 
 Run tests without OpenAI charges:

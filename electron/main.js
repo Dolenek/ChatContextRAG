@@ -88,6 +88,7 @@ function registerIpcHandlers() {
     return { stopping: true };
   });
   ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
+  ipcMain.handle("database:chat-scopes", () => getJson("/chat/scopes"));
   ipcMain.handle("database:overview", (_event, pagination) => {
     const parameters = new URLSearchParams(pagination);
     return getJson(`/database/overview?${parameters}`);

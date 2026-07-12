@@ -6,7 +6,7 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
-from backend.models import DatabaseOverview
+from backend.models import ChatScope, DatabaseOverview
 from backend.openai_gateway import ExternalIntegrationError
 from backend.postgres_overview_reader import PostgresOverviewReader
 from backend.repository import VectorRepository
@@ -37,13 +37,16 @@ class PostgresVectorRepository(VectorRepository):
             raise ExternalIntegrationError("PostgreSQL vector write failed.") from error
 
     def search_similar(
-        self, query_embedding: Sequence[float], limit: int = 5
+        self, query_embedding: Sequence[float], limit: int = 5,
+        scope: Optional[ChatScope] = None,
     ) -> List[RetrievedChunk]:
         self._ensure_schema()
         vector = np.asarray(query_embedding, dtype=np.float32)
         try:
             with self._connect() as connection:
-                rows = connection.execute(self._search_sql(), (vector, vector, limit)).fetchall()
+                rows = connection.execute(
+                    self._search_sql(), self._search_parameters(vector, limit, scope),
+                ).fetchall()
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL vector search failed.") from error
         return [self._to_retrieved_chunk(row) for row in rows]
@@ -141,7 +144,12 @@ class PostgresVectorRepository(VectorRepository):
             CREATE INDEX IF NOT EXISTS conversation_chunks_channel_id
             ON conversation_chunks ((metadata->>'channel_id'));
             CREATE INDEX IF NOT EXISTS conversation_chunks_channel_name
-            ON conversation_chunks (channel)
+            ON conversation_chunks (channel);
+            CREATE INDEX IF NOT EXISTS conversation_chunks_chat_scope
+            ON conversation_chunks (
+              (COALESCE(metadata->>'source_type','discord')),
+              (COALESCE(metadata->>'conversation_id',metadata->>'channel_id'))
+            )
         """
 
     @staticmethod
@@ -165,8 +173,21 @@ class PostgresVectorRepository(VectorRepository):
             SELECT content, authors, channel, started_at,
                    1 - (embedding <=> %s) AS similarity_score,
                    source_message_ids, metadata->>'channel_id', metadata->>'guild_id'
-            FROM conversation_chunks ORDER BY embedding <=> %s LIMIT %s
+            FROM conversation_chunks
+            WHERE (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
+              AND (%s::text IS NULL OR COALESCE(metadata->>'conversation_id',
+                                           metadata->>'channel_id')=%s)
+            ORDER BY embedding <=> %s LIMIT %s
         """
+
+    @staticmethod
+    def _search_parameters(vector, limit: int, scope: Optional[ChatScope]) -> tuple:
+        source_type = scope.source_type if scope else None
+        conversation_id = scope.conversation_id if scope else None
+        return (
+            vector, source_type, source_type, conversation_id, conversation_id,
+            vector, limit,
+        )
 
     @staticmethod
     def _oldest_source_message_sql() -> str:

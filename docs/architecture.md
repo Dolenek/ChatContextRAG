@@ -97,6 +97,20 @@ by explicit database deletion.
 
 ## Hybrid retrieval
 
+Chat retrieval accepts an optional source-neutral scope made of `source_type`
+and `conversation_id`. With no scope, retrieval searches every indexed message.
+With a scope, both HNSW and full-text candidates are constrained before ranking;
+the legacy vector fallback applies the same constraint. A Discord conversation
+maps to a channel ID. New chunks also store `source_type=discord` and the generic
+`conversation_id` alongside Discord-specific deep-link metadata. Existing chunks
+without the generic fields are treated as Discord chunks and continue to work.
+
+`GET /chat/scopes` builds the selector catalog from searchable chunk metadata,
+merging current and legacy indexes. The API and renderer depend only on the
+generic source/conversation identity. A future importer such as WhatsApp can add
+its own `source_type`, conversation IDs, labels, and indexed chunks without
+changing the chat request contract or selector.
+
 Each chat question produces 30 HNSW candidates and 30 `simple` full-text
 candidates. Full-text hits use their newest and earliest occurrences and expand
 to four neighboring messages on either side, capped at 12 messages and stopped
@@ -136,6 +150,7 @@ keeps the current database usable until an explicit clear and re-import.
 - `POST /indexing/jobs/pending` queues raw messages not covered by the index or
   an active indexing job.
 - `POST /chat` performs hybrid RAG with legacy fallback.
+- `GET /chat/scopes` lists searchable source conversations for chat filtering.
 - `GET /database/resume-point` reads the oldest raw message, then legacy data.
 - `GET /database/overview` reports raw, deduplication, index, job, and size data.
 - `DELETE /database` requires `VYMAZAT` and clears both generations of data.

@@ -6,7 +6,6 @@ const screens = {
 };
 const discordActions = document.querySelector("#discord-actions");
 const toast = document.querySelector("#toast");
-const conversationHistory = [];
 const overviewPageSize = 50;
 let overviewOffset = 0;
 let channelScanRunning = false;
@@ -153,37 +152,6 @@ function createMessageCard(message) {
   const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleString("cs-CZ") : "Bez času";
   card.innerHTML = `<div class="avatar">${escapeHtml(initials)}</div><div><div class="message-meta"><strong>${escapeHtml(message.author)}</strong><span>${escapeHtml(timestamp)}</span></div><p>${escapeHtml(message.content)}</p></div>`;
   return card;
-}
-
-async function submitQuestion(event) {
-  event.preventDefault();
-  const input = document.querySelector("#question-input");
-  const question = input.value.trim();
-  if (!question) return;
-  const requestHistory = conversationHistory.slice(-8);
-  appendConversationEntry("user", question);
-  conversationHistory.push({ role: "user", content: question });
-  input.value = "";
-  try {
-    const response = await window.chatContext.askDatabase(question, requestHistory);
-    appendConversationEntry("assistant", response.answer, response.sources);
-    conversationHistory.push({ role: "assistant", content: response.answer });
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-function appendConversationEntry(role, text, sources = []) {
-  const conversation = document.querySelector("#conversation");
-  conversation.querySelector(".empty-chat")?.remove();
-  const entry = document.createElement("div");
-  entry.className = `chat-bubble ${role}`;
-  entry.textContent = text;
-  const sourceCards = role === "assistant"
-    ? window.chatSources.createChatSources(sources)
-    : null;
-  conversation.append(...[entry, sourceCards].filter(Boolean));
-  conversation.scrollTop = conversation.scrollHeight;
 }
 
 async function openDatabaseOverview() {

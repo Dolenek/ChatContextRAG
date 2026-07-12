@@ -18,7 +18,9 @@ contextBridge.exposeInMainWorld("chatContext", {
     return () => ipcRenderer.removeListener("discord:index:progress", listener);
   },
   hideDiscord: () => ipcRenderer.invoke("discord:hide"),
-  askDatabase: (question, history) => ipcRenderer.invoke("database:ask", { question, history }),
+  askDatabase: (question, history, scope) =>
+    ipcRenderer.invoke("database:ask", { question, history, scope }),
+  getChatScopes: () => ipcRenderer.invoke("database:chat-scopes"),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
   clearDatabase: (confirmation) =>

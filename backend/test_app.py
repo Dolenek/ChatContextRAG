@@ -2,8 +2,8 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.models import (
-    ChannelResumePoint, ChatResponse, ChatSource, DatabaseOverview, ImportResponse,
-    IndexingJobView, IngestionSessionView,
+    ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
+    DatabaseOverview, ImportResponse, IndexingJobView, IngestionSessionView,
 )
 
 
@@ -38,6 +38,12 @@ class FakeIngestionService:
 
 
 class FakeChatService:
+    def list_scopes(self):
+        return ChatScopeList(scopes=[ChatScopeOption(
+            source_type="discord", conversation_id="20", display_name="projekt",
+            container_name="10", message_count=42,
+        )])
+
     def answer(self, request):
         return ChatResponse(
             answer="Termín je v pátek [1].",
@@ -98,6 +104,16 @@ def test_overview_and_ingestion_job_routes() -> None:
     assert finish_response.json()["indexing_job_id"] == "job-1"
     assert job_response.json()["status"] == "queued"
     assert pending_response.json()["total_messages"] == 84
+
+
+def test_chat_scopes_expose_source_neutral_conversation_identity() -> None:
+    response = _client().get("/chat/scopes")
+
+    assert response.status_code == 200
+    assert response.json()["scopes"] == [{
+        "source_type": "discord", "conversation_id": "20",
+        "display_name": "projekt", "container_name": "10", "message_count": 42,
+    }]
 
 
 def test_resume_and_database_clear_routes() -> None:

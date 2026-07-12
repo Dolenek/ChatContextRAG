@@ -86,6 +86,8 @@ class ConversationAwareChunker:
             metadata={
                 "part_index": part_index,
                 "message_count": len(messages),
+                "source_type": "discord",
+                "conversation_id": messages[0].channel_id,
                 "channel_id": messages[0].channel_id,
                 "guild_id": messages[0].guild_id,
             },

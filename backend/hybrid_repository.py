@@ -1,5 +1,5 @@
 import threading
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -8,6 +8,7 @@ from backend.hybrid_retrieval import PostgresHybridRetrieval
 from backend.index_staging import PostgresIndexStaging
 from backend.openai_gateway import ExternalIntegrationError
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
+from backend.models import ChatScope
 
 
 class PostgresHybridRepository:
@@ -33,9 +34,10 @@ class PostgresHybridRepository:
         return self.staging.commit(job_id, session_id, worker_id)
 
     def search_hybrid(
-        self, query: str, query_embedding: Sequence[float], limit: int = 8
+        self, query: str, query_embedding: Sequence[float], limit: int = 8,
+        scope: Optional[ChatScope] = None,
     ) -> List[RetrievedChunk]:
-        return self.retrieval.search(query, query_embedding, limit)
+        return self.retrieval.search(query, query_embedding, limit, scope)
 
     def has_indexed_chunks(self) -> bool:
         self.ensure_schema()
@@ -83,7 +85,12 @@ class PostgresHybridRepository:
         return """CREATE INDEX IF NOT EXISTS rag_chunks_embedding_hnsw
             ON rag_chunks USING hnsw (embedding halfvec_cosine_ops);
             CREATE INDEX IF NOT EXISTS rag_chunk_messages_message
-            ON rag_chunk_messages(message_id)"""
+            ON rag_chunk_messages(message_id);
+            CREATE INDEX IF NOT EXISTS rag_chunks_chat_scope
+            ON rag_chunks (
+              (COALESCE(metadata->>'source_type','discord')),
+              (COALESCE(metadata->>'conversation_id',metadata->>'channel_id'))
+            )"""
 
     def _connect(self):
         connection = psycopg.connect(self.database_dsn)

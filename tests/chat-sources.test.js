@@ -9,11 +9,11 @@ test("chat renders grounded source cards and Discord deep links", () => {
   const sourceRenderer = fs.readFileSync(
     path.join(projectRoot, "renderer", "chat-sources.js"), "utf8",
   );
-  const application = fs.readFileSync(
-    path.join(projectRoot, "renderer", "app.js"), "utf8",
+  const chatController = fs.readFileSync(
+    path.join(projectRoot, "renderer", "chat-controller.js"), "utf8",
   );
 
-  assert.match(application, /response\.sources/);
+  assert.match(chatController, /response\.sources/);
   assert.match(sourceRenderer, /Použité zdroje/);
   assert.match(sourceRenderer, /openDiscordSource/);
   assert.match(sourceRenderer, /source_message_ids/);

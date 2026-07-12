@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from backend.chunking import ConversationAwareChunker
 from backend.models import (
-    ChannelResumePoint, ChatRequest, ChatResponse, ClearDatabaseRequest,
+    ChannelResumePoint, ChatRequest, ChatResponse, ChatScopeList, ClearDatabaseRequest,
     ClearDatabaseResponse, DatabaseOverview, FinishIngestionRequest, HealthResponse,
     ImportRequest, ImportResponse, IndexingJobView, IngestionSessionRequest,
     IngestionSessionView,
@@ -23,6 +23,7 @@ from backend.hybrid_repository import PostgresHybridRepository
 from backend.indexing_worker import PersistentIndexingWorker
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
+from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.settings import ApplicationSettings
 
 
@@ -107,6 +108,10 @@ def _register_ingestion_routes(
 
 
 def _register_chat_routes(application: FastAPI, chat_service: DatabaseChatService) -> None:
+    @application.get("/chat/scopes", response_model=ChatScopeList)
+    def chat_scopes() -> ChatScopeList:
+        return chat_service.list_scopes()
+
     @application.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
         return chat_service.answer(request)
@@ -173,6 +178,7 @@ def _build_default_services() -> tuple:
     )
     chat = DatabaseChatService(
         repository, embedding_provider, chat_provider, hybrid_repository,
+        PostgresChatScopeCatalog(settings.postgres_dsn),
     )
     return ingestion, chat, DatabaseOverviewService(repository, raw_repository)
 

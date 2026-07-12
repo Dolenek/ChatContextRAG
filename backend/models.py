@@ -32,9 +32,27 @@ class ChatHistoryTurn(BaseModel):
     content: str = Field(min_length=1, max_length=10000)
 
 
+class ChatScope(BaseModel):
+    source_type: str = Field(
+        min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$",
+    )
+    conversation_id: str = Field(min_length=1, max_length=256)
+
+
+class ChatScopeOption(ChatScope):
+    display_name: str = Field(min_length=1, max_length=300)
+    container_name: Optional[str] = Field(default=None, max_length=300)
+    message_count: int = Field(default=0, ge=0)
+
+
+class ChatScopeList(BaseModel):
+    scopes: List[ChatScopeOption] = Field(default_factory=list)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     history: List[ChatHistoryTurn] = Field(default_factory=list, max_length=12)
+    scope: Optional[ChatScope] = None
 
 
 class ChatSource(BaseModel):

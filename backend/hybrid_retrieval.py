@@ -1,12 +1,13 @@
 import math
 from datetime import datetime, timezone
-from typing import Callable, List, Sequence
+from typing import Callable, List, Optional, Sequence
 
 import psycopg
 from pgvector import HalfVector
 from pgvector.psycopg import register_vector
 
 from backend.openai_gateway import ExternalIntegrationError
+from backend.models import ChatScope
 from backend.vector_models import RetrievedChunk
 
 
@@ -17,16 +18,17 @@ class PostgresHybridRetrieval:
 
     def search(
         self, query: str, query_embedding: Sequence[float], limit: int,
+        scope: Optional[ChatScope] = None,
     ) -> List[RetrievedChunk]:
         self.ensure_schema()
         try:
             with self._connect() as connection:
                 vector_rows = connection.execute(
                     self._vector_search_sql(),
-                    (HalfVector(query_embedding), HalfVector(query_embedding), 30),
+                    self._vector_parameters(query_embedding, scope),
                 ).fetchall()
                 text_rows = connection.execute(
-                    self._fulltext_sql(), (query, query, 30),
+                    self._fulltext_sql(), self._fulltext_parameters(query, scope),
                 ).fetchall()
                 text_candidates = [self._expand_text_hit(connection, row) for row in text_rows]
         except psycopg.Error as error:
@@ -40,11 +42,16 @@ class PostgresHybridRetrieval:
         return """WITH vector_candidates AS MATERIALIZED (
               SELECT id,content,authors,source_message_ids,channel,started_at,metadata,
                      1-(embedding <=> %s) similarity
-              FROM rag_chunks ORDER BY embedding <=> %s LIMIT %s)
+              FROM rag_chunks
+              WHERE (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
+                AND (%s::text IS NULL OR COALESCE(metadata->>'conversation_id',
+                                             metadata->>'channel_id')=%s)
+              ORDER BY embedding <=> %s LIMIT %s)
             SELECT candidate.id,candidate.content,candidate.authors,candidate.channel,
                    candidate.started_at,candidate.similarity,
                    candidate.source_message_ids,
-                   candidate.metadata->>'channel_id' channel_id,
+                   COALESCE(candidate.metadata->>'channel_id',
+                            candidate.metadata->>'conversation_id') channel_id,
                    candidate.metadata->>'guild_id' guild_id,
                    COALESCE((SELECT array_agg(DISTINCT message.content_hash)
                      FROM rag_chunk_messages link
@@ -57,14 +64,38 @@ class PostgresHybridRetrieval:
         return """SELECT c.content_hash,
                    ts_rank_cd(c.search_vector, websearch_to_tsquery('simple',%s)) rank,
                    (SELECT external_id FROM discord_messages m WHERE m.content_hash=c.content_hash
+                    AND (%s::text IS NULL OR m.channel_id=%s)
                     ORDER BY message_order DESC LIMIT 1) latest_id,
                    (SELECT external_id FROM discord_messages m WHERE m.content_hash=c.content_hash
+                    AND (%s::text IS NULL OR m.channel_id=%s)
                     ORDER BY message_order LIMIT 1) earliest_id
             FROM message_contents c
             WHERE c.search_vector @@ websearch_to_tsquery('simple',%s)
+              AND (%s::text IS NULL OR %s='discord')
               AND EXISTS (SELECT 1 FROM discord_messages m
-                          WHERE m.content_hash=c.content_hash)
+                          WHERE m.content_hash=c.content_hash
+                          AND (%s::text IS NULL OR m.channel_id=%s))
             ORDER BY rank DESC LIMIT %s"""
+
+    @staticmethod
+    def _vector_parameters(query_embedding, scope: Optional[ChatScope]) -> tuple:
+        source_type = scope.source_type if scope else None
+        conversation_id = scope.conversation_id if scope else None
+        vector = HalfVector(query_embedding)
+        return (
+            vector, source_type, source_type, conversation_id, conversation_id,
+            vector, 30,
+        )
+
+    @staticmethod
+    def _fulltext_parameters(query: str, scope: Optional[ChatScope]) -> tuple:
+        source_type = scope.source_type if scope else None
+        conversation_id = scope.conversation_id if scope else None
+        return (
+            query, conversation_id, conversation_id,
+            conversation_id, conversation_id, query,
+            source_type, source_type, conversation_id, conversation_id, 30,
+        )
 
     def _expand_text_hit(self, connection, row) -> dict:
         anchor_ids = list(dict.fromkeys(anchor for anchor in (row[2], row[3]) if anchor))

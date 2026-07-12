@@ -52,6 +52,13 @@
 
       <section id="chat-screen" class="screen chat-screen hidden">
         <div class="chat-heading"><div class="eyebrow">DATABÁZE ZPRÁV</div><h2>Na co si chcete vzpomenout?</h2><p>Odpovědi vycházejí pouze z uložených zpráv.</p></div>
+        <div class="chat-scope-control">
+          <label for="chat-scope-select">Chatovat nad</label>
+          <select id="chat-scope-select" aria-describedby="chat-scope-status">
+            <option value="">Všechny uložené zprávy</option>
+          </select>
+          <small id="chat-scope-status">Načítám konverzace…</small>
+        </div>
         <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
         <form id="chat-form" class="chat-form"><input id="question-input" type="text" minlength="2" placeholder="Zeptejte se databáze…" autocomplete="off" required /><button type="submit" aria-label="Odeslat">↑</button></form>
       </section>
@@ -85,8 +92,10 @@
     </div>
     <div id="toast" class="toast hidden" role="status"></div>
     <script src="chat-sources.js"></script>
+    <script src="chat-scope-selector.js"></script>
     <script src="indexing-controls.js"></script>
     <script src="app.js"></script>
+    <script src="chat-controller.js"></script>
     <script src="event-bindings.js"></script>
   </body>
 </html>

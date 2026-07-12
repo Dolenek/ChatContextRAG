@@ -1,10 +1,12 @@
 from typing import List, Optional
 
 from backend.models import (
-    ChannelResumePoint, ChatRequest, ChatResponse, ChatSource, DatabaseOverview,
+    ChannelResumePoint, ChatRequest, ChatResponse, ChatScope, ChatScopeList,
+    ChatSource, DatabaseOverview,
     FinishIngestionRequest, ImportRequest, ImportResponse, IndexingJobView,
     IngestionSessionRequest, IngestionSessionView,
 )
+from backend.chat_scope_catalog import ChatScopeCatalog
 from backend.normalization import DiscordMessageNormalizer
 from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
 from backend.hybrid_repository import PostgresHybridRepository
@@ -84,28 +86,38 @@ class DatabaseChatService:
         embedding_provider: EmbeddingProvider,
         chat_provider: ChatCompletionProvider,
         hybrid_repository: Optional[PostgresHybridRepository] = None,
+        scope_catalog: Optional[ChatScopeCatalog] = None,
         retrieval_limit: int = 8,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
         self.chat_provider = chat_provider
         self.hybrid_repository = hybrid_repository
+        self.scope_catalog = scope_catalog
         self.retrieval_limit = retrieval_limit
+
+    def list_scopes(self) -> ChatScopeList:
+        scopes = self.scope_catalog.list_scopes() if self.scope_catalog else []
+        return ChatScopeList(scopes=scopes)
 
     def answer(self, request: ChatRequest) -> ChatResponse:
         query_embedding = self.embedding_provider.embed_texts([request.question])[0]
-        retrieved_chunks = self._retrieve(request.question, query_embedding)
+        retrieved_chunks = self._retrieve(request.question, query_embedding, request.scope)
         answer = self.chat_provider.answer(request.question, request.history, retrieved_chunks)
         return ChatResponse(answer=answer, sources=self._to_sources(retrieved_chunks))
 
-    def _retrieve(self, question: str, query_embedding: List[float]) -> List[RetrievedChunk]:
+    def _retrieve(
+        self, question: str, query_embedding: List[float], scope: Optional[ChatScope],
+    ) -> List[RetrievedChunk]:
         if self.hybrid_repository:
             hybrid_chunks = self.hybrid_repository.search_hybrid(
-                question, query_embedding, self.retrieval_limit,
+                question, query_embedding, self.retrieval_limit, scope,
             )
             if hybrid_chunks:
                 return hybrid_chunks
-        return self.repository.search_similar(query_embedding, self.retrieval_limit)
+        return self.repository.search_similar(
+            query_embedding, self.retrieval_limit, scope,
+        )
 
     @staticmethod
     def _to_sources(chunks: List[RetrievedChunk]) -> List[ChatSource]:
