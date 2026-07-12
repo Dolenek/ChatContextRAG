@@ -14,8 +14,10 @@ from backend.vector_models import NormalizedMessage, RetrievedChunk
 def test_raw_schema_indexes_content_occurrences_in_message_order() -> None:
     schema = "\n".join(raw_schema_statements())
 
-    assert "discord_messages_content_order" in schema
-    assert "ON discord_messages(content_hash, message_order)" in schema
+    assert "source_messages_content_order" in schema
+    assert "ON source_messages(content_hash,message_order)" in schema
+    assert "ALTER COLUMN guild_id DROP NOT NULL" in schema
+    assert "ALTER COLUMN channel_id DROP NOT NULL" in schema
 
 
 def test_vector_candidates_are_limited_before_source_hash_aggregation() -> None:

@@ -120,8 +120,9 @@ class PostgresOverviewReader:
     def _read_raw_summary(connection) -> dict:
         raw_count, unique_count, oldest, newest, authors, channels = connection.execute(
             """SELECT COUNT(*),COUNT(DISTINCT content_hash),MIN(sent_at),MAX(sent_at),
-                      COUNT(DISTINCT author),COUNT(DISTINCT channel_id)
-               FROM discord_messages"""
+                      COUNT(DISTINCT author),
+                      COUNT(DISTINCT (source_type,conversation_id))
+               FROM source_messages"""
         ).fetchone()
         indexed = connection.execute(
             "SELECT COUNT(DISTINCT message_id) FROM rag_chunk_messages"

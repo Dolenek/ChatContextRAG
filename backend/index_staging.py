@@ -80,7 +80,7 @@ class PostgresIndexStaging:
             PRIMARY KEY(job_id,id));
             CREATE TABLE IF NOT EXISTS rag_staged_chunk_messages (
             job_id TEXT NOT NULL, chunk_id TEXT NOT NULL,
-            message_id TEXT REFERENCES discord_messages(external_id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             position INTEGER NOT NULL, PRIMARY KEY(job_id,chunk_id,message_id),
             FOREIGN KEY(job_id,chunk_id) REFERENCES rag_staged_chunks(job_id,id)
               ON DELETE CASCADE)"""

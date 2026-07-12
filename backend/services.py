@@ -7,7 +7,7 @@ from backend.models import (
     IngestionSessionRequest, IngestionSessionView,
 )
 from backend.chat_scope_catalog import ChatScopeCatalog
-from backend.normalization import DiscordMessageNormalizer
+from backend.normalization import SourceMessageNormalizer
 from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.indexing_worker import PersistentIndexingWorker
@@ -19,7 +19,7 @@ from backend.vector_models import RetrievedChunk
 class MessageIngestionService:
     def __init__(
         self,
-        normalizer: DiscordMessageNormalizer,
+        normalizer: SourceMessageNormalizer,
         raw_repository: PostgresRawMessageRepository,
         indexing_worker: PersistentIndexingWorker,
     ) -> None:
@@ -67,14 +67,28 @@ class MessageIngestionService:
         self.indexing_worker.wake()
         return job
 
+    def list_conversations(self, source_type: str):
+        return self.raw_repository.list_conversations(source_type)
+
+    def list_sync_states(self, source_type: str):
+        return self.raw_repository.list_sync_states(source_type)
+
+    def upsert_sync_state(self, state):
+        return self.raw_repository.upsert_sync_state(state)
+
     def _resolve_session(self, request, messages) -> tuple:
         if request.session_id:
             return request.session_id, False
         first = messages[0]
         session = self.create_session(IngestionSessionRequest(
-            guild_id=first.guild_id or "unknown",
-            channel_id=first.channel_id or "unknown",
+            guild_id=first.guild_id,
+            channel_id=first.channel_id,
             channel=first.channel,
+            source_type=first.source_type,
+            conversation_id=first.conversation_id or first.channel_id or "unknown",
+            conversation_label=first.conversation_label or first.channel,
+            container_id=first.container_id or first.guild_id,
+            container_label=first.container_label,
         ))
         return session.session_id, True
 
@@ -128,6 +142,8 @@ class DatabaseChatService:
                 similarity_score=chunk.similarity_score,
                 source_message_ids=chunk.source_message_ids,
                 channel_id=chunk.channel_id, guild_id=chunk.guild_id,
+                source_type=chunk.source_type,
+                conversation_id=chunk.conversation_id,
             )
             for chunk in chunks
         ]

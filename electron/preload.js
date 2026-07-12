@@ -29,4 +29,17 @@ contextBridge.exposeInMainWorld("chatContext", {
   cancelIndexingJob: (jobId) => ipcRenderer.invoke("indexing:cancel", jobId),
   getIndexingJob: (jobId) => ipcRenderer.invoke("indexing:get", jobId),
   indexPendingMessages: () => ipcRenderer.invoke("indexing:pending"),
+  getDiscordBotStatus: () => ipcRenderer.invoke("discord-bot:status"),
+  connectDiscordBot: (token) => ipcRenderer.invoke("discord-bot:connect", token),
+  disconnectDiscordBot: () => ipcRenderer.invoke("discord-bot:disconnect"),
+  inviteDiscordBot: () => ipcRenderer.invoke("discord-bot:invite"),
+  onDiscordBotProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("discord-bot:progress", listener);
+    return () => ipcRenderer.removeListener("discord-bot:progress", listener);
+  },
+  selectWhatsAppExport: () => ipcRenderer.invoke("whatsapp:select"),
+  previewWhatsAppExport: (options) => ipcRenderer.invoke("whatsapp:preview", options),
+  importWhatsAppExport: (options) => ipcRenderer.invoke("whatsapp:import", options),
+  getWhatsAppConversations: () => ipcRenderer.invoke("whatsapp:conversations"),
 });

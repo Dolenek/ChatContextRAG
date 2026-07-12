@@ -8,3 +8,4 @@ numpy==2.0.2
 openai==2.45.0
 pgvector==0.4.2
 psycopg[binary]==3.2.13
+python-multipart==0.0.20

@@ -8,12 +8,34 @@ from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
 from backend.hybrid_repository import PostgresHybridRepository
+from backend.models import IngestionSessionRequest
 from backend.raw_message_writer import RawMessageWriter
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.vector_models import ConversationChunk, EmbeddedChunk
 
 
 TEST_DSN = os.environ.get("POSTGRES_TEST_DSN")
+
+
+@pytest.mark.skipif(not TEST_DSN, reason="POSTGRES_TEST_DSN is not configured")
+def test_migrated_schema_accepts_whatsapp_session_without_discord_ids() -> None:
+    repository = PostgresRawMessageRepository(TEST_DSN)
+    repository.ensure_schema()
+
+    session = repository.create_session(IngestionSessionRequest(
+        source_type="whatsapp", conversation_id="family",
+        conversation_label="Family",
+    ))
+
+    try:
+        with psycopg.connect(TEST_DSN) as connection:
+            row = connection.execute(
+                "SELECT guild_id,channel_id,source_type FROM ingestion_sessions WHERE id=%s",
+                (session.session_id,),
+            ).fetchone()
+        assert row == (None, None, "whatsapp")
+    finally:
+        repository.delete_session(session.session_id)
 
 
 @pytest.mark.skipif(not TEST_DSN, reason="POSTGRES_TEST_DSN is not configured")
@@ -64,7 +86,7 @@ def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
             (values.content_hash, "old content"),
         )
         connection.execute(
-            """INSERT INTO discord_messages
+            """INSERT INTO source_messages
                (external_id,message_order,author,content_hash,channel_id,guild_id)
                VALUES (%s,%s,'Ada',%s,'20','10')""",
             (values.message_id, int(values.message_id), values.content_hash),
@@ -129,7 +151,7 @@ def _cleanup(database_dsn: str, values: _TestIdentity) -> None:
         )
         connection.execute("DELETE FROM indexing_jobs WHERE id=%s", (values.job_id,))
         connection.execute("DELETE FROM ingestion_sessions WHERE id=%s", (values.session_id,))
-        connection.execute("DELETE FROM discord_messages WHERE external_id=%s", (values.message_id,))
+        connection.execute("DELETE FROM source_messages WHERE external_id=%s", (values.message_id,))
         connection.execute("DELETE FROM message_contents WHERE content_hash=%s", (values.content_hash,))
 
 

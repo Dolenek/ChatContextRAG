@@ -12,7 +12,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 72% 18%, rgba(83, 63, 180, 0.18), transparent 28%), #080c18; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { color: inherit; }
 .hidden { display: none !important; }
 
@@ -42,6 +42,8 @@ h1 span { color: #8e87a9; }
 .card-icon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 15px; font-size: 24px; background: rgba(124, 108, 255, 0.15); color: #b5adff; }
 .database-card .card-icon { color: var(--cyan); background: rgba(50, 210, 221, 0.12); }
 .overview-card .card-icon { color: #65e6a8; background: rgba(101, 230, 168, 0.12); }
+.discord-bot-card .card-icon { color: #c9c5ff; background: rgba(88, 101, 242, .18); }
+.whatsapp-card .card-icon { color: #8ff0b2; background: rgba(37, 211, 102, .14); }
 .action-card strong, .action-card small { display: block; }
 .action-card strong { margin-bottom: 8px; font-size: 17px; }
 .action-card small { color: var(--muted); font-size: 13px; }
@@ -131,6 +133,23 @@ h1 span { color: #8e87a9; }
 .danger-dialog input:focus { border-color: #d65774; }
 .danger-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #ffdce3; background: #6b2133; font-weight: 900; }
 .dialog-actions { justify-content: flex-end; margin-top: 24px; }
+
+.integration-screen { padding: 52px 0; }
+.integration-heading { max-width: 720px; }
+.integration-heading h2 { margin: 10px 0; font-size: 38px; }
+.integration-heading p, .integration-panel > small { color: var(--muted); line-height: 1.55; }
+.integration-panel { max-width: 760px; margin-top: 30px; padding: 26px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); }
+.integration-panel label { display: block; margin: 10px 0 7px; color: #dce1f2; font-size: 13px; font-weight: 700; }
+.integration-row { display: flex; align-items: center; gap: 12px; }
+.integration-row input, .integration-fields input, .integration-fields select { min-width: 0; flex: 1; padding: 12px 13px; border: 1px solid rgba(124,108,255,.35); border-radius: 10px; outline: 0; color: white; background: #0f1527; }
+.integration-row input:focus, .integration-fields input:focus, .integration-fields select:focus { border-color: var(--violet); }
+.integration-actions { margin: 20px 0; justify-content: flex-start; }
+.integration-status { color: var(--muted); font-size: 13px; }
+.integration-fields { display: grid; gap: 8px; margin-top: 22px; }
+.integration-fields .primary-button { justify-self: start; margin-top: 12px; }
+.integration-fields .primary-button:disabled { cursor: not-allowed; opacity: .45; }
+.preview-samples { display: grid; gap: 7px; max-height: 180px; overflow: auto; }
+.preview-samples > div { padding: 9px 11px; border-radius: 9px; color: #c8cee2; background: rgba(8,12,24,.55); font-size: 12px; white-space: pre-wrap; }
 
 @media (max-width: 760px) {
   .action-grid { grid-template-columns: 1fr; }

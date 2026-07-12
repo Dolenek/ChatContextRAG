@@ -34,6 +34,10 @@ class ConversationAwareChunker:
 
     def _must_split(self, current: List[NormalizedMessage], message: NormalizedMessage) -> bool:
         previous = current[-1]
+        if previous.source_type != message.source_type:
+            return True
+        if self._conversation_id(previous) != self._conversation_id(message):
+            return True
         if previous.channel != message.channel:
             return True
         if previous.channel_id != message.channel_id:
@@ -68,7 +72,10 @@ class ConversationAwareChunker:
             source_id for message in messages
             for source_id in (message.external_id, *message.related_external_ids)
         ]
-        identity = "|".join(source_ids + [str(part_index), content])
+        identity = "|".join([
+            messages[0].source_type, self._conversation_id(messages[0]) or "",
+            *source_ids, str(part_index), content,
+        ])
         chunk_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         timestamps = [
             timestamp for message in messages
@@ -80,18 +87,26 @@ class ConversationAwareChunker:
             content=content,
             authors=list(dict.fromkeys(message.author for message in messages)),
             source_message_ids=source_ids,
-            channel=messages[0].channel,
+            channel=messages[0].conversation_label or messages[0].channel,
             started_at=min(timestamps) if timestamps else None,
             ended_at=max(timestamps) if timestamps else None,
             metadata={
+                **messages[0].source_metadata,
                 "part_index": part_index,
                 "message_count": len(messages),
-                "source_type": "discord",
-                "conversation_id": messages[0].channel_id,
+                "source_type": messages[0].source_type,
+                "conversation_id": self._conversation_id(messages[0]),
+                "conversation_label": messages[0].conversation_label or messages[0].channel,
+                "container_id": messages[0].container_id or messages[0].guild_id,
+                "container_label": messages[0].container_label,
                 "channel_id": messages[0].channel_id,
                 "guild_id": messages[0].guild_id,
             },
         )
+
+    @staticmethod
+    def _conversation_id(message: NormalizedMessage) -> Optional[str]:
+        return message.conversation_id or message.channel_id
 
     def _render_messages(self, messages: List[NormalizedMessage]) -> str:
         return "\n".join(self._render_message(message) for message in messages)

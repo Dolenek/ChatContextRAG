@@ -1,6 +1,8 @@
 import hashlib
 from typing import Iterable, List, Sequence
 
+from psycopg.types.json import Jsonb
+
 from backend.vector_models import NormalizedMessage
 
 
@@ -34,18 +36,31 @@ class RawMessageWriter:
 
     def _upsert_messages(self, connection, messages) -> None:
         rows = [(
-            message.external_id, self.message_order(message.external_id), message.author,
+            message.external_id, message.message_order or self.message_order(message.external_id),
+            message.author,
             message.timestamp, message.channel, message.channel_id, message.guild_id,
+            message.source_type, message.conversation_id or message.channel_id,
+            message.conversation_label or message.channel,
+            message.container_id or message.guild_id, message.container_label,
+            Jsonb(message.source_metadata),
             self.content_hash(message.content),
         ) for message in messages]
         with connection.cursor() as cursor:
             cursor.executemany(
-                """INSERT INTO discord_messages
-                   (external_id,message_order,author,sent_at,channel,channel_id,guild_id,content_hash)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """INSERT INTO source_messages
+                   (external_id,message_order,author,sent_at,channel,channel_id,guild_id,
+                    source_type,conversation_id,conversation_label,container_id,
+                    container_label,source_metadata,content_hash)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT(external_id) DO UPDATE SET author=EXCLUDED.author,
                      sent_at=EXCLUDED.sent_at, channel=EXCLUDED.channel,
                      channel_id=EXCLUDED.channel_id, guild_id=EXCLUDED.guild_id,
+                     source_type=EXCLUDED.source_type,
+                     conversation_id=EXCLUDED.conversation_id,
+                     conversation_label=EXCLUDED.conversation_label,
+                     container_id=EXCLUDED.container_id,
+                     container_label=EXCLUDED.container_label,
+                     source_metadata=EXCLUDED.source_metadata,
                      content_hash=EXCLUDED.content_hash, updated_at=NOW()""", rows,
             )
 
@@ -62,7 +77,7 @@ class RawMessageWriter:
     def _refresh_occurrence_counts(connection, hashes: Iterable[str]) -> None:
         connection.execute(
             """UPDATE message_contents c SET occurrence_count=(
-                 SELECT COUNT(*) FROM discord_messages m WHERE m.content_hash=c.content_hash)
+                 SELECT COUNT(*) FROM source_messages m WHERE m.content_hash=c.content_hash)
                WHERE c.content_hash=ANY(%s)""", (list(hashes),),
         )
 
@@ -70,7 +85,7 @@ class RawMessageWriter:
     def _delete_unreferenced_contents(connection, hashes: Iterable[str]) -> None:
         connection.execute(
             """DELETE FROM message_contents c WHERE c.content_hash=ANY(%s)
-               AND NOT EXISTS (SELECT 1 FROM discord_messages m
+               AND NOT EXISTS (SELECT 1 FROM source_messages m
                                WHERE m.content_hash=c.content_hash)""",
             (list(hashes),),
         )
@@ -87,7 +102,7 @@ class RawMessageWriter:
     def _existing_ids(connection, messages) -> set:
         message_ids = [message.external_id for message in messages]
         rows = connection.execute(
-            "SELECT external_id FROM discord_messages WHERE external_id=ANY(%s)",
+            "SELECT external_id FROM source_messages WHERE external_id=ANY(%s)",
             (message_ids,),
         ).fetchall()
         return {row[0] for row in rows}
@@ -114,7 +129,7 @@ class RawMessageWriter:
     def _current_hashes(connection, messages) -> set:
         message_ids = [message.external_id for message in messages]
         rows = connection.execute(
-            "SELECT content_hash FROM discord_messages WHERE external_id=ANY(%s)",
+            "SELECT content_hash FROM source_messages WHERE external_id=ANY(%s)",
             (message_ids,),
         ).fetchall()
         return {row[0] for row in rows}

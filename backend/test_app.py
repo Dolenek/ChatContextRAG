@@ -4,6 +4,7 @@ from backend.app import create_app
 from backend.models import (
     ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
     DatabaseOverview, ImportResponse, IndexingJobView, IngestionSessionView,
+    IntegrationSyncState,
 )
 
 
@@ -35,6 +36,12 @@ class FakeIngestionService:
             job_id="job-pending", session_id="pending-session", status="queued",
             total_messages=84,
         )
+
+    def list_sync_states(self, _source_type):
+        return []
+
+    def upsert_sync_state(self, state):
+        return state
 
 
 class FakeChatService:
@@ -131,6 +138,45 @@ def test_resume_and_database_clear_routes() -> None:
     )
     assert invalid_clear_response.status_code == 422
     assert valid_clear_response.status_code == 200
+
+
+def test_whatsapp_preview_and_import_routes() -> None:
+    client = _client()
+    export = b"13/7/2026, 09:15 - Ada: Hello\n13/7/2026, 09:16 - Bob: Hi\n"
+
+    preview = client.post(
+        "/imports/whatsapp/preview",
+        files={"export_file": ("chat.txt", export, "text/plain")},
+        data={"timezone_name": "UTC"},
+    )
+    imported = client.post(
+        "/imports/whatsapp",
+        files={"export_file": ("chat.txt", export, "text/plain")},
+        data={
+            "conversation_id": "family", "conversation_label": "Family",
+            "date_order": "DMY", "timezone_name": "UTC",
+        },
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["message_count"] == 2
+    assert imported.status_code == 200
+    assert imported.json()["imported_count"] == 2
+    assert imported.json()["indexing_job_id"] == "job-1"
+
+
+def test_integration_sync_state_routes() -> None:
+    client = _client()
+    state = IntegrationSyncState(
+        source_type="discord", conversation_id="20", tracking_enabled=True,
+    ).model_dump()
+
+    saved = client.post("/integrations/sync-state", json=state)
+    listed = client.get("/integrations/sync-states?source_type=discord")
+
+    assert saved.status_code == 200
+    assert saved.json()["conversation_id"] == "20"
+    assert listed.status_code == 200
 
 
 def _client() -> TestClient:

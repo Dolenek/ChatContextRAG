@@ -43,8 +43,9 @@ def test_hybrid_queries_filter_vector_and_fulltext_candidates() -> None:
     assert "metadata->>'source_type'" in vector_query
     assert "metadata->>'conversation_id'" in vector_query
     assert "%s::text IS NULL" in vector_query
-    assert "m.channel_id=%s" in fulltext_query
-    assert "%s='discord'" in fulltext_query
+    assert "m.source_type=%s" in fulltext_query
+    assert "m.conversation_id=%s" in fulltext_query
+    assert "source_messages" in fulltext_query
 
 
 def test_scope_catalog_merges_new_and_legacy_chunk_counts() -> None:

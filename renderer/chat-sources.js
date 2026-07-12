@@ -13,7 +13,8 @@ function createChatSourceCard(source, index) {
   const details = document.createElement("details");
   details.className = "chat-source-card";
   const summary = document.createElement("summary");
-  summary.textContent = `[${index + 1}] ${source.channel || "Bez kanálu"} · ${source.author}`;
+  const sourceLabel = source.source_type === "whatsapp" ? "WhatsApp" : "Discord";
+  summary.textContent = `[${index + 1}] ${sourceLabel} · ${source.channel || "Bez konverzace"} · ${source.author}`;
   const metadata = document.createElement("small");
   metadata.textContent = source.timestamp
     ? new Date(source.timestamp).toLocaleString("cs-CZ")
@@ -27,6 +28,7 @@ function createChatSourceCard(source, index) {
 }
 
 function createSourceOpenButton(source) {
+  if (source.source_type && source.source_type !== "discord") return null;
   const messageId = source.source_message_ids?.[0];
   if (!messageId || !source.channel_id || !source.guild_id) return null;
   const button = document.createElement("button");

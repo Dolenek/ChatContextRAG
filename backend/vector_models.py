@@ -12,6 +12,13 @@ class NormalizedMessage:
     channel: Optional[str]
     channel_id: Optional[str]
     guild_id: Optional[str]
+    source_type: str = "discord"
+    conversation_id: Optional[str] = None
+    conversation_label: Optional[str] = None
+    container_id: Optional[str] = None
+    container_label: Optional[str] = None
+    source_metadata: Dict[str, object] = field(default_factory=dict)
+    message_order: Optional[int] = None
     related_external_ids: Tuple[str, ...] = ()
     related_timestamps: Tuple[datetime, ...] = ()
 
@@ -45,3 +52,5 @@ class RetrievedChunk:
     source_message_ids: List[str] = field(default_factory=list)
     channel_id: Optional[str] = None
     guild_id: Optional[str] = None
+    source_type: str = "discord"
+    conversation_id: Optional[str] = None

@@ -77,7 +77,7 @@ class PostgresHybridRepository:
     def _create_links_sql() -> str:
         return """CREATE TABLE IF NOT EXISTS rag_chunk_messages (
             chunk_id TEXT REFERENCES rag_chunks(id) ON DELETE CASCADE,
-            message_id TEXT REFERENCES discord_messages(external_id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             position INTEGER NOT NULL, PRIMARY KEY(chunk_id,message_id))"""
 
     @staticmethod

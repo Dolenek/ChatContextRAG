@@ -44,7 +44,8 @@ class PostgresChatScopeCatalog:
             COALESCE(metadata->>'source_type', 'discord') AS source_type,
             COALESCE(metadata->>'conversation_id', metadata->>'channel_id') conversation_id,
             COALESCE(MAX(channel), 'Unnamed conversation') display_name,
-            MAX(metadata->>'guild_id') container_name,
+            COALESCE(MAX(metadata->>'container_label'),
+                     MAX(metadata->>'guild_id')) container_name,
             COUNT(DISTINCT source_message_id) message_count
         FROM {table_name}, LATERAL UNNEST(source_message_ids) source_message_id
         WHERE COALESCE(metadata->>'conversation_id', metadata->>'channel_id') IS NOT NULL

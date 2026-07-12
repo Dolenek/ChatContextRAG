@@ -1,6 +1,6 @@
 # Setup and operation
 
-## Prerequisites and configuration
+## Prerequisites
 
 - Node.js 20 or newer
 - Python 3.9 through the Windows `py` launcher
@@ -15,77 +15,87 @@ py -3.9 -m pip install -r backend/requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set `OPENAI_API_KEY` and matching PostgreSQL credentials in `.env`. Never commit
-that file. Defaults use `text-embedding-3-small`, 1,536 dimensions, embedding
-batches of 64, and PostgreSQL port 5433.
+Set `OPENAI_API_KEY` and PostgreSQL credentials in `.env`. Discord bot tokens do
+not belong in this file; the UI stores them with the operating-system encryption
+provided by Electron `safeStorage`.
 
-## Starting the application
-
-Run `run.bat` from the repository root. It verifies Node.js 20 or newer and an
-exact Python 3.9 runtime, refreshes dependencies after application files change,
-starts the pgvector Docker service, waits up to 60 seconds for its healthcheck,
-and opens Electron. A failure in the rebuild or readiness check stops startup
-instead of opening the application against unavailable infrastructure. For a
-manual start:
+Run `run.bat` from the repository root. It validates the runtimes, starts the
+pgvector Docker service, waits for its health check, starts FastAPI on
+`127.0.0.1:8765`, and opens Electron. The first source-schema migration may take
+longer than an ordinary start, so Electron waits up to 60 seconds for FastAPI.
+If startup fails, `run.bat` keeps the console open and includes the captured
+backend error. A manual start is:
 
 ```powershell
 docker compose up -d --wait --wait-timeout 60
 npm.cmd start
 ```
 
-Electron starts FastAPI on `127.0.0.1:8765`.
+## Embedded Discord import
 
-## Importing Discord history
+Choose **Nahrát pomocí Discordu**, sign in, and open a channel. **Načíst poslední
+4** performs a small import. **Procházet do databáze** traverses loaded history
+upward and writes raw batches. **Zastavit** flushes the current batch and queues
+indexing. **Pokračovat od poslední načtené** opens the oldest stored Discord
+message and continues into older history.
 
-1. Choose **Nahrát pomocí Discordu** and open a channel.
-2. Use **Načíst poslední 4** for a small import, or **Procházet do databáze** for
-   continuous history traversal.
-3. Use **Zastavit** to flush the current raw batch. Reaching the channel start
-   also closes the scan automatically. If Discord leaves the visible history
-   unchanged away from the channel start, the scanner flushes its partial raw
-   batch, forces the loaded message list to its upper edge, and retries after a
-   short backoff. Discord DOM operations time out after 10 seconds and are
-   retried, so an unresponsive embedded Discord view cannot permanently block
-   the scan. **Zastavit** interrupts even an in-flight DOM operation, flushes
-   the pending raw batch, and closes the ingestion session for indexing.
-4. The toolbar changes from Discord/raw progress to RAG indexing progress.
-   Closing or restarting the application does not lose the queued job.
-5. Use **Pokračovat od poslední načtené** to jump to the oldest raw message and
-   continue into older history.
+The embedded workflow is independent from the optional bot. Its Discord login,
+scan controls, progress, and source deep links retain their original behavior.
 
-Traversal stores raw data only and therefore does not wait for OpenAI. After a
-session closes, indexing streams the complete session chronologically, creates
-conversation chunks, stages `halfvec(1536)` vectors, and atomically publishes
-them only after every embedding batch succeeds. Cancelling or failing a job
-keeps the previous searchable index intact. The database overview
-shows raw messages, unique texts, duplicates, indexed and pending messages,
-database size, and recent jobs. Failed jobs can be retried and active jobs can
-be cancelled there. When no job is active, **Zaindexovat čekající** creates a
-new durable job for every raw message that is still missing from the index.
-This also recovers messages left by an interrupted scan session. Progress
-refreshes automatically while the overview is open. The job card shows its
-phase, processed and total messages, chunk count, percentage, and a progress
-bar. A zero count with **Připravuji index** means the worker is building the
-message snapshot or waiting for the first embedding batch; it does not mean the
-job has stopped. Indexing claims use renewable leases, allowing multiple
-backend processes to share the queue without resetting or publishing each
-other's jobs; work abandoned by a stopped process becomes claimable after the
-90-second lease expires.
+## Discord bot
 
-Legacy chunks remain available until **Vymazat databázi** is confirmed with
-`VYMAZAT`. Clearing removes legacy chunks, raw messages, jobs, and new vectors,
-but preserves the Discord login partition and database schema.
+1. Create an application and bot in the Discord Developer Portal.
+2. Enable the Message Content privileged intent for the bot.
+3. Choose **Přidat Discord bota** and paste the bot token. The renderer never
+   receives the token after the connect call.
+4. Choose **Pozvat na server** and grant the bot View Channel and Read Message
+   History in the channels that should be archived.
+5. A server member with Manage Channels runs `/chatcontext sync` in a text
+   channel or thread.
 
-## Chatting over a selected conversation
+The first command imports all accessible history and enables live create/edit
+tracking. `/chatcontext status` reports the channel state and `/chatcontext stop`
+disables live tracking. If the application or computer stops during the initial
+history scan, the next start reuses the same durable session and continues from
+the last committed 100-message page. The bot only connects while the desktop
+application is running. On the next start it also catches up messages created
+while it was offline.
 
-Open **Povídat s databází** and use **Chatovat nad** before asking a question.
-The default searches all indexed messages. Selecting a Discord channel restricts
-retrieval and answer evidence to that channel. Changing the selection clears the
-visible chat history so turns from different scopes cannot influence each other.
-Only conversations already present in a searchable index appear in the selector;
-finish or queue indexing first when a newly imported channel is missing.
+Live messages normally become searchable within 30–60 seconds plus embedding
+latency. Closing the application flushes pending raw messages; a queued indexing
+job resumes on the next start. Deleted Discord messages remain in the archive.
 
-## Verification and evaluation
+## WhatsApp export import
+
+Export an individual or group chat from WhatsApp without binary media when
+possible. The textual export still contains media placeholders.
+
+1. Choose **Nahrát WhatsApp export** and select a UTF-8 `.txt` or `.zip` file.
+2. Review the detected message, media-placeholder, and system-event counts.
+3. If the date is ambiguous, select DMY or MDY.
+4. Select an existing WhatsApp conversation for an incremental re-import, or
+   enter a name for a new conversation.
+5. Choose **Importovat a zaindexovat**.
+
+The import is fully parsed before a database session is created. Re-importing
+the same export only adds deterministic new entries. WhatsApp exports have no
+stable message IDs, so an edited historical entry may be stored as a new message.
+ZIP archives with multiple text entries must identify one entry; binary entries
+are ignored. Text over 50 MiB, invalid UTF-8, unknown formats, and suspicious ZIP
+compression ratios are rejected.
+
+## Indexing and chat
+
+Every completed connector session creates a durable indexing job. The database
+overview shows raw, duplicate, indexed, and pending counts plus recent job state.
+Failed jobs can be retried; active jobs can be cancelled. **Zaindexovat čekající**
+recovers raw messages not currently covered by an index or active job.
+
+Choose **Povídat s databází** and select a Discord channel, WhatsApp conversation,
+or all stored messages under **Chatovat nad**. Changing the scope clears visible
+chat history so turns from different sources cannot influence one another.
+
+## Verification
 
 Run tests without OpenAI charges:
 
@@ -94,13 +104,13 @@ npm.cmd test
 py -3.9 -m pytest backend -q
 ```
 
-The PostgreSQL atomic-publication test is skipped by default. Run it only
-against a dedicated empty test database by setting `POSTGRES_TEST_DSN`; the test
-creates isolated rows, verifies the staged replacement, and removes those rows:
+The optional atomic-publication test requires a dedicated empty PostgreSQL
+database:
 
 ```powershell
-$env:POSTGRES_TEST_DSN = "postgresql://chat_context:password@127.0.0.1:5433/chat_context_test"
+$env:POSTGRES_TEST_DSN = "postgresql://user:password@127.0.0.1:5433/chat_context_test"
 py -3.9 -m pytest backend/test_postgres_integration.py -q
 ```
 
-Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`.
+Inspect infrastructure with `docker compose ps` and
+`docker compose logs postgres`.

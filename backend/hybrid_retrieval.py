@@ -53,9 +53,12 @@ class PostgresHybridRetrieval:
                    COALESCE(candidate.metadata->>'channel_id',
                             candidate.metadata->>'conversation_id') channel_id,
                    candidate.metadata->>'guild_id' guild_id,
+                   COALESCE(candidate.metadata->>'source_type','discord') source_type,
+                   COALESCE(candidate.metadata->>'conversation_id',
+                            candidate.metadata->>'channel_id') conversation_id,
                    COALESCE((SELECT array_agg(DISTINCT message.content_hash)
                      FROM rag_chunk_messages link
-                     JOIN discord_messages message ON message.external_id=link.message_id
+                     JOIN source_messages message ON message.external_id=link.message_id
                      WHERE link.chunk_id=candidate.id),'{}') content_hashes
             FROM vector_candidates candidate ORDER BY candidate.similarity DESC"""
 
@@ -63,18 +66,20 @@ class PostgresHybridRetrieval:
     def _fulltext_sql() -> str:
         return """SELECT c.content_hash,
                    ts_rank_cd(c.search_vector, websearch_to_tsquery('simple',%s)) rank,
-                   (SELECT external_id FROM discord_messages m WHERE m.content_hash=c.content_hash
-                    AND (%s::text IS NULL OR m.channel_id=%s)
+                   (SELECT external_id FROM source_messages m WHERE m.content_hash=c.content_hash
+                    AND (%s::text IS NULL OR m.source_type=%s)
+                    AND (%s::text IS NULL OR m.conversation_id=%s)
                     ORDER BY message_order DESC LIMIT 1) latest_id,
-                   (SELECT external_id FROM discord_messages m WHERE m.content_hash=c.content_hash
-                    AND (%s::text IS NULL OR m.channel_id=%s)
+                   (SELECT external_id FROM source_messages m WHERE m.content_hash=c.content_hash
+                    AND (%s::text IS NULL OR m.source_type=%s)
+                    AND (%s::text IS NULL OR m.conversation_id=%s)
                     ORDER BY message_order LIMIT 1) earliest_id
             FROM message_contents c
             WHERE c.search_vector @@ websearch_to_tsquery('simple',%s)
-              AND (%s::text IS NULL OR %s='discord')
-              AND EXISTS (SELECT 1 FROM discord_messages m
+              AND EXISTS (SELECT 1 FROM source_messages m
                           WHERE m.content_hash=c.content_hash
-                          AND (%s::text IS NULL OR m.channel_id=%s))
+                          AND (%s::text IS NULL OR m.source_type=%s)
+                          AND (%s::text IS NULL OR m.conversation_id=%s))
             ORDER BY rank DESC LIMIT %s"""
 
     @staticmethod
@@ -92,8 +97,8 @@ class PostgresHybridRetrieval:
         source_type = scope.source_type if scope else None
         conversation_id = scope.conversation_id if scope else None
         return (
-            query, conversation_id, conversation_id,
-            conversation_id, conversation_id, query,
+            query, source_type, source_type, conversation_id, conversation_id,
+            source_type, source_type, conversation_id, conversation_id, query,
             source_type, source_type, conversation_id, conversation_id, 30,
         )
 
@@ -107,16 +112,25 @@ class PostgresHybridRetrieval:
     def _neighbor_context(connection, anchor_id: str) -> dict:
         rows = connection.execute(
             """WITH anchor AS (
-                 SELECT channel_id,message_order,sent_at FROM discord_messages WHERE external_id=%s),
+                 SELECT source_type,conversation_id,message_order,sent_at
+                 FROM source_messages WHERE external_id=%s),
                nearby AS (
-                 (SELECT m.*,c.content FROM discord_messages m JOIN message_contents c USING(content_hash),anchor a
-                  WHERE m.channel_id=a.channel_id AND m.message_order<=a.message_order
+                 (SELECT m.*,c.content FROM source_messages m
+                  JOIN message_contents c USING(content_hash),anchor a
+                  WHERE m.source_type=a.source_type
+                    AND m.conversation_id=a.conversation_id
+                    AND m.message_order<=a.message_order
                   ORDER BY m.message_order DESC LIMIT 5)
                  UNION
-                 (SELECT m.*,c.content FROM discord_messages m JOIN message_contents c USING(content_hash),anchor a
-                  WHERE m.channel_id=a.channel_id AND m.message_order>a.message_order
+                 (SELECT m.*,c.content FROM source_messages m
+                  JOIN message_contents c USING(content_hash),anchor a
+                  WHERE m.source_type=a.source_type
+                    AND m.conversation_id=a.conversation_id
+                    AND m.message_order>a.message_order
                   ORDER BY m.message_order LIMIT 4))
-               SELECT author,content,sent_at,channel,external_id,channel_id,guild_id FROM nearby
+               SELECT author,content,sent_at,COALESCE(conversation_label,channel),
+                      external_id,channel_id,guild_id,source_type,conversation_id
+               FROM nearby
                ORDER BY message_order LIMIT 12""", (anchor_id,),
         ).fetchall()
         if not rows:
@@ -131,6 +145,7 @@ class PostgresHybridRetrieval:
             "channel": filtered[0][3], "started_at": filtered[0][2],
             "source_message_ids": [row[4] for row in filtered],
             "channel_id": filtered[0][5], "guild_id": filtered[0][6],
+            "source_type": filtered[0][7], "conversation_id": filtered[0][8],
         }
 
     @staticmethod
@@ -166,10 +181,10 @@ class PostgresHybridRetrieval:
         matched_hashes = set()
         for rank, row in enumerate(vector_rows, start=1):
             score = 1 / (60 + rank)
-            matching = [text_rank[value] for value in row[9] if value in text_rank]
+            matching = [text_rank[value] for value in row[11] if value in text_rank]
             if matching:
                 score += 1 / (60 + min(matching))
-                matched_hashes.update(value for value in row[9] if value in text_rank)
+                matched_hashes.update(value for value in row[11] if value in text_rank)
             candidates.append((score * self._recency_multiplier(row[4]), self._vector_chunk(row)))
         for rank, item in enumerate(text_candidates, start=1):
             if item["hash"] in matched_hashes or not item["context"]:
@@ -181,6 +196,8 @@ class PostgresHybridRetrieval:
                 started_at=context["started_at"], similarity_score=score,
                 source_message_ids=context["source_message_ids"],
                 channel_id=context["channel_id"], guild_id=context["guild_id"],
+                source_type=context["source_type"],
+                conversation_id=context["conversation_id"],
             )))
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [self._with_score(chunk, score) for score, chunk in candidates[:limit]]
@@ -191,6 +208,7 @@ class PostgresHybridRetrieval:
             content=row[1], authors=row[2], channel=row[3], started_at=row[4],
             similarity_score=float(row[5]), source_message_ids=row[6],
             channel_id=row[7], guild_id=row[8],
+            source_type=row[9], conversation_id=row[10],
         )
 
     @staticmethod
@@ -200,6 +218,7 @@ class PostgresHybridRetrieval:
             started_at=chunk.started_at, similarity_score=float(score),
             source_message_ids=chunk.source_message_ids,
             channel_id=chunk.channel_id, guild_id=chunk.guild_id,
+            source_type=chunk.source_type, conversation_id=chunk.conversation_id,
         )
 
     @staticmethod

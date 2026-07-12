@@ -173,7 +173,11 @@ class PersistentIndexingWorker:
     ) -> bool:
         if previous.author != message.author or previous.content != message.content:
             return False
-        if (previous.guild_id, previous.channel_id, previous.channel) != (
+        if (
+            previous.source_type, previous.conversation_id or previous.channel_id,
+            previous.guild_id, previous.channel_id, previous.channel,
+        ) != (
+            message.source_type, message.conversation_id or message.channel_id,
             message.guild_id, message.channel_id, message.channel,
         ):
             return False

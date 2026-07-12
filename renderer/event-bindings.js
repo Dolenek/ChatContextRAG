@@ -22,6 +22,8 @@ document.querySelector("#confirm-clear-button").addEventListener("click", clearD
 window.indexingControls.bind({ refreshOverview: openDatabaseOverview, showToast });
 window.chatController.bind({ showScreen, showToast });
 window.chatScopeSelector.bind(window.chatController.resetConversation);
+window.discordBotUi.bind({ showScreen, showToast });
+window.whatsappImportUi.bind({ showScreen, showToast });
 document.querySelector("#home-button").addEventListener("click", async () => {
   await window.chatContext.hideDiscord();
   showScreen("home");

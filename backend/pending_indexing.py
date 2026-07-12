@@ -59,7 +59,7 @@ class PostgresPendingIndexingJobCreator:
     @staticmethod
     def _insert_pending_messages_sql() -> str:
         return """INSERT INTO ingestion_session_messages(session_id,message_id)
-            SELECT %s,raw.external_id FROM discord_messages raw
+            SELECT %s,raw.external_id FROM source_messages raw
             LEFT JOIN rag_chunk_messages indexed ON indexed.message_id=raw.external_id
             WHERE indexed.message_id IS NULL AND NOT EXISTS (
               SELECT 1 FROM ingestion_session_messages active_message

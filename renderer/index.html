@@ -23,11 +23,21 @@
       <section id="home-screen" class="screen home-screen">
         <div class="eyebrow">SOUKROMÁ LOKÁLNÍ DATABÁZE</div>
         <h1>Vaše konverzace.<br /><span>Váš kontext.</span></h1>
-        <p class="lead">Uložte si důležité zprávy z Discordu a najděte v nich odpověď během pár sekund.</p>
+        <p class="lead">Uložte si důležité zprávy z Discordu i WhatsAppu a najděte v nich odpověď během pár sekund.</p>
         <div class="action-grid">
           <button id="open-discord-button" class="action-card discord-card" type="button">
             <span class="card-icon">⌁</span>
             <span><strong>Nahrát pomocí Discordu</strong><small>Přihlaste se a vyberte otevřený chat</small></span>
+            <span class="arrow">→</span>
+          </button>
+          <button id="open-discord-bot-button" class="action-card discord-bot-card" type="button">
+            <span class="card-icon">B</span>
+            <span><strong>Přidat Discord bota</strong><small>Synchronizujte historii a nové zprávy automaticky</small></span>
+            <span class="arrow">→</span>
+          </button>
+          <button id="open-whatsapp-button" class="action-card whatsapp-card" type="button">
+            <span class="card-icon">W</span>
+            <span><strong>Nahrát WhatsApp export</strong><small>Importujte lokální TXT nebo ZIP konverzaci</small></span>
             <span class="arrow">→</span>
           </button>
           <button id="open-chat-button" class="action-card database-card" type="button">
@@ -41,7 +51,55 @@
             <span class="arrow">→</span>
           </button>
         </div>
-        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Bez Discord bota</span><span>● PostgreSQL + pgvector</span></div>
+        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Volitelný lokální Discord bot</span><span>● PostgreSQL + pgvector</span></div>
+      </section>
+
+      <section id="discord-bot-screen" class="screen integration-screen hidden">
+        <div class="integration-heading">
+          <div class="eyebrow">DISCORD BOT</div>
+          <h2>Automatická synchronizace kanálů</h2>
+          <p>Bot funguje pouze při spuštěné aplikaci a po restartu bezpečně doplní nové zprávy.</p>
+        </div>
+        <div class="integration-panel">
+          <label for="discord-bot-token">Bot token z Discord Developer Portal</label>
+          <div class="integration-row">
+            <input id="discord-bot-token" type="password" autocomplete="off" placeholder="Token se uloží šifrovaně" />
+            <button id="connect-discord-bot-button" class="primary-button" type="button">Připojit</button>
+          </div>
+          <p id="discord-bot-status" class="integration-status">Načítám stav…</p>
+          <div class="panel-actions integration-actions">
+            <button id="invite-discord-bot-button" class="secondary-button" type="button" disabled>Pozvat na server</button>
+            <button id="disconnect-discord-bot-button" class="danger-button" type="button" disabled>Odpojit</button>
+          </div>
+          <small>V cílovém kanálu spusťte <code>/chatcontext sync</code>. Příkaz vyžaduje oprávnění Manage Channels.</small>
+        </div>
+      </section>
+
+      <section id="whatsapp-screen" class="screen integration-screen hidden">
+        <div class="integration-heading">
+          <div class="eyebrow">WHATSAPP EXPORT</div>
+          <h2>Import lokální konverzace</h2>
+          <p>Načítá se pouze text a popisky médií; samotné soubory, OCR ani audio se nezpracovávají.</p>
+        </div>
+        <div class="integration-panel">
+          <div class="integration-row">
+            <button id="select-whatsapp-file-button" class="secondary-button" type="button">Vybrat TXT nebo ZIP</button>
+            <strong id="whatsapp-file-name">Žádný soubor</strong>
+          </div>
+          <div id="whatsapp-options" class="integration-fields hidden">
+            <label for="whatsapp-conversation-select">Cílová konverzace</label>
+            <select id="whatsapp-conversation-select"><option value="">Nová konverzace</option></select>
+            <label for="whatsapp-conversation-name">Název nové konverzace</label>
+            <input id="whatsapp-conversation-name" type="text" maxlength="300" placeholder="Např. Rodina" />
+            <label for="whatsapp-date-order">Pořadí data</label>
+            <select id="whatsapp-date-order"><option value="">Automaticky</option><option value="DMY">Den / měsíc / rok</option><option value="MDY">Měsíc / den / rok</option></select>
+            <label id="whatsapp-text-entry-label" for="whatsapp-text-entry" class="hidden">Textový soubor v ZIPu</label>
+            <select id="whatsapp-text-entry" class="hidden"></select>
+            <p id="whatsapp-preview-status" class="integration-status"></p>
+            <div id="whatsapp-preview-samples" class="preview-samples"></div>
+            <button id="import-whatsapp-button" class="primary-button" type="button" disabled>Importovat a zaindexovat</button>
+          </div>
+        </div>
       </section>
 
       <section id="result-screen" class="screen panel-screen hidden">
@@ -70,7 +128,7 @@
         </div>
         <div id="overview-stats" class="stats-grid"></div>
         <div class="overview-breakdowns">
-          <section><h3>Kanály</h3><div id="channel-counts" class="count-list"></div></section>
+          <section><h3>Konverzace</h3><div id="channel-counts" class="count-list"></div></section>
           <section><h3>Autoři</h3><div id="author-counts" class="count-list"></div></section>
           <section><h3>Embedding modely</h3><div id="model-counts" class="count-list"></div></section>
           <section><h3>Indexovací úlohy</h3><div id="indexing-jobs" class="count-list"></div></section>
@@ -94,6 +152,8 @@
     <script src="chat-sources.js"></script>
     <script src="chat-scope-selector.js"></script>
     <script src="indexing-controls.js"></script>
+    <script src="discord-bot-ui.js"></script>
+    <script src="whatsapp-import-ui.js"></script>
     <script src="app.js"></script>
     <script src="chat-controller.js"></script>
     <script src="event-bindings.js"></script>

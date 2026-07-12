@@ -4,7 +4,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-class DiscordMessageInput(BaseModel):
+class SourceMessageInput(BaseModel):
     external_id: str = Field(min_length=1, max_length=128)
     author: str = Field(default="Neznámý autor", max_length=200)
     content: str = Field(min_length=1, max_length=10000)
@@ -12,17 +12,29 @@ class DiscordMessageInput(BaseModel):
     channel: Optional[str] = Field(default=None, max_length=300)
     channel_id: Optional[str] = Field(default=None, max_length=128)
     guild_id: Optional[str] = Field(default=None, max_length=128)
+    source_type: str = Field(
+        default="discord", max_length=50, pattern=r"^[a-z][a-z0-9_-]*$",
+    )
+    conversation_id: Optional[str] = Field(default=None, max_length=256)
+    conversation_label: Optional[str] = Field(default=None, max_length=300)
+    container_id: Optional[str] = Field(default=None, max_length=256)
+    container_label: Optional[str] = Field(default=None, max_length=300)
+    source_metadata: Dict[str, object] = Field(default_factory=dict)
+    message_order: Optional[int] = Field(default=None, ge=0)
+
+
+DiscordMessageInput = SourceMessageInput
 
 
 class ImportRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, max_length=64)
-    messages: List[DiscordMessageInput] = Field(min_length=1, max_length=400)
+    messages: List[SourceMessageInput] = Field(min_length=1, max_length=400)
 
 
 class ImportResponse(BaseModel):
     imported_count: int
     chunk_count: int
-    messages: List[DiscordMessageInput]
+    messages: List[SourceMessageInput]
     raw_stored_count: int = 0
     unique_content_count: int = 0
 
@@ -64,6 +76,8 @@ class ChatSource(BaseModel):
     source_message_ids: List[str] = Field(default_factory=list)
     channel_id: Optional[str] = None
     guild_id: Optional[str] = None
+    source_type: str = "discord"
+    conversation_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -132,9 +146,16 @@ class ChannelResumePoint(BaseModel):
 
 
 class IngestionSessionRequest(BaseModel):
-    guild_id: str = Field(min_length=1, max_length=128)
-    channel_id: str = Field(min_length=1, max_length=128)
+    guild_id: Optional[str] = Field(default=None, max_length=128)
+    channel_id: Optional[str] = Field(default=None, max_length=128)
     channel: Optional[str] = Field(default=None, max_length=300)
+    source_type: str = Field(
+        default="discord", max_length=50, pattern=r"^[a-z][a-z0-9_-]*$",
+    )
+    conversation_id: Optional[str] = Field(default=None, max_length=256)
+    conversation_label: Optional[str] = Field(default=None, max_length=300)
+    container_id: Optional[str] = Field(default=None, max_length=256)
+    container_label: Optional[str] = Field(default=None, max_length=300)
 
 
 class IngestionSessionView(BaseModel):
@@ -158,3 +179,55 @@ class IndexingJobView(BaseModel):
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+
+
+class SourceConversationView(BaseModel):
+    source_type: str
+    conversation_id: str
+    display_name: str
+    container_name: Optional[str] = None
+    message_count: int = 0
+
+
+class WhatsAppPreviewMessage(BaseModel):
+    author: str
+    content: str
+    timestamp: Optional[datetime] = None
+
+
+class WhatsAppImportPreview(BaseModel):
+    file_name: str
+    text_entry: Optional[str] = None
+    detected_date_order: Optional[Literal["DMY", "MDY"]] = None
+    requires_date_order: bool = False
+    message_count: int
+    media_placeholder_count: int = 0
+    system_message_count: int = 0
+    samples: List[WhatsAppPreviewMessage] = Field(default_factory=list)
+    available_text_entries: List[str] = Field(default_factory=list)
+    requires_text_entry: bool = False
+
+
+class WhatsAppImportResponse(BaseModel):
+    parsed_count: int
+    imported_count: int
+    duplicate_count: int
+    skipped_count: int
+    conversation_id: str
+    indexing_job_id: Optional[str] = None
+
+
+class IntegrationSyncState(BaseModel):
+    source_type: str = Field(pattern=r"^[a-z][a-z0-9_-]*$")
+    conversation_id: str
+    container_id: Optional[str] = None
+    conversation_label: Optional[str] = None
+    container_label: Optional[str] = None
+    oldest_cursor: Optional[str] = None
+    newest_cursor: Optional[str] = None
+    active_session_id: Optional[str] = None
+    backfill_complete: bool = False
+    tracking_enabled: bool = True
+    last_error: Optional[str] = None
+    raw_message_count: int = 0
+    indexed_message_count: int = 0

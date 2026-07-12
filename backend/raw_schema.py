@@ -3,6 +3,12 @@ from typing import List
 
 def raw_schema_statements() -> List[str]:
     return [
+        """DO $$ BEGIN
+            IF to_regclass('source_messages') IS NULL
+               AND to_regclass('discord_messages') IS NOT NULL THEN
+                ALTER TABLE discord_messages RENAME TO source_messages;
+            END IF;
+        END $$""",
         """CREATE TABLE IF NOT EXISTS message_contents (
             content_hash TEXT PRIMARY KEY, content TEXT NOT NULL,
             occurrence_count BIGINT NOT NULL DEFAULT 0,
@@ -10,22 +16,59 @@ def raw_schema_statements() -> List[str]:
               (to_tsvector('simple', content)) STORED)""",
         """CREATE INDEX IF NOT EXISTS message_contents_search_gin
             ON message_contents USING gin(search_vector)""",
-        """CREATE TABLE IF NOT EXISTS discord_messages (
+        """CREATE TABLE IF NOT EXISTS source_messages (
             external_id TEXT PRIMARY KEY, message_order NUMERIC(20,0) NOT NULL,
             author TEXT NOT NULL, sent_at TIMESTAMPTZ, channel TEXT,
-            channel_id TEXT, guild_id TEXT, content_hash TEXT NOT NULL
-              REFERENCES message_contents(content_hash), updated_at TIMESTAMPTZ DEFAULT NOW())""",
-        """CREATE INDEX IF NOT EXISTS discord_messages_channel_order
-            ON discord_messages(channel_id, message_order)""",
-        """CREATE INDEX IF NOT EXISTS discord_messages_content_order
-            ON discord_messages(content_hash, message_order)""",
+            channel_id TEXT, guild_id TEXT, source_type TEXT NOT NULL DEFAULT 'discord',
+            conversation_id TEXT, conversation_label TEXT, container_id TEXT,
+            container_label TEXT, source_metadata JSONB NOT NULL DEFAULT '{}',
+            content_hash TEXT NOT NULL REFERENCES message_contents(content_hash),
+            updated_at TIMESTAMPTZ DEFAULT NOW())""",
+        """ALTER TABLE source_messages
+            ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'discord'""",
+        """ALTER TABLE source_messages ADD COLUMN IF NOT EXISTS conversation_id TEXT""",
+        """ALTER TABLE source_messages ADD COLUMN IF NOT EXISTS conversation_label TEXT""",
+        """ALTER TABLE source_messages ADD COLUMN IF NOT EXISTS container_id TEXT""",
+        """ALTER TABLE source_messages ADD COLUMN IF NOT EXISTS container_label TEXT""",
+        """ALTER TABLE source_messages
+            ADD COLUMN IF NOT EXISTS source_metadata JSONB NOT NULL DEFAULT '{}'""",
+        """UPDATE source_messages SET conversation_id=COALESCE(conversation_id,channel_id),
+            conversation_label=COALESCE(conversation_label,channel),
+            container_id=COALESCE(container_id,guild_id)""",
+        """CREATE INDEX IF NOT EXISTS source_messages_conversation_order
+            ON source_messages(source_type,conversation_id,message_order)""",
+        """CREATE INDEX IF NOT EXISTS source_messages_content_order
+            ON source_messages(content_hash,message_order)""",
         """CREATE TABLE IF NOT EXISTS ingestion_sessions (
-            id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
-            channel TEXT, status TEXT NOT NULL, raw_message_count BIGINT DEFAULT 0,
+            id TEXT PRIMARY KEY, guild_id TEXT, channel_id TEXT, channel TEXT,
+            source_type TEXT NOT NULL DEFAULT 'discord', conversation_id TEXT,
+            conversation_label TEXT, container_id TEXT, container_label TEXT,
+            status TEXT NOT NULL, raw_message_count BIGINT DEFAULT 0,
             created_at TIMESTAMPTZ DEFAULT NOW(), finished_at TIMESTAMPTZ)""",
+        """ALTER TABLE ingestion_sessions
+            ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'discord'""",
+        """ALTER TABLE ingestion_sessions ADD COLUMN IF NOT EXISTS conversation_id TEXT""",
+        """ALTER TABLE ingestion_sessions ADD COLUMN IF NOT EXISTS conversation_label TEXT""",
+        """ALTER TABLE ingestion_sessions ADD COLUMN IF NOT EXISTS container_id TEXT""",
+        """ALTER TABLE ingestion_sessions ADD COLUMN IF NOT EXISTS container_label TEXT""",
+        """DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name='ingestion_sessions'
+                         AND column_name='guild_id' AND is_nullable='NO') THEN
+                ALTER TABLE ingestion_sessions ALTER COLUMN guild_id DROP NOT NULL;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name='ingestion_sessions'
+                         AND column_name='channel_id' AND is_nullable='NO') THEN
+                ALTER TABLE ingestion_sessions ALTER COLUMN channel_id DROP NOT NULL;
+            END IF;
+        END $$""",
+        """UPDATE ingestion_sessions SET conversation_id=COALESCE(conversation_id,channel_id),
+            conversation_label=COALESCE(conversation_label,channel),
+            container_id=COALESCE(container_id,guild_id)""",
         """CREATE TABLE IF NOT EXISTS ingestion_session_messages (
             session_id TEXT REFERENCES ingestion_sessions(id) ON DELETE CASCADE,
-            message_id TEXT REFERENCES discord_messages(external_id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             PRIMARY KEY(session_id,message_id))""",
         """CREATE TABLE IF NOT EXISTS indexing_jobs (
             id TEXT PRIMARY KEY, session_id TEXT UNIQUE REFERENCES ingestion_sessions(id),
@@ -41,6 +84,15 @@ def raw_schema_statements() -> List[str]:
             ON indexing_jobs(status, lease_expires_at, created_at)""",
         """CREATE TABLE IF NOT EXISTS indexing_job_messages (
             job_id TEXT REFERENCES indexing_jobs(id) ON DELETE CASCADE,
-            message_id TEXT REFERENCES discord_messages(external_id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             PRIMARY KEY(job_id,message_id))""",
+        """CREATE TABLE IF NOT EXISTS integration_sync_states (
+            source_type TEXT NOT NULL, conversation_id TEXT NOT NULL,
+            container_id TEXT, conversation_label TEXT, container_label TEXT,
+            oldest_cursor TEXT, newest_cursor TEXT, backfill_complete BOOLEAN DEFAULT FALSE,
+            active_session_id TEXT, tracking_enabled BOOLEAN DEFAULT TRUE, last_error TEXT,
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY(source_type,conversation_id))""",
+        """ALTER TABLE integration_sync_states
+            ADD COLUMN IF NOT EXISTS active_session_id TEXT""",
     ]

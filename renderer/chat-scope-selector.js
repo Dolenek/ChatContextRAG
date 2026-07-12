@@ -46,24 +46,19 @@ function createScopeOption(scope) {
   const key = `${scope.source_type}:${scope.conversation_id}`;
   availableChatScopes.set(key, scope);
   const messageSuffix = scope.message_count === 1 ? "zpráva" : "zpráv";
-  return new Option(
-    `${scope.display_name} · ${scope.message_count} ${messageSuffix}`,
-    key,
-  );
+  return new Option(`${scope.display_name} · ${scope.message_count} ${messageSuffix}`, key);
 }
 
 function sourceDisplayName(sourceType) {
   if (sourceType === "discord") return "Discord kanály";
+  if (sourceType === "whatsapp") return "WhatsApp konverzace";
   return sourceType.charAt(0).toUpperCase() + sourceType.slice(1);
 }
 
 function getSelectedScope() {
   const selected = availableChatScopes.get(chatScopeSelect.value);
   if (!selected) return null;
-  return {
-    source_type: selected.source_type,
-    conversation_id: selected.conversation_id,
-  };
+  return { source_type: selected.source_type, conversation_id: selected.conversation_id };
 }
 
 function selectedScopeLabel() {

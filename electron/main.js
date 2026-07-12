@@ -3,11 +3,14 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 
 const { BackendProcess, BACKEND_URL } = require("./backend-process");
 const { DiscordViewController } = require("./discord-view");
+const { IntegrationIpcController } = require("./integration-ipc");
+const { readBackendResponse } = require("./backend-response");
 
 const projectRoot = path.resolve(__dirname, "..");
 const backendProcess = new BackendProcess(projectRoot);
 let mainWindow;
 let discordController;
+let integrationController;
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -35,7 +38,7 @@ async function postJson(endpoint, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const responseBody = await response.json();
+  const responseBody = await readBackendResponse(response);
   if (!response.ok) {
     throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
   }
@@ -44,7 +47,7 @@ async function postJson(endpoint, body) {
 
 async function getJson(endpoint) {
   const response = await fetch(`${BACKEND_URL}${endpoint}`);
-  const responseBody = await response.json();
+  const responseBody = await readBackendResponse(response);
   if (!response.ok) {
     throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
   }
@@ -57,7 +60,16 @@ async function deleteJson(endpoint, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const responseBody = await response.json();
+  const responseBody = await readBackendResponse(response);
+  if (!response.ok) {
+    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
+  }
+  return responseBody;
+}
+
+async function postMultipart(endpoint, form) {
+  const response = await fetch(`${BACKEND_URL}${endpoint}`, { method: "POST", body: form });
+  const responseBody = await readBackendResponse(response);
   if (!response.ok) {
     throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
   }
@@ -167,14 +179,21 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   try {
     await backendProcess.start();
+    integrationController = new IntegrationIpcController({
+      postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
+    });
+    integrationController.register();
     await createWindow();
+    await integrationController.restoreBot();
   } catch (error) {
     console.error(error);
-    app.quit();
+    backendProcess.stop();
+    app.exit(1);
   }
 });
 
-app.on("window-all-closed", () => {
+app.on("window-all-closed", async () => {
+  await integrationController?.shutdown();
   backendProcess.stop();
   if (process.platform !== "darwin") app.quit();
 });

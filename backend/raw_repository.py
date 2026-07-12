@@ -5,7 +5,10 @@ from typing import Iterator, List, Optional, Sequence
 import psycopg
 
 from backend.indexing_job_repository import PostgresIndexingJobRepository
-from backend.models import IndexingJobView, IngestionSessionRequest, IngestionSessionView
+from backend.models import (
+    IndexingJobView, IngestionSessionRequest, IngestionSessionView,
+    IntegrationSyncState, SourceConversationView,
+)
 from backend.openai_gateway import ExternalIntegrationError
 from backend.pending_indexing import PostgresPendingIndexingJobCreator
 from backend.raw_message_writer import RawMessageWriter
@@ -27,13 +30,24 @@ class PostgresRawMessageRepository:
     def create_session(self, request: IngestionSessionRequest) -> IngestionSessionView:
         self.ensure_schema()
         session_id = str(uuid.uuid4())
-        with self._connect() as connection:
-            connection.execute(
-                """INSERT INTO ingestion_sessions
-                   (id, guild_id, channel_id, channel, status)
-                   VALUES (%s, %s, %s, %s, 'running')""",
-                (session_id, request.guild_id, request.channel_id, request.channel),
-            )
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    """INSERT INTO ingestion_sessions
+                       (id,guild_id,channel_id,channel,source_type,conversation_id,
+                        conversation_label,container_id,container_label,status)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'running')""",
+                    (
+                        session_id, request.guild_id, request.channel_id, request.channel,
+                        request.source_type, request.conversation_id or request.channel_id,
+                        request.conversation_label or request.channel,
+                        request.container_id or request.guild_id, request.container_label,
+                    ),
+                )
+        except psycopg.Error as error:
+            raise ExternalIntegrationError(
+                "PostgreSQL ingestion session creation failed.",
+            ) from error
         return IngestionSessionView(session_id=session_id, status="running")
 
     def store_messages(
@@ -89,10 +103,12 @@ class PostgresRawMessageRepository:
                      SELECT message_id FROM session_ids UNION
                      SELECT message_id FROM rag_chunk_messages
                      WHERE chunk_id IN (SELECT chunk_id FROM affected_chunks))
-                   SELECT m.external_id, m.author, c.content, m.sent_at, m.channel,
-                          m.channel_id, m.guild_id
-                   FROM target_ids target
-                   JOIN discord_messages m ON m.external_id=target.message_id
+                    SELECT m.external_id,m.author,c.content,m.sent_at,m.channel,
+                           m.channel_id,m.guild_id,m.source_type,m.conversation_id,
+                           m.conversation_label,m.container_id,m.container_label,
+                           m.source_metadata,m.message_order
+                    FROM target_ids target
+                    JOIN source_messages m ON m.external_id=target.message_id
                    JOIN message_contents c ON c.content_hash=m.content_hash
                    ORDER BY m.message_order, m.external_id""",
                 (session_id,),
@@ -110,9 +126,11 @@ class PostgresRawMessageRepository:
             cursor.itersize = page_size
             cursor.execute(
                 """SELECT m.external_id,m.author,c.content,m.sent_at,m.channel,
-                          m.channel_id,m.guild_id
+                          m.channel_id,m.guild_id,m.source_type,m.conversation_id,
+                          m.conversation_label,m.container_id,m.container_label,
+                          m.source_metadata,m.message_order
                    FROM indexing_job_messages jm
-                   JOIN discord_messages m ON m.external_id=jm.message_id
+                   JOIN source_messages m ON m.external_id=jm.message_id
                    JOIN message_contents c ON c.content_hash=m.content_hash
                    WHERE jm.job_id=%s ORDER BY m.message_order,m.external_id""", (job_id,),
             )
@@ -141,22 +159,99 @@ class PostgresRawMessageRepository:
         self.ensure_schema()
         with self._connect() as connection:
             row = connection.execute(
-                """SELECT external_id FROM discord_messages
-                   WHERE channel_id=%s OR (channel_id IS NULL AND channel=%s)
+                """SELECT external_id FROM source_messages
+                   WHERE source_type='discord' AND
+                     (channel_id=%s OR (channel_id IS NULL AND channel=%s))
                    ORDER BY message_order, external_id LIMIT 1""",
                 (channel_id, channel_name),
             ).fetchone()
         return row[0] if row else None
 
+    def list_conversations(self, source_type: str) -> List[SourceConversationView]:
+        self.ensure_schema()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT source_type,conversation_id,
+                          COALESCE(MAX(conversation_label),MAX(channel),'Unnamed conversation'),
+                          COALESCE(MAX(container_label),MAX(container_id)),COUNT(*)
+                   FROM source_messages WHERE source_type=%s
+                     AND conversation_id IS NOT NULL
+                   GROUP BY source_type,conversation_id
+                   ORDER BY 3""", (source_type,),
+            ).fetchall()
+        return [SourceConversationView(
+            source_type=row[0], conversation_id=row[1], display_name=row[2],
+            container_name=row[3], message_count=row[4],
+        ) for row in rows]
+
+    def list_sync_states(self, source_type: str) -> List[IntegrationSyncState]:
+        self.ensure_schema()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT state.source_type,state.conversation_id,state.container_id,
+                          state.conversation_label,
+                          container_label,oldest_cursor,newest_cursor,active_session_id,
+                          backfill_complete,
+                          tracking_enabled,last_error,
+                          (SELECT COUNT(*) FROM source_messages message
+                           WHERE message.source_type=state.source_type
+                             AND message.conversation_id=state.conversation_id),
+                          (SELECT COUNT(DISTINCT link.message_id)
+                           FROM rag_chunk_messages link JOIN source_messages message
+                             ON message.external_id=link.message_id
+                           WHERE message.source_type=state.source_type
+                             AND message.conversation_id=state.conversation_id)
+                   FROM integration_sync_states state
+                   WHERE state.source_type=%s ORDER BY conversation_label""", (source_type,),
+            ).fetchall()
+        return [IntegrationSyncState(
+            source_type=row[0], conversation_id=row[1], container_id=row[2],
+            conversation_label=row[3], container_label=row[4], oldest_cursor=row[5],
+            newest_cursor=row[6], active_session_id=row[7], backfill_complete=row[8],
+            tracking_enabled=row[9], last_error=row[10], raw_message_count=row[11],
+            indexed_message_count=row[12],
+        ) for row in rows]
+
+    def upsert_sync_state(self, state: IntegrationSyncState) -> IntegrationSyncState:
+        self.ensure_schema()
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO integration_sync_states
+                   (source_type,conversation_id,container_id,conversation_label,
+                    container_label,oldest_cursor,newest_cursor,backfill_complete,
+                    active_session_id,tracking_enabled,last_error,updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                   ON CONFLICT(source_type,conversation_id) DO UPDATE SET
+                     container_id=EXCLUDED.container_id,
+                     conversation_label=EXCLUDED.conversation_label,
+                     container_label=EXCLUDED.container_label,
+                     oldest_cursor=EXCLUDED.oldest_cursor,
+                     newest_cursor=EXCLUDED.newest_cursor,
+                     backfill_complete=EXCLUDED.backfill_complete,
+                     active_session_id=EXCLUDED.active_session_id,
+                     tracking_enabled=EXCLUDED.tracking_enabled,
+                     last_error=EXCLUDED.last_error,updated_at=NOW()""",
+                (
+                    state.source_type, state.conversation_id, state.container_id,
+                    state.conversation_label, state.container_label, state.oldest_cursor,
+                    state.newest_cursor, state.backfill_complete,
+                    state.active_session_id, state.tracking_enabled, state.last_error,
+                ),
+            )
+        return next(
+            item for item in self.list_sync_states(state.source_type)
+            if item.conversation_id == state.conversation_id
+        )
+
     def delete_all(self) -> tuple:
         self.ensure_schema()
         with self._connect() as connection:
             chunk_count = connection.execute("SELECT COUNT(*) FROM rag_chunks").fetchone()[0]
-            message_count = connection.execute("SELECT COUNT(*) FROM discord_messages").fetchone()[0]
+            message_count = connection.execute("SELECT COUNT(*) FROM source_messages").fetchone()[0]
             connection.execute("TRUNCATE rag_staged_chunk_messages, rag_staged_chunks, "
                                "rag_chunk_messages, rag_chunks, indexing_job_messages, indexing_jobs, "
                                "ingestion_session_messages, ingestion_sessions, "
-                               "discord_messages, message_contents CASCADE")
+                               "integration_sync_states, source_messages, message_contents CASCADE")
         return chunk_count, message_count
 
     def delete_session(self, session_id: str) -> None:
@@ -179,7 +274,8 @@ class PostgresRawMessageRepository:
     def _create_schema(self) -> None:
         statements = self._schema_statements()
         try:
-            with psycopg.connect(self.database_dsn, autocommit=True) as connection:
+            with psycopg.connect(self.database_dsn) as connection:
+                connection.execute("SELECT pg_advisory_xact_lock(1812199000)")
                 connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
                 for statement in statements:
                     connection.execute(statement)

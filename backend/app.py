@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,9 +9,10 @@ from backend.models import (
     ChannelResumePoint, ChatRequest, ChatResponse, ChatScopeList, ClearDatabaseRequest,
     ClearDatabaseResponse, DatabaseOverview, FinishIngestionRequest, HealthResponse,
     ImportRequest, ImportResponse, IndexingJobView, IngestionSessionRequest,
-    IngestionSessionView,
+    IngestionSessionView, IntegrationSyncState, SourceConversationView, WhatsAppImportPreview,
+    WhatsAppImportResponse,
 )
-from backend.normalization import DiscordMessageNormalizer
+from backend.normalization import SourceMessageNormalizer
 from backend.openai_gateway import (
     ExternalIntegrationError,
     IntegrationConfigurationError,
@@ -24,6 +25,7 @@ from backend.indexing_worker import PersistentIndexingWorker
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
 from backend.chat_scope_catalog import PostgresChatScopeCatalog
+from backend.whatsapp_import import WhatsAppImportCoordinator
 from backend.settings import ApplicationSettings
 
 
@@ -43,7 +45,9 @@ def create_app(
         ingestion_service, chat_service, overview_service
     )
     _register_exception_handlers(application)
-    _register_ingestion_routes(application, active_ingestion)
+    _register_ingestion_routes(
+        application, active_ingestion, WhatsAppImportCoordinator(active_ingestion),
+    )
     _register_chat_routes(application, active_chat)
     _register_database_routes(application, active_overview)
     return application
@@ -69,6 +73,7 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
 def _register_ingestion_routes(
     application: FastAPI, ingestion_service: MessageIngestionService,
+    whatsapp_importer: WhatsAppImportCoordinator,
 ) -> None:
     @application.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -77,6 +82,62 @@ def _register_ingestion_routes(
     @application.post("/messages/import", response_model=ImportResponse)
     def import_messages(request: ImportRequest) -> ImportResponse:
         return ingestion_service.ingest(request)
+
+    @application.get(
+        "/ingestion/conversations", response_model=list[SourceConversationView],
+    )
+    def source_conversations(
+        source_type: str = Query(pattern=r"^[a-z][a-z0-9_-]*$"),
+    ) -> list[SourceConversationView]:
+        return ingestion_service.list_conversations(source_type)
+
+    @application.get(
+        "/integrations/sync-states", response_model=list[IntegrationSyncState],
+    )
+    def integration_sync_states(
+        source_type: str = Query(pattern=r"^[a-z][a-z0-9_-]*$"),
+    ) -> list[IntegrationSyncState]:
+        return ingestion_service.list_sync_states(source_type)
+
+    @application.post(
+        "/integrations/sync-state", response_model=IntegrationSyncState,
+    )
+    def update_integration_sync_state(
+        state: IntegrationSyncState,
+    ) -> IntegrationSyncState:
+        return ingestion_service.upsert_sync_state(state)
+
+    @application.post(
+        "/imports/whatsapp/preview", response_model=WhatsAppImportPreview,
+    )
+    async def preview_whatsapp_import(
+        export_file: UploadFile = File(),
+        date_order: Optional[str] = Form(default=None),
+        timezone_name: str = Form(default="UTC"),
+        text_entry: Optional[str] = Form(default=None),
+    ) -> WhatsAppImportPreview:
+        payload = await _read_import_file(export_file)
+        return whatsapp_importer.preview(
+            payload, export_file.filename or "export.txt", date_order,
+            timezone_name, text_entry,
+        )
+
+    @application.post(
+        "/imports/whatsapp", response_model=WhatsAppImportResponse,
+    )
+    async def import_whatsapp_export(
+        export_file: UploadFile = File(),
+        conversation_id: str = Form(min_length=1, max_length=256),
+        conversation_label: str = Form(min_length=1, max_length=300),
+        date_order: Optional[str] = Form(default=None),
+        timezone_name: str = Form(default="UTC"),
+        text_entry: Optional[str] = Form(default=None),
+    ) -> WhatsAppImportResponse:
+        payload = await _read_import_file(export_file)
+        return whatsapp_importer.import_export(
+            payload, export_file.filename or "export.txt", conversation_id,
+            conversation_label, date_order, timezone_name, text_entry,
+        )
 
     @application.post("/ingestion/sessions", response_model=IngestionSessionView)
     def create_ingestion_session(request: IngestionSessionRequest) -> IngestionSessionView:
@@ -105,6 +166,14 @@ def _register_ingestion_routes(
     @application.post("/indexing/jobs/pending", response_model=IndexingJobView)
     def queue_pending_indexing_job() -> IndexingJobView:
         return ingestion_service.queue_pending_messages()
+
+
+async def _read_import_file(export_file: UploadFile) -> bytes:
+    maximum_bytes = 100 * 1024 * 1024
+    payload = await export_file.read(maximum_bytes + 1)
+    if len(payload) > maximum_bytes:
+        raise ValueError("WhatsApp export překračuje limit 100 MiB.")
+    return payload
 
 
 def _register_chat_routes(application: FastAPI, chat_service: DatabaseChatService) -> None:
@@ -174,7 +243,7 @@ def _build_default_services() -> tuple:
     )
     indexing_worker.start()
     ingestion = MessageIngestionService(
-        DiscordMessageNormalizer(), raw_repository, indexing_worker,
+        SourceMessageNormalizer(), raw_repository, indexing_worker,
     )
     chat = DatabaseChatService(
         repository, embedding_provider, chat_provider, hybrid_repository,

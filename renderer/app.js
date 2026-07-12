@@ -3,6 +3,8 @@ const screens = {
   result: document.querySelector("#result-screen"),
   chat: document.querySelector("#chat-screen"),
   overview: document.querySelector("#overview-screen"),
+  discordBot: document.querySelector("#discord-bot-screen"),
+  whatsapp: document.querySelector("#whatsapp-screen"),
 };
 const discordActions = document.querySelector("#discord-actions");
 const toast = document.querySelector("#toast");
@@ -202,7 +204,7 @@ function renderOverviewStats(overview) {
     ["Zaindexované zprávy", overview.indexed_message_count],
     ["Čeká na index", overview.pending_message_count],
     ["Velikost databáze", overview.database_size],
-    ["Kanály", overview.total_channels], ["Autoři", overview.total_authors],
+    ["Konverzace", overview.total_channels], ["Autoři", overview.total_authors],
     ["Nejstarší zpráva", formatDate(overview.oldest_message_at)],
     ["Nejnovější zpráva", formatDate(overview.newest_message_at)],
   ];
@@ -236,7 +238,7 @@ function createDatabaseChunkCard(chunk) {
   card.className = "database-chunk-card";
   const header = document.createElement("div");
   header.className = "chunk-meta";
-  header.textContent = `${chunk.channel || "Bez kanálu"} · ${chunk.authors.join(", ")} · ${formatDate(chunk.started_at)}`;
+  header.textContent = `${chunk.channel || "Bez konverzace"} · ${chunk.authors.join(", ")} · ${formatDate(chunk.started_at)}`;
   const content = document.createElement("p");
   content.textContent = chunk.content;
   const footer = document.createElement("small");

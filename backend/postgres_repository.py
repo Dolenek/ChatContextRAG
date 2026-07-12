@@ -172,7 +172,9 @@ class PostgresVectorRepository(VectorRepository):
         return """
             SELECT content, authors, channel, started_at,
                    1 - (embedding <=> %s) AS similarity_score,
-                   source_message_ids, metadata->>'channel_id', metadata->>'guild_id'
+                   source_message_ids, metadata->>'channel_id', metadata->>'guild_id',
+                   COALESCE(metadata->>'source_type','discord'),
+                   COALESCE(metadata->>'conversation_id',metadata->>'channel_id')
             FROM conversation_chunks
             WHERE (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
               AND (%s::text IS NULL OR COALESCE(metadata->>'conversation_id',
@@ -218,4 +220,5 @@ class PostgresVectorRepository(VectorRepository):
             content=row[0], authors=row[1], channel=row[2], started_at=row[3],
             similarity_score=float(row[4]), source_message_ids=row[5],
             channel_id=row[6], guild_id=row[7],
+            source_type=row[8], conversation_id=row[9],
         )

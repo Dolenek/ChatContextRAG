@@ -1,0 +1,93 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const { dialog, ipcMain, shell } = require("electron");
+const { DiscordBotController } = require("./discord-bot");
+
+class IntegrationIpcController {
+  constructor(options) {
+    this.postJson = options.postJson;
+    this.getJson = options.getJson;
+    this.postMultipart = options.postMultipart;
+    this.getMainWindow = options.getMainWindow;
+    this.selectedWhatsAppPath = null;
+    this.bot = new DiscordBotController({
+      api: this.botApi(),
+      onProgress: (progress) => this.sendProgress(progress),
+    });
+  }
+
+  register() {
+    ipcMain.handle("discord-bot:status", () => this.bot.status());
+    ipcMain.handle("discord-bot:connect", (_event, token) => this.bot.connect(token));
+    ipcMain.handle("discord-bot:disconnect", () => this.bot.disconnect());
+    ipcMain.handle("discord-bot:invite", async () => {
+      const url = this.bot.inviteUrl();
+      await shell.openExternal(url);
+      return { opened: true };
+    });
+    ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
+    ipcMain.handle("whatsapp:preview", (_event, options) =>
+      this.sendWhatsAppFile("/imports/whatsapp/preview", options));
+    ipcMain.handle("whatsapp:import", (_event, options) =>
+      this.sendWhatsAppFile("/imports/whatsapp", options));
+    ipcMain.handle("whatsapp:conversations", () =>
+      this.getJson("/ingestion/conversations?source_type=whatsapp"));
+  }
+
+  botApi() {
+    return {
+      createSession: (context) => this.postJson("/ingestion/sessions", context),
+      importMessages: (sessionId, messages) => this.importMessageBatches(sessionId, messages),
+      finishSession: (sessionId, reason) =>
+        this.postJson(`/ingestion/sessions/${sessionId}/finish`, { reason }),
+      listSyncStates: (sourceType) =>
+        this.getJson(`/integrations/sync-states?source_type=${encodeURIComponent(sourceType)}`),
+      saveSyncState: (state) => this.postJson("/integrations/sync-state", state),
+    };
+  }
+
+  async importMessageBatches(sessionId, messages) {
+    let latest = null;
+    for (let start = 0; start < messages.length; start += 400) {
+      latest = await this.postJson("/messages/import", {
+        session_id: sessionId, messages: messages.slice(start, start + 400),
+      });
+    }
+    return latest;
+  }
+
+  async selectWhatsAppExport() {
+    const result = await dialog.showOpenDialog(this.getMainWindow(), {
+      properties: ["openFile"],
+      filters: [{ name: "WhatsApp export", extensions: ["txt", "zip"] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    this.selectedWhatsAppPath = result.filePaths[0];
+    return { fileName: path.basename(this.selectedWhatsAppPath) };
+  }
+
+  async sendWhatsAppFile(endpoint, options = {}) {
+    if (!this.selectedWhatsAppPath) throw new Error("Nejdřív vyberte WhatsApp export.");
+    const payload = fs.readFileSync(this.selectedWhatsAppPath);
+    const form = new FormData();
+    form.append("export_file", new Blob([payload]), path.basename(this.selectedWhatsAppPath));
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== null && value !== undefined && value !== "") form.append(key, String(value));
+    }
+    return this.postMultipart(endpoint, form);
+  }
+
+  sendProgress(progress) {
+    this.getMainWindow()?.webContents.send("discord-bot:progress", progress);
+  }
+
+  restoreBot() {
+    return this.bot.restore();
+  }
+
+  shutdown() {
+    return this.bot.shutdown();
+  }
+}
+
+module.exports = { IntegrationIpcController };
