@@ -110,7 +110,9 @@ function renderScanProgress(progress) {
 function renderIndexingProgress(job) {
   const status = document.querySelector("#scan-progress");
   const error = job.last_error ? ` · chyba: ${job.last_error}` : "";
-  status.textContent = `RAG index: ${job.status} · zprávy ${job.processed_messages}/${job.total_messages} · chunky ${job.stored_chunks}${error}`;
+  const source = window.indexingControls.sourceLabel(job);
+  const sourceSuffix = source ? ` · ${source}` : "";
+  status.textContent = `RAG index: ${job.status}${sourceSuffix} · zprávy ${job.processed_messages}/${job.total_messages} · chunky ${job.stored_chunks}${error}`;
   status.title = status.textContent;
 }
 

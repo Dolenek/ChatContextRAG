@@ -144,7 +144,8 @@ class PostgresIndexingJobRepository:
             self._assert_owned_job(connection, job_id, worker_id)
             connection.execute("DELETE FROM indexing_job_messages WHERE job_id=%s", (job_id,))
             connection.execute(
-                snapshot_messages_sql(), (session_id, job_id, job_id, job_id),
+                snapshot_messages_sql(),
+                (session_id, job_id, job_id, job_id, job_id, job_id),
             )
             count = connection.execute(
                 "SELECT COUNT(*) FROM indexing_job_messages WHERE job_id=%s", (job_id,),
@@ -205,6 +206,9 @@ class PostgresIndexingJobRepository:
         embedding_index_id = row[10] if len(row) > 10 else None
         embedding_index_name = row[11] if len(row) > 11 else None
         job_type = row[12] if len(row) > 12 else "incremental"
+        source_type = row[13] if len(row) > 13 else None
+        source_conversation_label = row[14] if len(row) > 14 else None
+        source_container_label = row[15] if len(row) > 15 else None
         return IndexingJobView(
             job_id=row[0], session_id=row[1], status=row[2], total_messages=row[3],
             processed_messages=row[4], stored_chunks=row[5], last_error=row[6],
@@ -212,4 +216,7 @@ class PostgresIndexingJobRepository:
             embedding_index_id=embedding_index_id,
             embedding_index_name=embedding_index_name,
             job_type=job_type or "incremental",
+            source_type=source_type,
+            source_conversation_label=source_conversation_label,
+            source_container_label=source_container_label,
         )

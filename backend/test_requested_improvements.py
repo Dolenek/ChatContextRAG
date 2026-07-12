@@ -6,6 +6,8 @@ import pytest
 from backend.chunking import ConversationAwareChunker
 from backend.hybrid_retrieval import PostgresHybridRetrieval
 from backend.indexing_worker import PersistentIndexingWorker
+from backend.indexing_job_sql import snapshot_messages_sql
+from backend.raw_message_writer import RawMessageWriter
 from backend.raw_schema import raw_schema_statements
 from backend.services import DatabaseChatService
 from backend.vector_models import NormalizedMessage, RetrievedChunk
@@ -25,6 +27,16 @@ def test_raw_schema_seeds_current_environment_embedding_defaults() -> None:
 
     assert "'previous-model''s-id',768,768,'ready'" in schema
     assert "ON CONFLICT(id) DO NOTHING" in schema
+
+
+def test_repeated_ingestion_only_snapshots_new_or_changed_messages() -> None:
+    upsert = RawMessageWriter._message_upsert_sql()
+    snapshot = snapshot_messages_sql()
+
+    assert "IS DISTINCT FROM" in upsert
+    assert "chunk.updated_at<source.updated_at" in snapshot
+    assert "NOT EXISTS (SELECT 1 FROM rag_chunk_messages" in snapshot
+    assert "affected AS" in snapshot
 
 
 def test_vector_candidates_are_limited_before_source_hash_aggregation() -> None:
@@ -83,6 +95,17 @@ def test_indexer_rejects_missing_or_malformed_embeddings() -> None:
         worker._attach_embeddings([object(), object()], [[0.1, 0.2]])
     with pytest.raises(ValueError, match="unexpected vector dimension"):
         worker._attach_embeddings([object()], [[0.1]])
+
+
+def test_indexer_uses_provider_resolved_for_embedding_index() -> None:
+    provider = DimensionedEmbeddingProvider()
+    worker = PersistentIndexingWorker(
+        SimpleNamespace(), SimpleNamespace(), ConversationAwareChunker(), None,
+    )
+
+    embedded = worker._attach_embeddings([object()], [[0.1, 0.2]], provider)
+
+    assert embedded[0].embedding_model == provider.model_name
 
 
 def test_chat_sources_keep_discord_identity_for_ui_deep_links() -> None:

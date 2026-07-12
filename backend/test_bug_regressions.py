@@ -299,3 +299,19 @@ def test_claiming_can_recover_only_expired_jobs_and_assigns_an_owner() -> None:
     assert "FOR UPDATE SKIP LOCKED" in selection_sql
     assert "worker_id=%s" in assignment_sql
     assert "make_interval" in assignment_sql
+    assert "UPDATE embedding_indexes" in assignment_sql
+    assert "SET last_error=NULL" in assignment_sql
+    assert "THEN 'building'" in assignment_sql
+
+
+def test_indexing_job_view_includes_source_identity() -> None:
+    row = (
+        "job-1", "session-1", "running", 20, 10, 2, None, None, None, None,
+        "index-1", "Primary", "incremental", "discord", "general", "Workspace",
+    )
+
+    view = PostgresIndexingJobRepository._to_view(row)
+
+    assert view.source_type == "discord"
+    assert view.source_conversation_label == "general"
+    assert view.source_container_label == "Workspace"

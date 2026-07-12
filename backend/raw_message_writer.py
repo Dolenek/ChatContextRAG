@@ -46,23 +46,33 @@ class RawMessageWriter:
             self.content_hash(message.content),
         ) for message in messages]
         with connection.cursor() as cursor:
-            cursor.executemany(
-                """INSERT INTO source_messages
-                   (external_id,message_order,author,sent_at,channel,channel_id,guild_id,
-                    source_type,conversation_id,conversation_label,container_id,
-                    container_label,source_metadata,content_hash)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT(external_id) DO UPDATE SET author=EXCLUDED.author,
-                     sent_at=EXCLUDED.sent_at, channel=EXCLUDED.channel,
-                     channel_id=EXCLUDED.channel_id, guild_id=EXCLUDED.guild_id,
-                     source_type=EXCLUDED.source_type,
-                     conversation_id=EXCLUDED.conversation_id,
-                     conversation_label=EXCLUDED.conversation_label,
-                     container_id=EXCLUDED.container_id,
-                     container_label=EXCLUDED.container_label,
-                     source_metadata=EXCLUDED.source_metadata,
-                     content_hash=EXCLUDED.content_hash, updated_at=NOW()""", rows,
-            )
+            cursor.executemany(self._message_upsert_sql(), rows)
+
+    @staticmethod
+    def _message_upsert_sql() -> str:
+        return """INSERT INTO source_messages
+          (external_id,message_order,author,sent_at,channel,channel_id,guild_id,
+           source_type,conversation_id,conversation_label,container_id,
+           container_label,source_metadata,content_hash)
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+          ON CONFLICT(external_id) DO UPDATE SET author=EXCLUDED.author,
+            sent_at=EXCLUDED.sent_at,channel=EXCLUDED.channel,
+            channel_id=EXCLUDED.channel_id,guild_id=EXCLUDED.guild_id,
+            source_type=EXCLUDED.source_type,conversation_id=EXCLUDED.conversation_id,
+            conversation_label=EXCLUDED.conversation_label,
+            container_id=EXCLUDED.container_id,container_label=EXCLUDED.container_label,
+            source_metadata=EXCLUDED.source_metadata,content_hash=EXCLUDED.content_hash,
+            updated_at=NOW()
+          WHERE (source_messages.author,source_messages.sent_at,source_messages.channel,
+            source_messages.channel_id,source_messages.guild_id,source_messages.source_type,
+            source_messages.conversation_id,source_messages.conversation_label,
+            source_messages.container_id,source_messages.container_label,
+            source_messages.source_metadata,source_messages.content_hash)
+          IS DISTINCT FROM
+            (EXCLUDED.author,EXCLUDED.sent_at,EXCLUDED.channel,EXCLUDED.channel_id,
+             EXCLUDED.guild_id,EXCLUDED.source_type,EXCLUDED.conversation_id,
+             EXCLUDED.conversation_label,EXCLUDED.container_id,
+             EXCLUDED.container_label,EXCLUDED.source_metadata,EXCLUDED.content_hash)"""
 
     @staticmethod
     def _link_session_messages(connection, session_id, messages) -> None:

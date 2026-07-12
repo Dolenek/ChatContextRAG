@@ -50,7 +50,7 @@ window.indexingControls = (() => {
     button.dataset.action = active ? "cancel" : "retry";
     button.textContent = active ? "Zrušit" : "Opakovat";
     button.type = "button";
-    phase.textContent = jobPhaseLabel(job);
+    phase.textContent = withSource(jobSourceLabel(job), jobPhaseLabel(job));
     progress.className = "indexing-progress";
     progress.setAttribute("role", "progressbar");
     progress.setAttribute("aria-valuenow", String(percent));
@@ -87,6 +87,34 @@ window.indexingControls = (() => {
       return `${formatNumber(job.processed_messages)} z ${formatNumber(job.total_messages)} zpráv`;
     }
     return job.last_error || "Úlohu lze spustit znovu.";
+  }
+
+  function jobSourceLabel(job) {
+    if (job.source_type === "maintenance") return maintenanceSourceLabel(job);
+    const values = [
+      sourceTypeLabel(job.source_type), job.source_container_label,
+      job.source_conversation_label,
+    ];
+    return values.filter(
+      (value, index) => value && values.indexOf(value) === index,
+    ).join(" · ");
+  }
+
+  function maintenanceSourceLabel(job) {
+    const operation = {
+      rebuild: "Rebuild indexu", sync: "Sync indexu",
+    }[job.job_type] || "Doplnění indexu";
+    return [operation, job.embedding_index_name].filter(Boolean).join(" · ");
+  }
+
+  function sourceTypeLabel(sourceType) {
+    if (!sourceType) return "";
+    return { discord: "Discord", whatsapp: "WhatsApp" }[sourceType]
+      || sourceType.charAt(0).toUpperCase() + sourceType.slice(1);
+  }
+
+  function withSource(source, phase) {
+    return source ? `${source} · ${phase}` : phase;
   }
 
   function formatNumber(value) {
@@ -176,5 +204,5 @@ window.indexingControls = (() => {
     }
   }
 
-  return { bind, render };
+  return { bind, render, sourceLabel: jobSourceLabel };
 })();

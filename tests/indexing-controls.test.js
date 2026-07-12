@@ -91,6 +91,24 @@ test("zero progress explains that the first embedding batch is being prepared", 
   assert.match(jobRow.children[1].textContent, /první embedding dávku/);
 });
 
+test("indexing progress identifies its source conversation", () => {
+  const { controls, elements } = loadControls();
+
+  controls.render([{
+    job_id: "job-1", status: "running", processed_messages: 10,
+    total_messages: 84, stored_chunks: 2, source_type: "discord",
+    source_container_label: "Workspace", source_conversation_label: "general",
+  }], 84);
+
+  const phaseText = elements.get("#indexing-jobs").children[0].children[1].textContent;
+  assert.match(phaseText, /Discord/);
+  assert.match(phaseText, /Workspace/);
+  assert.match(phaseText, /general/);
+  assert.match(controls.sourceLabel({
+    source_type: "maintenance", job_type: "sync", embedding_index_name: "Primary",
+  }), /Sync indexu.*Primary/);
+});
+
 test("active job polling refreshes the overview after completion", async () => {
   const completedJob = {
     job_id: "job-1", status: "completed", processed_messages: 84,

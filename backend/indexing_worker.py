@@ -166,19 +166,21 @@ class PersistentIndexingWorker:
         self, chunks: list, embeddings: list,
         provider: Optional[EmbeddingProvider] = None,
     ) -> list:
-        provider = provider or self.embedding_provider
+        resolved_provider = provider or self.embedding_provider
+        if not resolved_provider:
+            raise ValueError("No embedding provider is configured for the indexing job.")
         if len(embeddings) != len(chunks):
             raise ValueError(
                 f"Embedding provider returned {len(embeddings)} vectors for {len(chunks)} chunks."
             )
-        expected_dimensions = getattr(self.embedding_provider, "dimensions", None)
+        expected_dimensions = getattr(resolved_provider, "dimensions", None)
         if expected_dimensions and any(
             len(embedding) != expected_dimensions for embedding in embeddings
         ):
             raise ValueError("Embedding provider returned an unexpected vector dimension.")
         return [EmbeddedChunk(
             chunk=chunk, embedding=embedding,
-            embedding_model=self.embedding_provider.model_name,
+            embedding_model=resolved_provider.model_name,
         ) for chunk, embedding in zip(chunks, embeddings)]
 
     def _embedding_provider_for(self, job) -> EmbeddingProvider:

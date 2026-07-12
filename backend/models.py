@@ -188,6 +188,9 @@ class IndexingJobView(BaseModel):
     embedding_index_id: Optional[str] = None
     embedding_index_name: Optional[str] = None
     job_type: Literal["incremental", "sync", "rebuild"] = "incremental"
+    source_type: Optional[str] = None
+    source_conversation_label: Optional[str] = None
+    source_container_label: Optional[str] = None
 
 
 class ProviderProfileInput(BaseModel):

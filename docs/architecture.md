@@ -99,6 +99,11 @@ remain untouched until every embedding succeeds. The final replacement, link
 update, and job completion occur in one transaction. Failed or cancelled jobs do
 not expose a partial generation.
 
+Repeated ingestion preserves a raw message's `updated_at` when its content and
+source metadata are unchanged. Incremental job snapshots therefore embed only
+new or changed messages plus the existing neighboring chunks needed to keep
+chunk boundaries coherent.
+
 `embedding_indexes` stores immutable provider/model/dimension identity and
 lifecycle state. Chunks, source links, staging rows, and jobs carry an
 `embedding_index_id`, so identical chunk IDs can coexist in different vector
@@ -154,6 +159,8 @@ Discord** action.
 - `POST /imports/whatsapp/preview` validates and previews a multipart export.
 - `POST /imports/whatsapp` imports a validated multipart export and queues it.
 - `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints manage jobs.
+  Job views include source type plus conversation and container labels so the
+  progress UI identifies the imported channel or index-wide maintenance task.
 - `GET /chat/scopes` lists searchable source conversations.
 - `POST /chat` performs source-scoped hybrid RAG with the active embedding index
   and optional per-conversation chat provider/model.

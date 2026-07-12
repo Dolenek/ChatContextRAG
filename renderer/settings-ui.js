@@ -122,7 +122,9 @@ function renderIndexes() {
     if (index.embedding_index_id !== activeId) {
       row.append(actionButton("Smazat", () => removeIndex(index), "danger-link"));
     }
-    if (index.last_error) row.append(createDetail(index.last_error, "error-detail"));
+    if (index.last_error && !index.active_job_id) {
+      row.append(createDetail(index.last_error, "error-detail"));
+    }
     return row;
   });
   document.querySelector("#embedding-index-list").replaceChildren(...rows);

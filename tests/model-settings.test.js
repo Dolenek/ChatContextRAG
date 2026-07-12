@@ -17,6 +17,7 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(preload, /settings:provider:save/);
   assert.doesNotMatch(preload, /decryptString/);
   assert.match(settingsUi, /saveChatDefault/);
+  assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
   assert.match(controller, /getChatSelection/);
 });
 
