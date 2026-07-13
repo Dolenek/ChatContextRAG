@@ -53,6 +53,30 @@ idempotent. A browser admin session cannot call migration routes, internal
 export routes are never proxied, and neither PostgreSQL service is exposed to
 the other host.
 
+All shared backend-client requests have a 30-second deadline and compose that
+deadline with an optional caller `AbortSignal`. Timeout errors retain the method
+and concrete endpoint. Migration operations use at most three total attempts
+with progressive backoff. The cursor and transferred count advance only after
+`accepted_count` confirms the entire batch, so a lost response retries the same
+page safely. Gateway migration completion first reads session status and returns
+an already completed session unchanged, making finalization retry-safe as well.
+
+The Electron-owned `BackendProcess` drains both Uvicorn stdout and stderr into a
+5 MiB, three-backup rotating log below private user data. This prevents child
+pipe backpressure from blocking Uvicorn's single event loop. Export-page start
+and end records include cursor, batch length, and elapsed time. After a local
+timeout, Electron publishes a recovery phase, probes `/health`, stores that
+result and the failed endpoint, and, when unhealthy, replaces only the managed
+Python process tree. PostgreSQL and Electron remain running, and the ephemeral
+internal token is reused by the replacement process.
+
+Persisted active migration phases are treated as interrupted when no in-memory
+transfer promise exists. They are never rendered as live work after startup.
+Paused, interrupted, and failed states expose resume from the last acknowledged
+cursor. After all pages and sync states, Electron completes the remote session,
+reads both the still-existing local snapshot total and remote session count, and
+requires exact equality before deleting the snapshot.
+
 Message conflicts use the Local row for the same external ID while retaining
 unrelated server rows. Discord cursor ranges are unioned; an existing server
 tracking preference wins, and active sessions or old errors are discarded.

@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from typing import Callable, List, Optional
 
@@ -5,6 +7,8 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.models import SourceMessageInput
+
+LOGGER = logging.getLogger("uvicorn.error")
 
 
 class MigrationExportView(BaseModel):
@@ -49,6 +53,30 @@ class MigrationExportService:
     def get_page(
         self, export_id: str, after_external_id: Optional[str], limit: int,
     ) -> MigrationExportPage:
+        started = time.perf_counter()
+        LOGGER.info(
+            "migration_export_page_start export_id=%s cursor=%s limit=%s",
+            export_id, after_external_id or "<start>", limit,
+        )
+        try:
+            page = self._load_page(export_id, after_external_id, limit)
+        except Exception:
+            LOGGER.exception(
+                "migration_export_page_failed export_id=%s cursor=%s duration_ms=%.1f",
+                export_id, after_external_id or "<start>", elapsed_ms(started),
+            )
+            raise
+        LOGGER.info(
+            "migration_export_page_end export_id=%s cursor=%s next_cursor=%s "
+            "batch_length=%s done=%s duration_ms=%.1f",
+            export_id, after_external_id or "<start>", page.next_cursor or "<none>",
+            len(page.messages), page.done, elapsed_ms(started),
+        )
+        return page
+
+    def _load_page(
+        self, export_id: str, after_external_id: Optional[str], limit: int,
+    ) -> MigrationExportPage:
         self.ensure_schema()
         with self.connect() as connection:
             total = self._export_total(connection, export_id)
@@ -62,6 +90,12 @@ class MigrationExportService:
             export_id=export_id, total_messages=total, messages=messages,
             next_cursor=next_cursor, done=len(rows) <= limit,
         )
+
+    def get_snapshot(self, export_id: str) -> MigrationExportView:
+        self.ensure_schema()
+        with self.connect() as connection:
+            total = self._export_total(connection, export_id)
+        return MigrationExportView(export_id=export_id, total_messages=total)
 
     def delete_snapshot(self, export_id: str) -> None:
         self.ensure_schema()
@@ -128,6 +162,15 @@ def register_migration_export_routes(
         authorize(x_chat_context_token)
         return service.get_page(export_id, after_external_id, limit)
 
+    @application.get(
+        "/internal/migration-exports/{export_id}", response_model=MigrationExportView,
+    )
+    def get_export(
+        export_id: str, x_chat_context_token: str = Header(default=""),
+    ) -> MigrationExportView:
+        authorize(x_chat_context_token)
+        return service.get_snapshot(export_id)
+
     @application.delete("/internal/migration-exports/{export_id}")
     def delete_export(
         export_id: str, x_chat_context_token: str = Header(default=""),
@@ -135,3 +178,7 @@ def register_migration_export_routes(
         authorize(x_chat_context_token)
         service.delete_snapshot(export_id)
         return {"deleted": True}
+
+
+def elapsed_ms(started: float) -> float:
+    return (time.perf_counter() - started) * 1000

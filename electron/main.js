@@ -18,7 +18,9 @@ const { RemoteSettingsIpcController } = require("./remote-settings-ipc");
 const { SettingsIpcController } = require("./settings-ipc");
 
 const projectRoot = path.resolve(__dirname, "..");
-const backendProcess = new BackendProcess(projectRoot);
+const backendProcess = new BackendProcess(projectRoot, {
+  logDirectory: path.join(app.getPath("userData"), "chat-context", "logs"),
+});
 const localInfrastructure = new LocalInfrastructure(projectRoot);
 let activeTarget = { mode: "local" };
 let activeDiscordScan = null;
@@ -269,6 +271,7 @@ function registerArchiveMigration(connectionStore) {
       Authorization: `Bearer ${target.token}`,
     }),
     createSourceSnapshot,
+    recoverSourceBackend: (error) => backendProcess.recoverAfterTimeout(error),
     onProgress: (progress) => mainWindow?.webContents.send("migration:progress", progress),
   });
   new ArchiveMigrationIpcController(migration).register();
@@ -290,16 +293,16 @@ async function initializeApplication() {
   remoteEvents?.start();
 }
 
-app.whenReady().then(() => initializeApplication()).catch((error) => {
+app.whenReady().then(() => initializeApplication()).catch(async (error) => {
   console.error(error);
-  backendProcess.stop();
+  await backendProcess.stop();
   app.exit(1);
 });
 
 app.on("window-all-closed", async () => {
   await integrationController?.shutdown();
   remoteEvents?.stop();
-  backendProcess.stop();
+  await backendProcess.stop();
   if (process.platform !== "darwin") app.quit();
 });
 

@@ -206,6 +206,27 @@ test("migration state merge keeps destination labels and handles cursor boundari
   assert.equal(merged.last_error, null);
 });
 
+test("migration completion is idempotent after a lost gateway response", async () => {
+  let status = "running";
+  let finishCalls = 0;
+  const backend = {
+    get: async () => ({ status, raw_message_count: 400 }),
+    post: async () => {
+      finishCalls += 1;
+      status = "completed";
+      return { status, raw_message_count: 400 };
+    },
+  };
+  const router = new MigrationRouter(backend, { startSessionJobs: () => {} });
+
+  const first = await router.complete("migration-1");
+  const repeated = await router.complete("migration-1");
+
+  assert.equal(first.status, "completed");
+  assert.equal(repeated.status, "completed");
+  assert.equal(finishCalls, 1);
+});
+
 test("Discord web service chunks imports and monitors finished sessions", async () => {
   const calls = [];
   const monitored = [];

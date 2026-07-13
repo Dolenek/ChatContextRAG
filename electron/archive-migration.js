@@ -1,6 +1,12 @@
-const MAX_BATCH_MESSAGES = 400;
-const MAX_BATCH_BYTES = 1_500_000;
+const { ArchiveMigrationTransfer, clearRetry } = require("./archive-migration-transfer");
+const { createMigrationBatches } = require("./migration-batches");
+const { MigrationRetryPolicy } = require("./migration-retry");
+
 const MIGRATION_PROTOCOL_VERSION = 1;
+const ACTIVE_PHASES = new Set([
+  "preparing", "uploading", "pausing", "retrying", "recovering_backend",
+  "syncing", "verifying", "cleaning_snapshot",
+]);
 
 class ArchiveMigrationController {
   constructor(options) {
@@ -9,9 +15,20 @@ class ArchiveMigrationController {
     this.stateStore = options.stateStore;
     this.createRemoteClient = options.createRemoteClient;
     this.createSourceSnapshot = options.createSourceSnapshot;
+    this.recoverSourceBackend = options.recoverSourceBackend;
     this.onProgress = options.onProgress || (() => {});
+    this.retryPolicy = options.retryPolicy || new MigrationRetryPolicy();
     this.pauseRequested = false;
     this.runningPromise = null;
+    this.transferAgent = new ArchiveMigrationTransfer({
+      sourceClient: this.sourceClient,
+      retryPolicy: this.retryPolicy,
+      recoverSourceBackend: this.recoverSourceBackend,
+      persist: (state) => this.persist(state),
+      isPauseRequested: () => this.pauseRequested,
+      deleteSourceSnapshot: (state) => this.deleteSourceSnapshot(state),
+    });
+    this.interruptOrphanedState();
   }
 
   async inspect(input) {
@@ -55,6 +72,7 @@ class ArchiveMigrationController {
     if (state.phase === "completed") return publicStatus(state);
     state.phase = "uploading";
     state.error = null;
+    clearRetry(state);
     this.persist(state);
     return this.run(state);
   }
@@ -69,6 +87,7 @@ class ArchiveMigrationController {
 
   getStatus() {
     if (!this.sourceClient) return { available: false, phase: "unavailable" };
+    if (!this.runningPromise) this.interruptOrphanedState();
     const state = this.stateStore.load();
     return state ? publicStatus(state) : { available: true, phase: "idle" };
   }
@@ -83,11 +102,8 @@ class ArchiveMigrationController {
       `/migrations/${encodeURIComponent(state.remoteMigrationId)}/index`, {},
     );
     state.indexingJobIds = session.indexing_job_ids || [];
-    if (state.indexingJobIds.length) {
-      state.indexingQueuedAt = new Date().toISOString();
-    } else {
-      delete state.indexingQueuedAt;
-    }
+    if (state.indexingJobIds.length) state.indexingQueuedAt = new Date().toISOString();
+    else delete state.indexingQueuedAt;
     this.persist(state);
     return publicStatus(state);
   }
@@ -105,7 +121,8 @@ class ArchiveMigrationController {
 
   initialState(baseUrl, snapshot) {
     return {
-      phase: "preparing", baseUrl,
+      phase: "preparing",
+      baseUrl,
       localExportId: snapshot.export_id,
       remoteMigrationId: null,
       totalMessages: snapshot.total_messages,
@@ -127,11 +144,13 @@ class ArchiveMigrationController {
 
   async transfer(state) {
     try {
+      if (state.snapshotDeletedAt) return this.markCompleted(state);
       const remote = this.remoteClient(state.baseUrl);
-      await this.ensureRemoteSession(state, remote);
-      await this.transferPages(state, remote);
+      await this.transferAgent.ensureRemoteSession(state, remote);
+      await this.transferAgent.transferPages(state, remote);
       if (this.pauseRequested) return this.markPaused(state);
-      return await this.finalize(state, remote);
+      await this.transferAgent.finalize(state, remote);
+      return this.markCompleted(state);
     } catch (error) {
       state.phase = "failed";
       state.error = error.message;
@@ -140,78 +159,8 @@ class ArchiveMigrationController {
     }
   }
 
-  async ensureRemoteSession(state, remote) {
-    if (state.remoteMigrationId) return;
-    const session = await remote.post("/migrations", {
-      total_messages: state.totalMessages,
-    });
-    state.remoteMigrationId = session.session_id;
-    state.phase = "uploading";
-    this.persist(state);
-  }
-
-  async transferPages(state, remote) {
-    while (!this.pauseRequested) {
-      const page = await this.sourcePage(state);
-      for (const batch of createMigrationBatches(page.messages)) {
-        if (this.pauseRequested) break;
-        await remote.post(
-          `/migrations/${encodeURIComponent(state.remoteMigrationId)}/messages`,
-          { messages: batch },
-        );
-        state.cursor = batch.at(-1).external_id;
-        state.transferredMessages = Math.min(
-          state.totalMessages, state.transferredMessages + batch.length,
-        );
-        state.phase = "uploading";
-        this.persist(state);
-      }
-      if (this.pauseRequested || page.done) return;
-    }
-  }
-
-  sourcePage(state) {
-    const query = new URLSearchParams({ limit: String(MAX_BATCH_MESSAGES) });
-    if (state.cursor) query.set("after_external_id", state.cursor);
-    return this.sourceClient.get(
-      `/internal/migration-exports/${encodeURIComponent(state.localExportId)}/messages?${query}`,
-    );
-  }
-
-  async finalize(state, remote) {
-    state.phase = "syncing";
-    this.persist(state);
-    await this.transferSyncStates(state, remote);
-    const status = await remote.get(
-      `/migrations/${encodeURIComponent(state.remoteMigrationId)}`,
-    );
-    if (status.raw_message_count !== state.totalMessages) {
-      throw new Error(
-        `Server confirmed ${status.raw_message_count} of ${state.totalMessages} messages.`,
-      );
-    }
-    await remote.post(
-      `/migrations/${encodeURIComponent(state.remoteMigrationId)}/complete`, {},
-    );
-    await this.deleteSourceSnapshot(state);
-    state.phase = "completed";
-    state.completedAt = new Date().toISOString();
-    state.error = null;
-    this.persist(state);
-    return publicStatus(state);
-  }
-
-  async transferSyncStates(state, remote) {
-    for (let offset = 0; offset < state.syncStates.length; offset += 200) {
-      await remote.put(
-        `/migrations/${encodeURIComponent(state.remoteMigrationId)}/sync-states`,
-        { states: state.syncStates.slice(offset, offset + 200) },
-      );
-    }
-  }
-
   async closeRemoteSession(state) {
-    if (!state.remoteMigrationId || state.phase === "completed") return;
+    if (!state.remoteMigrationId || state.remoteCompletedAt || state.phase === "completed") return;
     const remote = this.remoteClient(state.baseUrl);
     await remote.post(
       `/migrations/${encodeURIComponent(state.remoteMigrationId)}/complete`, {},
@@ -219,7 +168,9 @@ class ArchiveMigrationController {
   }
 
   deleteSourceSnapshot(state) {
-    if (!state.localExportId || !this.sourceClient) return Promise.resolve();
+    if (!state.localExportId || !this.sourceClient || state.snapshotDeletedAt) {
+      return Promise.resolve();
+    }
     return this.sourceClient.delete(
       `/internal/migration-exports/${encodeURIComponent(state.localExportId)}`,
     );
@@ -229,6 +180,25 @@ class ArchiveMigrationController {
     state.phase = "paused";
     this.persist(state);
     return publicStatus(state);
+  }
+
+  markCompleted(state) {
+    state.phase = "completed";
+    state.completedAt ||= new Date().toISOString();
+    state.error = null;
+    clearRetry(state);
+    this.persist(state);
+    return publicStatus(state);
+  }
+
+  interruptOrphanedState() {
+    const state = this.stateStore.load();
+    if (!state || !ACTIVE_PHASES.has(state.phase) || this.runningPromise) return;
+    state.phase = "interrupted";
+    state.error = "Předchozí přenos byl přerušen. Můžete bezpečně pokračovat z checkpointu.";
+    state.interruptedAt = new Date().toISOString();
+    state.updatedAt = state.interruptedAt;
+    this.stateStore.save(state);
   }
 
   remoteClient(baseUrl) {
@@ -253,33 +223,6 @@ class ArchiveMigrationController {
       throw new Error("Archive migration is available only in Local mode.");
     }
   }
-}
-
-function createMigrationBatches(messages) {
-  const batches = [];
-  let current = [];
-  for (const message of messages) {
-    const candidate = [...current, message];
-    if (!current.length && serializedBatchBytes(candidate) > MAX_BATCH_BYTES) {
-      throw new Error(`Message ${message.external_id} exceeds the migration upload limit.`);
-    }
-    if (current.length && serializedBatchBytes(candidate) > MAX_BATCH_BYTES) {
-      batches.push(current);
-      current = [message];
-    } else {
-      current = candidate;
-    }
-    if (current.length === MAX_BATCH_MESSAGES) {
-      batches.push(current);
-      current = [];
-    }
-  }
-  if (current.length) batches.push(current);
-  return batches;
-}
-
-function serializedBatchBytes(messages) {
-  return Buffer.byteLength(JSON.stringify({ messages }), "utf8");
 }
 
 function assertCompatibleRuntime(runtime) {

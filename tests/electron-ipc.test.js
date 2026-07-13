@@ -36,6 +36,7 @@ Module._load = function loadWithElectronMocks(request, parent, isMain) {
 };
 
 const { BackendProcess } = require("../electron/backend-process");
+const { RotatingBackendLog } = require("../electron/backend-log");
 const { ArchiveMigrationIpcController } = require("../electron/archive-migration-ipc");
 const { ConnectionIpcController } = require("../electron/connection-ipc");
 const { DiscordBotTokenStore } = require("../electron/discord-bot-token-store");
@@ -216,15 +217,57 @@ test("local infrastructure reports Docker success and captured failure output", 
 test("backend process skips spawning when healthy and stops a running child", async () => {
   const backend = new BackendProcess("C:/project");
   let spawned = 0;
-  backend.isHealthy = async () => true;
+  backend.checkHealth = async () => ({ healthy: true });
   backend.spawnPythonService = () => { spawned += 1; return new FakeChildProcess(); };
   await backend.start();
   assert.equal(spawned, 0);
 
   const child = new FakeChildProcess();
   backend.process = child;
-  backend.stop();
+  await backend.stop();
   assert.equal(child.killed, true);
+});
+
+test("backend process drains both output streams into a rotating log", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-backend-log-"));
+  const log = new RotatingBackendLog(directory, { maxBytes: 256, backups: 2 });
+  const backend = new BackendProcess("C:/project", { log });
+  const child = new FakeChildProcess();
+  backend.attachOutput(child);
+
+  assert.equal(child.stdout.listenerCount("data") > 0, true);
+  child.stdout.emit("data", Buffer.from("access line\n".repeat(100)));
+  child.stderr.emit("data", Buffer.from("diagnostic error\n"));
+  log.flush();
+
+  const contents = fs.readdirSync(directory)
+    .map((name) => fs.readFileSync(path.join(directory, name), "utf8")).join("\n");
+  assert.match(contents, /\[stdout\] access line/);
+  assert.match(contents, /\[stderr\] diagnostic error/);
+  assert.equal(backend.stderrLines.at(-1), "diagnostic error");
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("backend timeout recovery restarts only the managed process and preserves its token", async () => {
+  const backend = new BackendProcess("C:/project");
+  const token = backend.internalToken;
+  let restarts = 0;
+  backend.checkHealth = async () => ({
+    healthy: false, endpoint: "http://127.0.0.1:8765/health", error: "timeout",
+  });
+  backend.restart = async () => {
+    restarts += 1;
+    backend.lastHealthStatus = {
+      healthy: true, endpoint: "http://127.0.0.1:8765/health",
+    };
+  };
+
+  const recovery = await backend.recoverAfterTimeout({ endpoint: "local-page" });
+
+  assert.equal(restarts, 1);
+  assert.equal(recovery.restarted, true);
+  assert.equal(recovery.recoveredHealth.healthy, true);
+  assert.equal(backend.internalToken, token);
 });
 
 class FakeChildProcess extends EventEmitter {

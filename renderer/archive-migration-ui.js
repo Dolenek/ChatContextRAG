@@ -113,13 +113,18 @@ function renderMigrationStatus(status) {
   const phase = status.phase || "idle";
   document.querySelector("#archive-migration-status").textContent = migrationStatusText(status);
   renderMigrationProgress(status);
+  renderMigrationDetails(status);
   toggleMigrationButton("#archive-migration-start", phase === "idle");
   toggleMigrationButton("#archive-migration-pause", phase === "uploading");
-  toggleMigrationButton("#archive-migration-resume", ["paused", "failed"].includes(phase));
+  toggleMigrationButton(
+    "#archive-migration-resume", ["paused", "failed", "interrupted"].includes(phase),
+  );
   toggleMigrationButton("#archive-migration-index", phase === "completed"
     && !status.indexingQueuedAt);
   toggleMigrationButton("#archive-migration-switch", phase === "completed");
-  toggleMigrationButton("#archive-migration-forget", ["paused", "failed", "completed"].includes(phase));
+  toggleMigrationButton(
+    "#archive-migration-forget", ["paused", "failed", "interrupted", "completed"].includes(phase),
+  );
   const remoteSelected = document.querySelector("#connection-mode").value === "remote";
   document.querySelector("#archive-migration-start").disabled = !remoteSelected
     || !document.querySelector("#connection-url").value.trim();
@@ -136,6 +141,28 @@ function renderMigrationProgress(status) {
   progress.querySelector("span").style.width = `${percent}%`;
 }
 
+function renderMigrationDetails(status) {
+  const checkpoint = status.lastCheckpoint || (status.cursor ? {
+    cursor: status.cursor, transferredMessages: status.transferredMessages,
+  } : null);
+  setDetail("#archive-migration-checkpoint", checkpoint
+    ? `Poslední checkpoint: ${formatCount(checkpoint.transferredMessages)} zpráv · cursor ${checkpoint.cursor}`
+    : "");
+  setDetail("#archive-migration-last-batch", status.lastBatchAt
+    ? `Poslední potvrzená dávka: ${formatDate(status.lastBatchAt)}` : "");
+  setDetail("#archive-migration-diagnostic", migrationDiagnosticText(status));
+}
+
+function migrationDiagnosticText(status) {
+  const attempt = status.retryAttempt
+    ? ` · pokus ${status.retryAttempt}/${status.maxAttempts || 3}` : "";
+  if (status.phase === "recovering_backend") return `Obnovuji lokální backend${attempt}`;
+  if (status.phase === "retrying") return `Opakuji nedokončený požadavek${attempt}`;
+  if (!status.lastTimeoutEndpoint) return "";
+  const health = status.lastHealth?.healthy ? "health odpověděl" : "health neodpověděl";
+  return `Poslední timeout: ${status.lastTimeoutEndpoint} · ${health}`;
+}
+
 function migrationStatusText(status) {
   const count = `${formatCount(status.transferredMessages || 0)} / ${formatCount(status.totalMessages || 0)}`;
   const labels = {
@@ -144,13 +171,24 @@ function migrationStatusText(status) {
     uploading: `Přenáším zprávy: ${count}`,
     pausing: `Dokončuji aktuální dávku: ${count}`,
     paused: `Přenos je pozastaven: ${count}`,
-    syncing: `Ověřuji zprávy a slučuji Discord stav: ${count}`,
-    completed: `Přenos dokončen: ${count}`,
+    interrupted: `Přenos byl přerušen a lze bezpečně pokračovat: ${count}`,
+    retrying: `Opakuji požadavek: ${count}`,
+    recovering_backend: `Obnovuji lokální backend: ${count}`,
+    syncing: `Slučuji Discord stav a ověřuji server: ${count}`,
+    verifying: `Porovnávám přesný počet zpráv na obou stranách: ${count}`,
+    cleaning_snapshot: `Počty souhlasí, odstraňuji lokální snapshot: ${count}`,
+    completed: `Přenos dokončen a ověřen: ${count}`,
     failed: `Přenos selhal u ${count}: ${status.error || "neznámá chyba"}`,
     unavailable: "Přenos je dostupný pouze v Local režimu.",
   };
   if (status.indexingQueuedAt) return `${labels.completed} Indexování bylo zařazeno.`;
   return labels[status.phase] || labels.idle;
+}
+
+function setDetail(selector, text) {
+  const element = document.querySelector(selector);
+  element.textContent = text;
+  element.classList.toggle("hidden", !text);
 }
 
 function toggleMigrationButton(selector, visible) {
@@ -159,6 +197,11 @@ function toggleMigrationButton(selector, visible) {
 
 function formatCount(value) {
   return Number(value || 0).toLocaleString("cs-CZ");
+}
+
+function formatDate(value) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("cs-CZ");
 }
 
 function showMigrationError(error) {

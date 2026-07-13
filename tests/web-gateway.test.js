@@ -173,6 +173,9 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   assert.ok(html.indexOf('src="archive-migration-ui.js"') < html.indexOf('src="settings-ui.js"'));
   assert.match(html, /id="archive-migration-start"/);
   assert.match(html, /id="archive-migration-index"/);
+  assert.match(html, /id="archive-migration-checkpoint"/);
+  assert.match(html, /id="archive-migration-last-batch"/);
+  assert.match(html, /id="archive-migration-diagnostic"/);
   assert.match(bridge, /mode: "web", hasToken: false/);
   assert.match(bridge, /Promise\.resolve\(\{ embedded: false \}\)/);
   assert.match(styles, /\.web-runtime #open-discord-button/);

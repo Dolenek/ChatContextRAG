@@ -83,7 +83,9 @@ class MigrationRouter {
     return { states: saved };
   }
 
-  complete(migrationId) {
+  async complete(migrationId) {
+    const status = await this.status(migrationId);
+    if (status.status === "completed") return status;
     return this.backend.post(
       `/ingestion/sessions/${encodeURIComponent(migrationId)}/finish`,
       { reason: "completed", queue_indexing: false },

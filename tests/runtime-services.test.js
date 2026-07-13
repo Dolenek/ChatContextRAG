@@ -4,7 +4,9 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { BackendClient, parseResponse } = require("../runtime/backend-client");
+const {
+  BackendClient, DEFAULT_TIMEOUT_MS, parseResponse,
+} = require("../runtime/backend-client");
 const { SecretStore } = require("../runtime/secret-store");
 const { SettingsCoordinator } = require("../runtime/settings-coordinator");
 const { SseClient } = require("../runtime/sse-client");
@@ -46,6 +48,40 @@ test("backend client exposes readable response details and status codes", async 
     (error) => error.message === "index conflict" && error.statusCode === 409,
   );
   assert.deepEqual(await parseResponse({ text: async () => "" }), {});
+});
+
+test("backend client times out within its limit with a concrete local endpoint error", async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => { global.fetch = originalFetch; });
+  global.fetch = (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(abortError()), { once: true });
+  });
+  const started = Date.now();
+
+  await assert.rejects(
+    new BackendClient("http://127.0.0.1:8765", {}, { timeoutMs: 30 }).get("/health"),
+    (error) => error.code === "BACKEND_TIMEOUT"
+      && error.endpoint === "http://127.0.0.1:8765/health"
+      && error.message === "Lokální API neodpovědělo do 30 ms (GET /health).",
+  );
+
+  assert.equal(DEFAULT_TIMEOUT_MS, 30_000);
+  assert.ok(Date.now() - started < 250);
+});
+
+test("backend client accepts caller cancellation independently of its timeout", async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => { global.fetch = originalFetch; });
+  global.fetch = (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(abortError()), { once: true });
+  });
+  const controller = new AbortController();
+  const request = new BackendClient("https://server.example").get(
+    "/database/overview", { signal: controller.signal },
+  );
+  controller.abort();
+
+  await assert.rejects(request, (error) => error.code === "REQUEST_ABORTED");
 });
 
 test("secret store encrypts trimmed values, restores them, and clears atomically", () => {
@@ -168,6 +204,10 @@ function reversibleEncryption() {
     encryptString: (value) => Buffer.from(`encrypted:${value}`),
     decryptString: (value) => value.toString().slice("encrypted:".length),
   };
+}
+
+function abortError() {
+  return Object.assign(new Error("aborted"), { name: "AbortError" });
 }
 
 function fakeSettingsBackend() {

@@ -144,12 +144,31 @@ server-only messages remain. Provider profiles, API keys, Discord bot tokens,
 embedding vectors, model selections, and indexing-job history are not copied.
 The server never connects to the desktop PostgreSQL port.
 
-Progress is checkpointed after every acknowledged batch. **Pozastavit** finishes
-the current request and leaves both sessions resumable. After an Electron or
-gateway restart, return to Local settings and choose **Pokračovat**. A checkpoint
-is bound to one normalized server origin; use **Zavřít / zapomenout průběh**
-before starting with a different server. Forgetting does not roll back messages
-already accepted by the server.
+Progress is checkpointed only after the server acknowledges the complete batch.
+The UI shows the last acknowledged cursor, message count, batch time, and any
+retry number. **Pozastavit** finishes the current request and leaves both
+sessions resumable. After an Electron restart, an old active phase is changed to
+**interrupted**; it never makes the UI claim that a transfer is running. Return
+to Local settings and choose **Pokračovat**. A checkpoint is bound to one
+normalized server origin; use **Zavřít / zapomenout průběh** before starting
+with a different server. Forgetting does not roll back messages already accepted
+by the server.
+
+Every HTTP request has a 30-second timeout and may also be cancelled by its
+caller. A timed-out local export page triggers a short `/health` probe. If it
+fails, Electron shows **Obnovuji lokální backend**, terminates only its managed
+Python process tree, starts FastAPI with the same internal token, waits for
+health, and requests the unacknowledged page again from the stored cursor. A
+request is attempted at most three times with 1- and 2-second backoff. Exhaustion
+stores a `failed` state, the unchanged checkpoint, endpoint, health result, and
+readable error; **Pokračovat** remains available. Remote retries may safely send
+the same batch again because message upserts, session links, and migration
+completion are idempotent.
+
+Before removing the local snapshot, Electron completes the remote migration and
+compares the snapshot total with the remote migration-session count. Both must
+exactly match. The UI then reports the verified source and destination counts;
+the snapshot is retained whenever verification or cleanup fails.
 
 After verification, choose **Zaindexovat na serveru** to queue jobs only for the
 migrated snapshot and ready server indexes with auto-sync enabled. This is a
@@ -186,6 +205,13 @@ backend error. A manual start is:
 docker compose up -d --wait --wait-timeout 60 postgres
 npm.cmd start
 ```
+
+Electron continuously drains both FastAPI output streams into a rotating log at
+`%APPDATA%\chat-context-rag\chat-context\logs\backend.log`. Each file is capped
+at 5 MiB and three rotated files are retained. Export diagnostics record the
+start and end of every page, its input and output cursor, batch length, completion
+flag, and processing duration. Timeout state additionally records the exact
+endpoint and the last `/health` result.
 
 ## Desktop workspace
 
