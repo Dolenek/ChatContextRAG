@@ -26,7 +26,11 @@ def test_raw_writer_runs_the_complete_deduplicated_storage_transaction() -> None
     message_rows = connection.executemany_calls[1][1]
     assert [row[0] for row in message_rows] == ["1", "waexp:2"]
     assert message_rows[0][-1] == RawMessageWriter.content_hash("edited")
-    assert any("UPDATE ingestion_sessions" in query for query, _ in connection.calls)
+    session_updates = [
+        (query, parameters) for query, parameters in connection.calls
+        if "UPDATE ingestion_sessions" in query
+    ]
+    assert session_updates[0][1] == (2, "session-1")
 
 
 def test_raw_writer_rejects_missing_or_finished_sessions_before_writing() -> None:
@@ -78,9 +82,10 @@ def _message(external_id: str, content: str) -> NormalizedMessage:
 
 
 class QueryResult:
-    def __init__(self, rows=None, row=None) -> None:
+    def __init__(self, rows=None, row=None, rowcount=0) -> None:
         self.rows = rows or []
         self.row = row
+        self.rowcount = rowcount
 
     def fetchall(self):
         return self.rows
@@ -129,6 +134,8 @@ class RecordingConnection:
             return QueryResult(rows=[(value,) for value in self.existing_hashes])
         if normalized.startswith("SELECT content_hash FROM source_messages"):
             return QueryResult(rows=[(value,) for value in self.current_hashes])
+        if normalized.startswith("INSERT INTO ingestion_session_messages"):
+            return QueryResult(rowcount=len(parameters[1]))
         return QueryResult()
 
 

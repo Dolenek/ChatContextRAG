@@ -79,7 +79,10 @@ test("event hub connects, publishes, removes closed clients, and shuts down", ()
 
 test("indexing monitor publishes progress, terminal states, and failures", async (t) => {
   const originalSetTimeout = global.setTimeout;
-  global.setTimeout = (callback) => { queueMicrotask(callback); return 0; };
+  const delays = [];
+  global.setTimeout = (callback, milliseconds) => {
+    delays.push(milliseconds); queueMicrotask(callback); return 0;
+  };
   t.after(() => { global.setTimeout = originalSetTimeout; });
   const published = [];
   const states = [{ status: "running" }, { status: "completed" }];
@@ -90,6 +93,7 @@ test("indexing monitor publishes progress, terminal states, and failures", async
   monitor.activeJobs.add("job-1");
   await monitor.poll("job-1");
   assert.deepEqual(published.map((item) => item[0]), ["indexing", "indexing"]);
+  assert.deepEqual(delays, [1000, 2500]);
   assert.equal(monitor.activeJobs.has("job-1"), false);
 
   const failing = new IndexingMonitor({

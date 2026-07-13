@@ -1,8 +1,9 @@
 class IndexingMonitor {
-  constructor(backend, events) {
+  constructor(backend, events, options = {}) {
     this.backend = backend;
     this.events = events;
     this.activeJobs = new Set();
+    this.pollIntervals = options.pollIntervals || [1000, 2500, 5000];
   }
 
   start(jobId) {
@@ -20,16 +21,22 @@ class IndexingMonitor {
   async poll(jobId) {
     try {
       let job;
+      let attempt = 0;
       do {
-        await delay(1000);
+        await delay(this.intervalFor(attempt));
         job = await this.backend.get(`/indexing/jobs/${jobId}`);
         this.events.publish("indexing", job);
+        attempt += 1;
       } while (["queued", "running"].includes(job.status));
     } catch (error) {
       this.events.publish("indexing-error", { job_id: jobId, detail: error.message });
     } finally {
       this.activeJobs.delete(jobId);
     }
+  }
+
+  intervalFor(attempt) {
+    return this.pollIntervals[Math.min(attempt, this.pollIntervals.length - 1)];
   }
 }
 

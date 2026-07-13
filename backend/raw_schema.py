@@ -63,6 +63,8 @@ def _message_schema_statements() -> List[str]:
             ON source_messages(source_type,conversation_id,message_order)""",
         """CREATE INDEX IF NOT EXISTS source_messages_content_order
             ON source_messages(content_hash,message_order)""",
+        """CREATE INDEX IF NOT EXISTS source_messages_global_order
+            ON source_messages(message_order,external_id)""",
     ]
 
 
@@ -147,10 +149,15 @@ def _job_schema_statements() -> List[str]:
             ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ""",
         """CREATE INDEX IF NOT EXISTS indexing_jobs_claimable
             ON indexing_jobs(status, lease_expires_at, created_at)""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS indexing_jobs_active_sync_unique
+            ON indexing_jobs(embedding_index_id)
+            WHERE job_type='sync' AND status IN ('queued','running')""",
         """CREATE TABLE IF NOT EXISTS indexing_job_messages (
             job_id TEXT REFERENCES indexing_jobs(id) ON DELETE CASCADE,
             message_id TEXT REFERENCES source_messages(external_id) ON DELETE CASCADE,
             PRIMARY KEY(job_id,message_id))""",
+        """CREATE INDEX IF NOT EXISTS indexing_job_messages_message
+            ON indexing_job_messages(message_id,job_id)""",
     ]
 
 

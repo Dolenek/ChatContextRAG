@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 import uuid
 from dataclasses import replace
 from datetime import timedelta
@@ -29,6 +30,7 @@ class PersistentIndexingWorker:
         embedding_batch_size: int = 64,
         worker_id: Optional[str] = None,
         lease_renewal_seconds: float = 20,
+        idle_poll_seconds: float = 15,
         provider_registry: Optional[ProviderRegistry] = None,
         index_repository: Optional[PostgresEmbeddingIndexRepository] = None,
     ) -> None:
@@ -39,6 +41,7 @@ class PersistentIndexingWorker:
         self.embedding_batch_size = embedding_batch_size
         self.worker_id = worker_id or str(uuid.uuid4())
         self.lease_renewal_seconds = lease_renewal_seconds
+        self.idle_poll_seconds = idle_poll_seconds
         self.provider_registry = provider_registry
         self.index_repository = index_repository
         self._wake_event = threading.Event()
@@ -75,7 +78,7 @@ class PersistentIndexingWorker:
         self._process_job(job)
 
     def _wait_for_work(self) -> None:
-        self._wake_event.wait(2)
+        self._wake_event.wait(self.idle_poll_seconds)
         self._wake_event.clear()
 
     def _process_job(self, job, session_id: Optional[str] = None) -> None:
@@ -84,25 +87,36 @@ class PersistentIndexingWorker:
                 job_id=job, session_id=session_id,
                 embedding_index_id=None, job_type="incremental",
             )
+        started_at = time.monotonic()
+        LOGGER.info(
+            "Indexing job started: job_id=%s index_id=%s type=%s",
+            job.job_id, job.embedding_index_id, job.job_type,
+        )
         try:
             with JobLeaseKeeper(
                 self.raw_repository, job.job_id, self.worker_id, self.lease_renewal_seconds,
             ) as lease:
-                self._process_owned_job(job, lease)
+                completed = self._process_owned_job(job, lease)
         except Exception as error:
+            LOGGER.exception("Indexing job failed: job_id=%s", job.job_id)
             self.raw_repository.fail_job(job.job_id, self.worker_id, str(error))
             if self.index_repository and job.embedding_index_id:
                 self.index_repository.mark_failed(job.embedding_index_id, str(error))
+            return
+        LOGGER.info(
+            "Indexing job finished: job_id=%s completed=%s elapsed_seconds=%.3f",
+            job.job_id, completed, time.monotonic() - started_at,
+        )
 
     def _process_owned_job(
         self, job, lease: JobLeaseKeeper,
-    ) -> None:
+    ) -> bool:
         provider = self._embedding_provider_for(job)
         total_messages = self.raw_repository.prepare_job_total(
             job.job_id, job.session_id, self.worker_id,
         )
         if not lease.renew_now():
-            return
+            return False
         if job.embedding_index_id:
             self.hybrid_repository.prepare_staging(
                 job.job_id, self.worker_id, job.embedding_index_id,
@@ -116,18 +130,19 @@ class PersistentIndexingWorker:
             job.job_id, total_messages, chunk_stream, lease, provider,
             job.embedding_index_id,
         )
-        if completed and lease.renew_now():
-            if job.embedding_index_id:
-                committed = self.hybrid_repository.commit_staged_chunks(
-                    job.job_id, job.session_id, self.worker_id,
-                    job.embedding_index_id, job.job_type,
-                )
-                if committed and self.index_repository:
-                    self.index_repository.mark_ready(job.embedding_index_id)
-            else:
-                self.hybrid_repository.commit_staged_chunks(
-                    job.job_id, job.session_id, self.worker_id,
-                )
+        if not completed or not lease.renew_now():
+            return False
+        if job.embedding_index_id:
+            committed = self.hybrid_repository.commit_staged_chunks(
+                job.job_id, job.session_id, self.worker_id,
+                job.embedding_index_id, job.job_type,
+            )
+            if committed and self.index_repository:
+                self.index_repository.mark_ready(job.embedding_index_id)
+            return bool(committed)
+        return bool(self.hybrid_repository.commit_staged_chunks(
+            job.job_id, job.session_id, self.worker_id,
+        ))
 
     def _process_batches(
         self, job_id: str, total_messages: int, chunks: Iterable,

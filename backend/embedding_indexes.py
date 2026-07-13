@@ -1,3 +1,4 @@
+import logging
 import threading
 import uuid
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from backend.provider_registry import ProviderRegistry
 
 
 DEFAULT_INDEX_ID = "default-openai"
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -186,12 +188,16 @@ class PostgresEmbeddingIndexRepository:
 
     def mark_ready(self, index_id: str) -> None:
         with self._connect() as connection:
-            row = connection.execute(
-                """UPDATE embedding_indexes SET status='ready',last_error=NULL,
-                   updated_at=NOW() WHERE id=%s RETURNING auto_sync""",
+            previous = connection.execute(
+                "SELECT status,auto_sync FROM embedding_indexes WHERE id=%s FOR UPDATE",
                 (index_id,),
             ).fetchone()
-            if row and row[0]:
+            connection.execute(
+                """UPDATE embedding_indexes SET status='ready',last_error=NULL,
+                   updated_at=NOW() WHERE id=%s""",
+                (index_id,),
+            )
+            if previous and previous[0] == "building" and previous[1]:
                 self._queue_missing_messages(connection, index_id)
 
     def _create_tables(self, connection) -> None:
@@ -227,6 +233,11 @@ class PostgresEmbeddingIndexRepository:
         connection.execute("ALTER TABLE indexing_jobs DROP CONSTRAINT IF EXISTS indexing_jobs_session_id_key")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS indexing_jobs_session_index_unique "
                            "ON indexing_jobs(session_id,embedding_index_id)")
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS indexing_jobs_active_sync_unique "
+                           "ON indexing_jobs(embedding_index_id) WHERE job_type='sync' "
+                           "AND status IN ('queued','running')")
+        connection.execute("CREATE INDEX IF NOT EXISTS indexing_job_messages_message "
+                           "ON indexing_job_messages(message_id,job_id)")
         connection.execute("""DO $$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint
               WHERE conrelid='indexing_jobs'::regclass AND contype='f'
@@ -273,6 +284,10 @@ class PostgresEmbeddingIndexRepository:
             (id,session_id,embedding_index_id,job_type,status,total_messages)
             VALUES(%s,%s,%s,%s,'queued',%s)""",
             (job_id, session_id, index_id, job_type, inserted))
+        LOGGER.info(
+            "Indexing job queued: job_id=%s index_id=%s type=%s messages=%s",
+            job_id, index_id, job_type, inserted,
+        )
         return job_id
 
     @staticmethod

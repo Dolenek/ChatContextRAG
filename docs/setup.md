@@ -228,9 +228,9 @@ from the title bar. The source and context areas scroll independently from the
 conversation. Active job rows update without a page reload through live events
 with polling as a fallback. Running jobs are pinned above queued work, and the
 summary distinguishes active processing from a queue that has no running job.
-A **Follow-up indexing** row means that additional
-messages are queued behind the currently running job; it starts automatically
-when the worker becomes available. Completed, failed, and cancelled jobs do not
+A **Follow-up indexing** row is the single catch-up created after an initial
+index build, or an explicit synchronization requested by the user. Completed,
+failed, and cancelled jobs do not
 remain in the live panel. Open the collapsed **Indexing history** section in
 Settings for diagnostics or to retry a failed or cancelled job.
 
@@ -368,8 +368,8 @@ $env:POSTGRES_TEST_DSN = "postgresql://user:password@127.0.0.1:5433/chat_context
 py -3.9 -m pytest backend/test_postgres_integration.py -q
 ```
 
-Inspect infrastructure with `docker compose ps` and
-`docker compose logs postgres`.
+Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`;
+runtime health probes use lightweight `curl` checks every 15 seconds.
 
 The standard suite uses fakes for paid or machine-specific integrations. See
 [functions requiring external verification](funkce.md) for the current boundary

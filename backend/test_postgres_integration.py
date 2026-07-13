@@ -64,6 +64,7 @@ def test_staged_index_replacement_is_atomic_in_postgres() -> None:
             values.index_id, "incremental",
         )
         assert _chunk_ids(TEST_DSN, values) == [values.new_chunk_id]
+        assert _untouched_chunk_exists(TEST_DSN, values)
         assert raw_repository.get_job(values.job_id).status == "completed"
         retrieved = hybrid_repository.search_hybrid(
             values.identity, [0.2, 0.1], 1,
@@ -160,12 +161,15 @@ class _TestIdentity:
         self.identity = identity
         self.message_id = str(int(identity[:15], 16))
         self.content_hash = RawMessageWriter.content_hash(identity)
+        self.untouched_message_id = str(int(identity[15:30], 16))
+        self.untouched_content_hash = RawMessageWriter.content_hash(identity + "-untouched")
         self.session_id = f"session-{identity}"
         self.job_id = f"job-{identity}"
         self.worker_id = f"worker-{identity}"
         self.index_id = f"index-{identity}"
         self.old_chunk_id = f"old-{identity}"
         self.new_chunk_id = f"new-{identity}"
+        self.untouched_chunk_id = f"untouched-{identity}"
 
 
 def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
@@ -180,10 +184,23 @@ def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
             (values.content_hash, values.identity),
         )
         connection.execute(
+            "INSERT INTO message_contents(content_hash,content) VALUES (%s,%s)",
+            (values.untouched_content_hash, values.identity + "-untouched"),
+        )
+        connection.execute(
             """INSERT INTO source_messages
                (external_id,message_order,author,content_hash,channel_id,guild_id)
                VALUES (%s,%s,'Ada',%s,'20','10')""",
             (values.message_id, int(values.message_id), values.content_hash),
+        )
+        connection.execute(
+            """INSERT INTO source_messages
+               (external_id,message_order,author,content_hash,channel_id,guild_id)
+               VALUES (%s,%s,'Bob',%s,'20','10')""",
+            (
+                values.untouched_message_id, int(values.untouched_message_id),
+                values.untouched_content_hash,
+            ),
         )
         connection.execute(
             """INSERT INTO ingestion_sessions(id,guild_id,channel_id,status)
@@ -192,6 +209,10 @@ def _seed_old_index(database_dsn: str, values: _TestIdentity) -> None:
         connection.execute(
             "INSERT INTO ingestion_session_messages VALUES (%s,%s)",
             (values.session_id, values.message_id),
+        )
+        connection.execute(
+            "INSERT INTO ingestion_session_messages VALUES (%s,%s)",
+            (values.session_id, values.untouched_message_id),
         )
         _insert_running_job(connection, values)
         _insert_old_chunk(connection, values)
@@ -203,6 +224,10 @@ def _insert_running_job(connection, values: _TestIdentity) -> None:
            (id,session_id,embedding_index_id,status,worker_id,lease_expires_at)
            VALUES (%s,%s,%s,'running',%s,NOW()+INTERVAL '5 minutes')""",
         (values.job_id, values.session_id, values.index_id, values.worker_id),
+    )
+    connection.execute(
+        "INSERT INTO indexing_job_messages(job_id,message_id) VALUES (%s,%s)",
+        (values.job_id, values.message_id),
     )
 
 
@@ -219,6 +244,21 @@ def _insert_old_chunk(connection, values: _TestIdentity) -> None:
         """INSERT INTO rag_chunk_messages
            (embedding_index_id,chunk_id,message_id,position) VALUES (%s,%s,%s,0)""",
         (values.index_id, values.old_chunk_id, values.message_id),
+    )
+    connection.execute(
+        """INSERT INTO rag_chunks
+           (embedding_index_id,id,content,authors,source_message_ids,
+            embedding_model,embedding,metadata)
+           VALUES (%s,%s,'untouched',ARRAY['Bob'],ARRAY[%s],'test',%s,%s)""",
+        (
+            values.index_id, values.untouched_chunk_id, values.untouched_message_id,
+            HalfVector([0.9, 0.1]), Jsonb({}),
+        ),
+    )
+    connection.execute(
+        """INSERT INTO rag_chunk_messages
+           (embedding_index_id,chunk_id,message_id,position) VALUES (%s,%s,%s,0)""",
+        (values.index_id, values.untouched_chunk_id, values.untouched_message_id),
     )
 
 
@@ -241,17 +281,32 @@ def _chunk_ids(database_dsn: str, values: _TestIdentity) -> list:
     return [row[0] for row in rows]
 
 
+def _untouched_chunk_exists(database_dsn: str, values: _TestIdentity) -> bool:
+    with _connection(database_dsn) as connection:
+        row = connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM rag_chunks WHERE id=%s)",
+            (values.untouched_chunk_id,),
+        ).fetchone()
+    return bool(row[0])
+
+
 def _cleanup(database_dsn: str, values: _TestIdentity) -> None:
     with _connection(database_dsn) as connection:
         connection.execute(
             "DELETE FROM rag_chunks WHERE id=ANY(%s)",
-            ([values.old_chunk_id, values.new_chunk_id],),
+            ([values.old_chunk_id, values.new_chunk_id, values.untouched_chunk_id],),
         )
         connection.execute("DELETE FROM indexing_jobs WHERE id=%s", (values.job_id,))
         connection.execute("DELETE FROM embedding_indexes WHERE id=%s", (values.index_id,))
         connection.execute("DELETE FROM ingestion_sessions WHERE id=%s", (values.session_id,))
-        connection.execute("DELETE FROM source_messages WHERE external_id=%s", (values.message_id,))
-        connection.execute("DELETE FROM message_contents WHERE content_hash=%s", (values.content_hash,))
+        connection.execute(
+            "DELETE FROM source_messages WHERE external_id=ANY(%s)",
+            ([values.message_id, values.untouched_message_id],),
+        )
+        connection.execute(
+            "DELETE FROM message_contents WHERE content_hash=ANY(%s)",
+            ([values.content_hash, values.untouched_content_hash],),
+        )
         connection.execute(
             psycopg.sql.SQL("DROP INDEX IF EXISTS {}").format(psycopg.sql.Identifier(
                 "rag_embedding_" + values.index_id.replace("-", "_") + "_hnsw"

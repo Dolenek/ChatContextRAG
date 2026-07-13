@@ -34,8 +34,9 @@ class PostgresIndexStaging:
                 self._assert_owned_job(connection, job_id, worker_id, embedding_index_id)
                 rows = [(job_id, embedding_index_id, *self._to_row(item)) for item in chunk_list]
                 cursor.executemany(self._upsert_sql(), rows)
-                for item in chunk_list:
-                    self._replace_links(cursor, job_id, embedding_index_id, item)
+                self._replace_batch_links(
+                    cursor, job_id, embedding_index_id, chunk_list,
+                )
             return len(chunk_list)
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL halfvec staging failed.") from error
@@ -109,19 +110,25 @@ class PostgresIndexStaging:
               embedding=EXCLUDED.embedding, metadata=EXCLUDED.metadata"""
 
     @staticmethod
-    def _replace_links(
-        cursor, job_id: str, embedding_index_id: str, item: EmbeddedChunk,
+    def _replace_batch_links(
+        cursor, job_id: str, embedding_index_id: str,
+        chunks: Iterable[EmbeddedChunk],
     ) -> None:
+        chunk_list = list(chunks)
         cursor.execute(
-            "DELETE FROM rag_staged_chunk_messages WHERE job_id=%s AND chunk_id=%s",
-            (job_id, item.chunk.chunk_id),
+            "DELETE FROM rag_staged_chunk_messages WHERE job_id=%s AND chunk_id=ANY(%s)",
+            (job_id, [item.chunk.chunk_id for item in chunk_list]),
         )
+        link_rows = [
+            (job_id, embedding_index_id, item.chunk.chunk_id, message_id, position)
+            for item in chunk_list
+            for position, message_id in enumerate(item.chunk.source_message_ids)
+        ]
         cursor.executemany(
             """INSERT INTO rag_staged_chunk_messages
                (job_id,embedding_index_id,chunk_id,message_id,position)
                VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
-            [(job_id, embedding_index_id, item.chunk.chunk_id, message_id, index)
-             for index, message_id in enumerate(item.chunk.source_message_ids)],
+            link_rows,
         )
 
     @staticmethod
@@ -138,9 +145,9 @@ class PostgresIndexStaging:
             connection.execute(
                 """DELETE FROM rag_chunks WHERE embedding_index_id=%s AND id IN (
                  SELECT DISTINCT cm.chunk_id FROM rag_chunk_messages cm
-                 JOIN ingestion_session_messages sm ON sm.message_id=cm.message_id
-                 WHERE cm.embedding_index_id=%s AND sm.session_id=%s)""",
-                (embedding_index_id, embedding_index_id, session_id),
+                 JOIN indexing_job_messages jm ON jm.message_id=cm.message_id
+                 WHERE cm.embedding_index_id=%s AND jm.job_id=%s)""",
+                (embedding_index_id, embedding_index_id, job_id),
             )
         connection.execute(PostgresIndexStaging._commit_sql(), (job_id,))
         connection.execute(

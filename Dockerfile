@@ -3,6 +3,8 @@
 FROM python:3.9-slim-bookworm AS api
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend backend
@@ -12,6 +14,8 @@ CMD ["python", "-m", "uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port"
 FROM node:20-bookworm-slim AS web
 ENV NODE_ENV=production
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY electron electron

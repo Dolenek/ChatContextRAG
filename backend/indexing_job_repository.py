@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Callable, List, Optional
 
@@ -9,6 +10,9 @@ from backend.indexing_job_sql import (
 )
 from backend.models import IndexingJobView, IngestionSessionView
 from backend.openai_gateway import ExternalIntegrationError
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class PostgresIndexingJobRepository:
@@ -85,6 +89,10 @@ class PostgresIndexingJobRepository:
             return existing[0]
         job_id = str(uuid.uuid4())
         connection.execute(queue_job_sql(), (job_id, session_id, index_id, total))
+        LOGGER.info(
+            "Indexing job queued: job_id=%s index_id=%s type=incremental messages=%s",
+            job_id, index_id, total,
+        )
         return job_id
 
     @staticmethod

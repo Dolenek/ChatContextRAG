@@ -18,11 +18,13 @@ class RawMessageWriter:
         replaced_hashes = self._current_hashes(connection, unique_messages)
         new_hashes = self._upsert_contents(connection, unique_messages)
         self._upsert_messages(connection, unique_messages)
-        self._link_session_messages(connection, session_id, unique_messages)
+        inserted_links = self._link_session_messages(
+            connection, session_id, unique_messages,
+        )
         affected_hashes = new_hashes | replaced_hashes
         self._refresh_occurrence_counts(connection, affected_hashes)
         self._delete_unreferenced_contents(connection, affected_hashes)
-        self._refresh_session_count(connection, session_id)
+        self._increment_session_count(connection, session_id, inserted_links)
         return len(unique_messages) - len(existing_ids), len(new_hashes - existing_hashes)
 
     def _upsert_contents(self, connection, messages) -> set:
@@ -75,13 +77,15 @@ class RawMessageWriter:
              EXCLUDED.container_label,EXCLUDED.source_metadata,EXCLUDED.content_hash)"""
 
     @staticmethod
-    def _link_session_messages(connection, session_id, messages) -> None:
-        with connection.cursor() as cursor:
-            cursor.executemany(
-                """INSERT INTO ingestion_session_messages(session_id,message_id)
-                   VALUES (%s,%s) ON CONFLICT DO NOTHING""",
-                [(session_id, message.external_id) for message in messages],
-            )
+    def _link_session_messages(connection, session_id, messages) -> int:
+        message_ids = [message.external_id for message in messages]
+        result = connection.execute(
+            """INSERT INTO ingestion_session_messages(session_id,message_id)
+               SELECT %s, imported.message_id FROM unnest(%s::text[]) imported(message_id)
+               ON CONFLICT DO NOTHING""",
+            (session_id, message_ids),
+        )
+        return result.rowcount
 
     @staticmethod
     def _refresh_occurrence_counts(connection, hashes: Iterable[str]) -> None:
@@ -101,11 +105,13 @@ class RawMessageWriter:
         )
 
     @staticmethod
-    def _refresh_session_count(connection, session_id: str) -> None:
+    def _increment_session_count(
+        connection, session_id: str, inserted_links: int,
+    ) -> None:
         connection.execute(
-            """UPDATE ingestion_sessions SET raw_message_count=(
-                 SELECT COUNT(*) FROM ingestion_session_messages WHERE session_id=%s)
-               WHERE id=%s""", (session_id, session_id),
+            """UPDATE ingestion_sessions
+               SET raw_message_count=raw_message_count+%s WHERE id=%s""",
+            (inserted_links, session_id),
         )
 
     @staticmethod

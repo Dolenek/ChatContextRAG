@@ -169,7 +169,10 @@ non-empty content and stable external IDs.
 Electron writes at most 400 messages in each `/messages/import` request. Raw
 writes use per-message advisory locks, upsert content and message identity, link
 the messages to the session, and refresh canonical occurrence counts in one
-transaction.
+transaction. The session total advances by the number of newly inserted links;
+an import page never recounts the complete growing session. Cursor-state writes
+return their stored fields directly, while aggregate raw and indexed counts are
+computed only by the explicit state-list read.
 
 ## Indexing
 
@@ -177,7 +180,11 @@ Indexing is deliberately decoupled from collection. Closing an ingestion session
 queues a durable job for every ready embedding index whose auto-sync switch is
 enabled. The single background worker resolves the provider, model, and dimension
 from each job and streams its snapshot in chronological order. Jobs use renewable
-leases so an abandoned job can be claimed after its lease expires.
+leases so an abandoned job can be claimed after its lease expires. Completing a
+normal ready-index job never creates another maintenance job. Finishing an
+initial build may create one catch-up job for messages accepted while the index
+was building, and the database permits only one queued or running catch-up per
+index.
 
 The chunker never combines different `(source_type, conversation_id)` values.
 It also separates messages after a 20-minute gap or before the rendered content
@@ -190,7 +197,9 @@ Embedding batches contain at most 64 chunks. New vectors and normalized source
 links are written into job-scoped staging tables. Existing searchable chunks
 remain untouched until every embedding succeeds. The final replacement, link
 update, and job completion occur in one transaction. Failed or cancelled jobs do
-not expose a partial generation.
+not expose a partial generation. Incremental publication removes only existing
+chunks represented by the job snapshot, never every chunk touched by the wider
+ingestion session.
 
 Repeated ingestion preserves a raw message's `updated_at` when its content and
 source metadata are unchanged. Incremental job snapshots therefore embed only
@@ -285,7 +294,7 @@ The web adapter uses browser file selection and multipart requests for WhatsApp
 exports. It hides embedded Discord controls and opens complete Discord source
 links in a new browser tab. `/api/events` carries best-effort indexing and bot
 progress over SSE. The renderer applies pushed job snapshots immediately and
-polls every queued and running job independently as the authoritative fallback
+polls every queued and running job independently with an adaptive backoff as the authoritative fallback
 across reconnects. A newer queued maintenance job therefore cannot mask the
 progress of an older running job. The live context panel renders only queued and
 running jobs. Terminal job records remain stored for diagnostics and appear in

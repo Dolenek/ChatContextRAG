@@ -11,9 +11,9 @@ services:
       - chat_context_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 3s
+      interval: 10s
       timeout: 3s
-      retries: 15
+      retries: 6
     restart: unless-stopped
 
   api:
@@ -35,10 +35,10 @@ services:
     expose:
       - "8765"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health')"]
-      interval: 5s
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "2", "http://127.0.0.1:8765/health"]
+      interval: 15s
       timeout: 3s
-      retries: 24
+      retries: 8
     restart: unless-stopped
 
   web:
@@ -66,10 +66,10 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 5s
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "2", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
       timeout: 3s
-      retries: 24
+      retries: 8
     restart: unless-stopped
 
 volumes:
