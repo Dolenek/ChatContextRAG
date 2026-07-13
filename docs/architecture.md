@@ -108,6 +108,15 @@ connector -> normalization -> source_messages -> ingestion session
           -> per-index durable jobs -> staged chunks -> atomic publish
 ```
 
+Before storage, message identifiers are trimmed. Author names, conversation
+labels, and other inline labels are Unicode NFKC-normalized, stripped, and have
+consecutive whitespace collapsed. Content is also NFKC-normalized, CRLF is
+converted to LF, horizontal whitespace is collapsed per line, and runs of three
+or more newline characters are reduced to two. Missing Discord conversation and
+container identities fall back to the legacy channel and guild fields. A blank
+author becomes the localized `Neznámý autor` fallback; connectors are responsible for supplying
+non-empty content and stable external IDs.
+
 Electron writes at most 400 messages in each `/messages/import` request. Raw
 writes use per-message advisory locks, upsert content and message identity, link
 the messages to the session, and refresh canonical occurrence counts in one

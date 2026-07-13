@@ -1,11 +1,15 @@
+import asyncio
+
+import pytest
 from fastapi.testclient import TestClient
 
-from backend.app import create_app
+from backend.app import _read_import_file, create_app
 from backend.models import (
     ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
     DatabaseOverview, ImportResponse, IndexingJobView, IngestionSessionView,
-    IntegrationSyncState,
+    IntegrationSyncState, SourceConversationView,
 )
+from backend.openai_gateway import ExternalIntegrationError, IntegrationConfigurationError
 
 
 class FakeIngestionService:
@@ -36,6 +40,12 @@ class FakeIngestionService:
             job_id="job-pending", session_id="pending-session", status="queued",
             total_messages=84,
         )
+
+    def list_conversations(self, source_type):
+        return [SourceConversationView(
+            source_type=source_type, conversation_id="20",
+            display_name="projekt", container_name="Workspace", message_count=42,
+        )]
 
     def list_sync_states(self, _source_type):
         return []
@@ -94,6 +104,19 @@ def test_import_and_chat() -> None:
     assert "pátek" in chat_response.json()["answer"]
 
 
+def test_health_and_source_conversation_routes() -> None:
+    client = _client()
+
+    health = client.get("/health")
+    conversations = client.get("/ingestion/conversations?source_type=discord")
+    invalid = client.get("/ingestion/conversations?source_type=Discord!")
+
+    assert health.json() == {"status": "ok"}
+    assert conversations.json()[0]["conversation_id"] == "20"
+    assert conversations.json()[0]["message_count"] == 42
+    assert invalid.status_code == 422
+
+
 def test_overview_and_ingestion_job_routes() -> None:
     client = _client()
     overview_response = client.get("/database/overview?limit=25&offset=0")
@@ -107,10 +130,14 @@ def test_overview_and_ingestion_job_routes() -> None:
     )
     job_response = client.get("/indexing/jobs/job-1")
     pending_response = client.post("/indexing/jobs/pending")
+    retry_response = client.post("/indexing/jobs/job-1/retry")
+    cancel_response = client.post("/indexing/jobs/job-1/cancel")
     assert session_response.status_code == 200
     assert finish_response.json()["indexing_job_id"] == "job-1"
     assert job_response.json()["status"] == "queued"
     assert pending_response.json()["total_messages"] == 84
+    assert retry_response.json()["status"] == "queued"
+    assert cancel_response.json()["status"] == "cancelled"
 
 
 def test_chat_scopes_expose_source_neutral_conversation_identity() -> None:
@@ -177,6 +204,47 @@ def test_integration_sync_state_routes() -> None:
     assert saved.status_code == 200
     assert saved.json()["conversation_id"] == "20"
     assert listed.status_code == 200
+
+
+def test_application_translates_domain_errors_to_stable_http_responses() -> None:
+    expected = [
+        (ExternalIntegrationError("provider offline"), 503),
+        (IntegrationConfigurationError("provider missing"), 503),
+        (ValueError("index conflict"), 409),
+    ]
+    for error, status_code in expected:
+        client = TestClient(create_app(
+            FakeIngestionService(), RaisingChatService(error), FakeOverviewService(),
+        ))
+
+        response = client.post("/chat", json={"question": "what happened?"})
+
+        assert response.status_code == status_code
+        assert response.json() == {"detail": str(error)}
+
+
+def test_whatsapp_upload_reader_rejects_payloads_over_transport_limit() -> None:
+    with pytest.raises(ValueError, match="100 MiB"):
+        asyncio.run(_read_import_file(FakeOversizedUpload()))
+
+
+class RaisingChatService(FakeChatService):
+    def __init__(self, error) -> None:
+        self.error = error
+
+    def answer(self, _request):
+        raise self.error
+
+
+class FakeOversizedPayload:
+    def __len__(self):
+        return 100 * 1024 * 1024 + 1
+
+
+class FakeOversizedUpload:
+    async def read(self, maximum_bytes):
+        assert maximum_bytes == 100 * 1024 * 1024 + 1
+        return FakeOversizedPayload()
 
 
 def _client() -> TestClient:

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.models import (
-    EmbeddingIndexView, EmbeddingSettingsView, ProviderModelList,
+    EmbeddingIndexView, EmbeddingSettingsView, IndexingJobView, ProviderModelList,
     ProviderProfileView,
 )
 from backend.settings_routes import register_settings_routes
@@ -34,6 +34,23 @@ class FakeSettingsService:
 
     def activate_index(self, _update):
         return self._index()
+
+    def create_index(self, _request):
+        return self._index()
+
+    def update_index(self, _index_id, _request):
+        return self._index()
+
+    def sync_index(self, _index_id):
+        return IndexingJobView(
+            job_id="job-sync", session_id="session-sync", status="queued",
+        )
+
+    def rebuild_index(self, _index_id):
+        return self._index()
+
+    def delete_index(self, _index_id):
+        return 7
 
     @staticmethod
     def _index():
@@ -68,6 +85,32 @@ def test_internal_provider_registry_requires_bootstrap_token() -> None:
     assert denied.status_code == 403
     assert accepted.status_code == 200
     assert len(service.registry_updates) == 1
+
+
+def test_provider_models_and_embedding_index_lifecycle_routes() -> None:
+    client, _service = _client()
+
+    models = client.get("/settings/providers/openai/models?capability=embedding")
+    created = client.post("/settings/embedding-indexes", json={
+        "name": "Primary", "provider_id": "openai", "model": "embedding-model",
+    })
+    updated = client.patch("/settings/embedding-indexes/index-1", json={
+        "auto_sync": False,
+    })
+    activated = client.put("/settings/active-embedding-index", json={
+        "embedding_index_id": "index-1",
+    })
+    synced = client.post("/settings/embedding-indexes/index-1/sync")
+    rebuilt = client.post("/settings/embedding-indexes/index-1/rebuild")
+    deleted = client.delete("/settings/embedding-indexes/index-1")
+
+    assert models.json()["models"] == ["chat-model", "embedding-model"]
+    assert created.json()["embedding_index_id"] == "index-1"
+    assert updated.json()["embedding_index_id"] == "index-1"
+    assert activated.json()["status"] == "ready"
+    assert synced.json()["job_id"] == "job-sync"
+    assert rebuilt.json()["embedding_index_id"] == "index-1"
+    assert deleted.json() == {"deleted_chunks": 7}
 
 
 def _client():
