@@ -228,6 +228,11 @@ Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
 metadata live below Electron `userData`; only the main process decrypts them.
 Electron synchronizes the runtime registry through a token-protected loopback
 endpoint. Backend and preload responses expose only redacted availability flags.
+The provider store may also hold a key-only override for the built-in OpenAI
+provider. Its fixed ID, URL, and Responses protocol cannot be replaced; the
+runtime registry applies only the decrypted key and otherwise falls back to the
+environment key. The same provider credential is used by chat and embedding
+clients selected for that provider.
 Custom OpenAI-compatible providers may omit the key for trusted local endpoints;
 the backend uses a non-secret SDK placeholder while sending requests only to the
 configured base URL. The Electron store also keeps the user-managed provider,

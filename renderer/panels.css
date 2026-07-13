@@ -136,6 +136,8 @@
 .settings-form { display: grid; gap: 7px; }
 .settings-form label { color: var(--muted-strong); font-size: 10px; font-weight: 700; }
 .settings-form input, .settings-form select { padding: 8px 9px; font-size: 10px; }
+.provider-key-form { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.provider-key-form .fine-print { margin: 2px 0; font-size: 9px; }
 .settings-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .settings-form-grid { grid-template-columns: auto minmax(120px, 1fr) auto minmax(120px, 1fr); align-items: center; }
 .settings-form-grid .embedding-auto-sync { grid-column: 1 / 3; }

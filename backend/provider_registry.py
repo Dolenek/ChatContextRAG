@@ -10,6 +10,8 @@ from backend.openai_gateway import (
     OpenAIChatCompletionProvider, OpenAIEmbeddingProvider,
 )
 
+BUILTIN_OPENAI_URL = "https://api.openai.com/v1"
+
 
 @dataclass(frozen=True)
 class ProviderConfiguration:
@@ -27,24 +29,25 @@ class ProviderRegistry:
     ) -> None:
         self.embedding_batch_size = embedding_batch_size
         self._lock = threading.RLock()
-        self._builtin = ProviderConfiguration(
-            provider_id="openai", name="OpenAI",
-            base_url="https://api.openai.com/v1", api_key=openai_api_key,
-            chat_api="responses", builtin=True,
-        )
+        self._environment_api_key = openai_api_key
+        self._builtin = self._builtin_configuration(openai_api_key)
         self._custom: Dict[str, ProviderConfiguration] = {}
 
     def replace_custom(self, profiles: List[ProviderProfileInput]) -> None:
         configurations = {}
+        builtin_api_key = self._environment_api_key
         for profile in profiles:
             if profile.provider_id == "openai":
-                raise ValueError("The built-in OpenAI provider cannot be replaced.")
+                self._validate_builtin_override(profile)
+                builtin_api_key = profile.api_key or self._environment_api_key
+                continue
             configurations[profile.provider_id] = ProviderConfiguration(
                 provider_id=profile.provider_id, name=profile.name,
                 base_url=profile.base_url.rstrip("/"), api_key=profile.api_key,
                 chat_api=profile.chat_api,
             )
         with self._lock:
+            self._builtin = self._builtin_configuration(builtin_api_key)
             self._custom = configurations
 
     def list_views(self) -> List[ProviderProfileView]:
@@ -96,6 +99,21 @@ class ProviderRegistry:
                 f"Model list request for provider '{provider_id}' failed."
             ) from error
         return sorted({model.id for model in response.data})
+
+    @staticmethod
+    def _builtin_configuration(api_key: Optional[str]) -> ProviderConfiguration:
+        return ProviderConfiguration(
+            provider_id="openai", name="OpenAI", base_url=BUILTIN_OPENAI_URL,
+            api_key=api_key, chat_api="responses", builtin=True,
+        )
+
+    @staticmethod
+    def _validate_builtin_override(profile: ProviderProfileInput) -> None:
+        if profile.base_url.rstrip("/") != BUILTIN_OPENAI_URL \
+                or profile.chat_api != "responses":
+            raise ValueError(
+                "Only the API key can be changed for the built-in OpenAI provider."
+            )
 
     @staticmethod
     def _to_view(configuration: ProviderConfiguration) -> ProviderProfileView:

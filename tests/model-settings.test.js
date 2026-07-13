@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const { ProviderStore } = require("../electron/provider-store");
 
@@ -16,12 +17,17 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(html, /id="settings-screen"/);
   assert.match(html, /id="chat-model-input"/);
   assert.match(html, /id="chat-model-trigger"/);
+  assert.match(html, /id="indexing-api-key-form"/);
+  assert.match(html, /id="indexing-key-provider"/);
+  assert.match(html, /id="indexing-api-key"/);
   assert.match(preload, /settings:provider:save/);
   assert.match(preload, /settings:chat-model:save/);
   assert.doesNotMatch(preload, /decryptString/);
   assert.match(modelSelector, /saveChatDefault/);
   assert.match(modelSelector, /model-provider-list/);
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
+  assert.match(settingsUi, /Nastavit klíč pro indexing/);
+  assert.match(read("renderer/indexing-api-key-ui.js"), /saveProvider/);
   assert.match(controller, /getChatSelection/);
 });
 
@@ -79,6 +85,65 @@ test("provider store encrypts API keys and never returns them in public profiles
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test("provider store persists an encrypted built-in OpenAI key override", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-openai-key-"));
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value) => Buffer.from(`encrypted:${value}`),
+    decryptString: (value) => value.toString().replace("encrypted:", ""),
+  };
+  const store = new ProviderStore(directory, safeStorage);
+  const view = store.save({
+    providerId: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1",
+    apiKey: "indexing-secret", chatApi: "responses",
+  });
+
+  assert.equal(view.builtin, true);
+  assert.equal(view.has_api_key, true);
+  assert.equal(store.decryptedProfiles()[0].api_key, "indexing-secret");
+  assert.doesNotMatch(fs.readFileSync(store.filePath, "utf8"), /indexing-secret/);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("indexing API key form saves the selected built-in provider", async () => {
+  const form = fakeForm();
+  const providerSelect = fakeSelect();
+  const apiKeyInput = { value: "indexing-secret", focus: () => {} };
+  const elements = new Map([
+    ["#indexing-api-key-form", form],
+    ["#indexing-key-provider", providerSelect],
+    ["#indexing-api-key", apiKeyInput],
+  ]);
+  const saved = [];
+  const context = {
+    document: {
+      querySelector: (selector) => elements.get(selector),
+      createElement: () => ({}),
+    },
+    window: { chatContext: { saveProvider: async (profile) => saved.push(profile) } },
+  };
+  vm.runInNewContext(read("renderer/indexing-api-key-ui.js"), context);
+  context.window.indexingApiKeyUi.bind({ refreshSettings: async () => {}, showToast: () => {} });
+  context.window.indexingApiKeyUi.render({
+    providers: [{
+      provider_id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1",
+      chat_api: "responses", has_api_key: false,
+    }],
+    embeddings: { active_embedding_index_id: "default", indexes: [{
+      embedding_index_id: "default", provider_id: "openai",
+    }] },
+  });
+  providerSelect.value = "openai";
+
+  await form.submit({ preventDefault: () => {} });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
+    providerId: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1",
+    apiKey: "indexing-secret", chatApi: "responses",
+  });
+  assert.equal(apiKeyInput.value, "");
+});
+
 test("provider store keeps environment chat model until an explicit override", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-default-"));
   const store = new ProviderStore(directory, {});
@@ -97,4 +162,18 @@ test("provider store keeps environment chat model until an explicit override", (
 
 function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", relativePath), "utf8");
+}
+
+function fakeForm() {
+  return {
+    addEventListener(name, callback) { if (name === "submit") this.submit = callback; },
+    scrollIntoView: () => {},
+  };
+}
+
+function fakeSelect() {
+  return {
+    value: "", options: [],
+    replaceChildren(...options) { this.options = options; },
+  };
 }

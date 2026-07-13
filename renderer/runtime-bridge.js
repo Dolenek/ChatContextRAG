@@ -179,6 +179,7 @@
   const providerDescription = document.querySelector("#provider-list")
     ?.closest(".settings-card")?.querySelector("p");
   if (providerDescription) {
-    providerDescription.textContent = "API klíče jsou šifrované v úložišti serveru.";
+    providerDescription.textContent =
+      "API klíče pro chat i embedding/indexing jsou šifrované v úložišti serveru.";
   }
 })();

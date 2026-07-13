@@ -6,6 +6,9 @@ function bindSettingsUi(dependencies) {
   showSettingsScreen = dependencies.showScreen;
   showSettingsToast = dependencies.showToast;
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
+  window.indexingApiKeyUi.bind({
+    refreshSettings, showToast: showSettingsToast,
+  });
   document.querySelector("#chat-model-form").addEventListener("submit", saveChatModel);
   document.querySelector("#embedding-index-form").addEventListener("submit", createIndex);
   document.querySelector("#cancel-provider-edit").addEventListener("click", resetProviderForm);
@@ -33,6 +36,7 @@ async function refreshSettings() {
   try {
     settingsState = await window.chatContext.getSettings();
     renderProviders();
+    window.indexingApiKeyUi.render(settingsState);
     renderChatModels();
     renderIndexes();
     fillProviderSelect("#embedding-provider-select");
@@ -114,7 +118,12 @@ function renderProviders() {
     const row = createSettingsRow(
       provider.name, `${provider.base_url} · ${provider.chat_api} · ${access}`,
     );
-    if (!provider.builtin) {
+    if (provider.builtin) {
+      row.append(actionButton(
+        provider.has_api_key ? "Změnit API klíč" : "Nastavit klíč pro indexing",
+        () => window.indexingApiKeyUi.select(provider.provider_id),
+      ));
+    } else {
       row.append(
         actionButton("Upravit", () => editProvider(provider)),
         actionButton("Smazat", () => removeProvider(provider.provider_id), "danger-link"),

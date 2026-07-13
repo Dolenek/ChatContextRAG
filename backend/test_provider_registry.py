@@ -48,14 +48,28 @@ def test_keyless_local_provider_uses_compatible_client_placeholder() -> None:
     assert chat_provider.client is not None
 
 
-def test_registry_rejects_builtin_replacement_and_unknown_providers() -> None:
-    registry = ProviderRegistry("openai-secret")
+def test_registry_accepts_only_an_api_key_override_for_builtin_openai() -> None:
+    registry = ProviderRegistry(None)
+    registry.replace_custom([ProviderProfileInput(
+        provider_id="openai", name="OpenAI",
+        base_url="https://api.openai.com/v1", api_key="saved-key",
+    )])
 
-    with pytest.raises(ValueError, match="cannot be replaced"):
+    assert registry.get("openai").api_key == "saved-key"
+    assert registry.list_views()[0].has_api_key is True
+    with pytest.raises(ValueError, match="Only the API key"):
         registry.replace_custom([ProviderProfileInput(
             provider_id="openai", name="Replacement",
-            base_url="https://example.com/v1",
+            base_url="https://example.com/v1", api_key="saved-key",
         )])
+    registry.replace_custom([])
+    with pytest.raises(IntegrationConfigurationError, match="API key"):
+        registry.get("openai")
+
+
+def test_registry_rejects_unknown_providers() -> None:
+    registry = ProviderRegistry("openai-secret")
+
     with pytest.raises(IntegrationConfigurationError, match="not configured"):
         registry.get("missing")
 

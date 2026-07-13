@@ -229,14 +229,22 @@ conversation.
 
 ## Model and API settings
 
-The built-in **OpenAI** provider reads its API key and default model IDs from
-`.env`. Open **Settings** from the gear button to add OpenAI-compatible provider
+The built-in **OpenAI** provider initially reads its API key and default model
+IDs from `.env`. The same key is used for OpenAI chat and embedding/indexing.
+It can also be set in **Settings > Providers > Provider for embedding / indexing**
+without editing `.env`; choose OpenAI, paste the project API key, and select
+**Save key for indexing**. This encrypted saved override takes precedence for
+the running provider and survives application restarts. The renderer never
+receives the saved value again.
+
+Use the general provider form in **Settings** to add other OpenAI-compatible
 profiles. A profile supplies a display name, the complete API base URL (normally
-ending in `/v1`), an optional API key, and either the Responses or Chat Completions
-protocol. Keyless profiles are intended for trusted local OpenAI-compatible
-servers such as an Ollama endpoint. Custom keys are encrypted with Electron `safeStorage`; the renderer,
-PostgreSQL, API responses, and logs never receive them in plaintext. A platform
-without a secure OS key store cannot persist custom provider keys.
+ending in `/v1`), an optional API key, and either the Responses or Chat
+Completions protocol. Keyless profiles are intended for trusted local
+OpenAI-compatible servers such as an Ollama endpoint. Keys are encrypted with
+Electron `safeStorage` locally or AES-256-GCM in the server state; PostgreSQL,
+API responses, and logs never receive them in plaintext. A platform without a
+secure key store cannot persist provider keys.
 
 The chat selector initially shows `OPENAI_CHAT_MODEL`, and the initial embedding
 index uses `OPENAI_EMBEDDING_MODEL` plus `OPENAI_EMBEDDING_DIMENSIONS`. These

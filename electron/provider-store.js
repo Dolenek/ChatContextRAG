@@ -30,10 +30,12 @@ class ProviderStore {
     const existing = state.providers.find((item) => item.providerId === input.providerId);
     const providerId = input.providerId || crypto.randomUUID();
     const apiKey = input.apiKey?.trim();
+    const baseUrl = input.baseUrl.trim().replace(/\/$/, "");
+    assertBuiltinIdentity(providerId, baseUrl, input.chatApi);
     const profile = {
       providerId,
       name: input.name.trim(),
-      baseUrl: input.baseUrl.trim().replace(/\/$/, ""),
+      baseUrl,
       chatApi: input.chatApi,
       encryptedApiKey: apiKey ? this._encrypt(apiKey) : existing?.encryptedApiKey || null,
     };
@@ -144,14 +146,15 @@ class ProviderStore {
   }
 
   _publicProfile(profile) {
+    const builtin = profile.providerId === "openai";
     return {
       provider_id: profile.providerId,
       name: profile.name,
       base_url: profile.baseUrl,
       chat_api: profile.chatApi,
       has_api_key: Boolean(profile.encryptedApiKey),
-      is_available: true,
-      builtin: false,
+      is_available: Boolean(profile.encryptedApiKey) || !builtin,
+      builtin,
     };
   }
 }
@@ -171,6 +174,13 @@ function optionalText(value, maxLength) {
   const normalized = String(value || "").trim();
   if (normalized.length > maxLength) throw new Error("Popisek modelu je příliš dlouhý.");
   return normalized;
+}
+
+function assertBuiltinIdentity(providerId, baseUrl, chatApi) {
+  if (providerId !== "openai") return;
+  if (baseUrl !== "https://api.openai.com/v1" || chatApi !== "responses") {
+    throw new Error("U vestavěného OpenAI lze změnit pouze API klíč.");
+  }
 }
 
 module.exports = { ProviderStore };
