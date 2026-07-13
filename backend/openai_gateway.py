@@ -35,7 +35,8 @@ class OpenAIEmbeddingProvider:
         self, api_key: Optional[str], model_name: str, dimensions: Optional[int],
         batch_size: int = 64, base_url: Optional[str] = None,
     ) -> None:
-        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
+        client_key = api_key or ("local" if base_url else None)
+        self.client = OpenAI(api_key=client_key, base_url=base_url) if client_key else None
         self.model_name = model_name
         self.dimensions = dimensions
         self.batch_size = batch_size
@@ -72,7 +73,8 @@ class OpenAIChatCompletionProvider:
         base_url: Optional[str] = None,
         chat_api: Literal["responses", "chat_completions"] = "responses",
     ) -> None:
-        self.client = OpenAI(api_key=api_key, base_url=base_url) if api_key else None
+        client_key = api_key or ("local" if base_url else None)
+        self.client = OpenAI(api_key=client_key, base_url=base_url) if client_key else None
         self.model_name = model_name
         self.chat_api = chat_api
 

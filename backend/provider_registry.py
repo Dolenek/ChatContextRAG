@@ -61,7 +61,7 @@ class ProviderRegistry:
             raise IntegrationConfigurationError(
                 f"Provider '{provider_id}' is not configured."
             )
-        if not configuration.api_key:
+        if configuration.builtin and not configuration.api_key:
             raise IntegrationConfigurationError(
                 f"API key for provider '{provider_id}' is missing."
             )
@@ -89,7 +89,7 @@ class ProviderRegistry:
         configuration = self.get(provider_id)
         try:
             response = OpenAI(
-                api_key=configuration.api_key, base_url=configuration.base_url,
+                api_key=configuration.api_key or "local", base_url=configuration.base_url,
             ).models.list()
         except OpenAIError as error:
             raise ExternalIntegrationError(
@@ -103,4 +103,5 @@ class ProviderRegistry:
             provider_id=configuration.provider_id, name=configuration.name,
             base_url=configuration.base_url, chat_api=configuration.chat_api,
             has_api_key=bool(configuration.api_key), builtin=configuration.builtin,
+            is_available=bool(configuration.api_key) or not configuration.builtin,
         )

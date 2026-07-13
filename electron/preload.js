@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld("chatContext", {
   listProviderModels: (providerId) => ipcRenderer.invoke("settings:models", providerId),
   saveChatDefault: (providerId, model) =>
     ipcRenderer.invoke("settings:chat-default", { providerId, model }),
+  saveChatModel: (model) => ipcRenderer.invoke("settings:chat-model:save", model),
+  deleteChatModel: (providerId, model) =>
+    ipcRenderer.invoke("settings:chat-model:delete", { providerId, model }),
   createEmbeddingIndex: (input) => ipcRenderer.invoke("settings:index:create", input),
   updateEmbeddingIndex: (indexId, update) =>
     ipcRenderer.invoke("settings:index:update", { indexId, update }),

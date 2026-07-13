@@ -10,15 +10,53 @@ test("settings UI is isolated through preload and carries model selection to cha
   const html = read("renderer/index.html");
   const preload = read("electron/preload.js");
   const settingsUi = read("renderer/settings-ui.js");
+  const modelSelector = read("renderer/model-selector.js");
   const controller = read("renderer/chat-controller.js");
 
   assert.match(html, /id="settings-screen"/);
   assert.match(html, /id="chat-model-input"/);
+  assert.match(html, /id="chat-model-trigger"/);
   assert.match(preload, /settings:provider:save/);
+  assert.match(preload, /settings:chat-model:save/);
   assert.doesNotMatch(preload, /decryptString/);
-  assert.match(settingsUi, /saveChatDefault/);
+  assert.match(modelSelector, /saveChatDefault/);
+  assert.match(modelSelector, /model-provider-list/);
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
   assert.match(controller, /getChatSelection/);
+});
+
+test("managed chat models persist without exposing provider secrets", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-models-"));
+  const store = new ProviderStore(directory, {});
+
+  store.saveChatModel({
+    providerId: "openai", model: "gpt-test", label: "Testovací model",
+  });
+  const models = store.listChatModels([
+    { providerId: "openai", model: "environment-model" },
+  ]);
+
+  assert.deepEqual(models, [
+    { provider_id: "openai", model: "gpt-test", label: "Testovací model", managed: true },
+    { provider_id: "openai", model: "environment-model", label: "environment-model", managed: false },
+  ]);
+  store.deleteChatModel("openai", "gpt-test");
+  assert.equal(store.listChatModels().length, 0);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("keyless local provider remains available for compatible endpoints", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-local-"));
+  const store = new ProviderStore(directory, {});
+  const view = store.save({
+    name: "Local", baseUrl: "http://localhost:11434/v1/",
+    apiKey: "", chatApi: "chat_completions",
+  });
+
+  assert.equal(view.has_api_key, false);
+  assert.equal(view.is_available, true);
+  assert.equal(store.decryptedProfiles()[0].api_key, null);
+  fs.rmSync(directory, { recursive: true, force: true });
 });
 
 test("provider store encrypts API keys and never returns them in public profiles", () => {

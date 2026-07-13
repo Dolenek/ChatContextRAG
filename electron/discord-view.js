@@ -4,7 +4,17 @@ const {
 } = require("./discord-extractor");
 const { DiscordChannelScanner } = require("./discord-channel-scanner");
 
-const TOOLBAR_HEIGHT = 72;
+const TITLEBAR_HEIGHT = 30;
+const DISCORD_LEFT_INSET = 360;
+
+function calculateDiscordBounds(width, height) {
+  return {
+    x: DISCORD_LEFT_INSET,
+    y: TITLEBAR_HEIGHT,
+    width: Math.max(0, width - DISCORD_LEFT_INSET),
+    height: Math.max(0, height - TITLEBAR_HEIGHT),
+  };
+}
 
 class DiscordViewController {
   constructor(mainWindow) {
@@ -42,7 +52,7 @@ class DiscordViewController {
   resize() {
     if (!this.discordView) return;
     const [width, height] = this.mainWindow.getContentSize();
-    this.discordView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: height - TOOLBAR_HEIGHT });
+    this.discordView.setBounds(calculateDiscordBounds(width, height));
     this.discordView.setAutoResize({ width: true, height: true });
   }
 
@@ -97,4 +107,4 @@ class DiscordViewController {
   }
 }
 
-module.exports = { DiscordViewController };
+module.exports = { calculateDiscordBounds, DiscordViewController };

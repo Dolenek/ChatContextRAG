@@ -5,7 +5,7 @@ const disconnectDiscordBotButton = document.querySelector("#disconnect-discord-b
 let discordBotUiHost = null;
 
 async function openDiscordBotSetup() {
-  discordBotUiHost.showScreen("discordBot");
+  discordBotUiHost.openDrawerPanel("discordBot");
   await refreshDiscordBotStatus();
 }
 

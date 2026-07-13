@@ -19,7 +19,9 @@ class ProviderStore {
       name: profile.name,
       base_url: profile.baseUrl,
       chat_api: profile.chatApi,
-      api_key: this.safeStorage.decryptString(Buffer.from(profile.encryptedApiKey, "base64")),
+      api_key: profile.encryptedApiKey
+        ? this.safeStorage.decryptString(Buffer.from(profile.encryptedApiKey, "base64"))
+        : null,
     }));
   }
 
@@ -28,13 +30,12 @@ class ProviderStore {
     const existing = state.providers.find((item) => item.providerId === input.providerId);
     const providerId = input.providerId || crypto.randomUUID();
     const apiKey = input.apiKey?.trim();
-    if (!existing && !apiKey) throw new Error("API klíč je povinný pro nový provider profil.");
     const profile = {
       providerId,
       name: input.name.trim(),
       baseUrl: input.baseUrl.trim().replace(/\/$/, ""),
       chatApi: input.chatApi,
-      encryptedApiKey: apiKey ? this._encrypt(apiKey) : existing.encryptedApiKey,
+      encryptedApiKey: apiKey ? this._encrypt(apiKey) : existing?.encryptedApiKey || null,
     };
     const index = state.providers.findIndex((item) => item.providerId === providerId);
     if (index >= 0) state.providers[index] = profile;
@@ -46,6 +47,7 @@ class ProviderStore {
   delete(providerId) {
     const state = this._read();
     state.providers = state.providers.filter((item) => item.providerId !== providerId);
+    state.chatModels = state.chatModels.filter((model) => model.providerId !== providerId);
     if (state.defaults?.chatProviderId === providerId) {
       state.defaults = null;
     }
@@ -64,6 +66,51 @@ class ProviderStore {
     return state.defaults || { chatProviderId: "openai", chatModel: "" };
   }
 
+  listChatModels(fallbackModels = []) {
+    const managedModels = this._read().chatModels.map((model) => ({
+      provider_id: model.providerId, model: model.model,
+      label: model.label || model.model, managed: true,
+    }));
+    const knownKeys = new Set(managedModels.map(modelKey));
+    const fallbackEntries = fallbackModels
+      .filter((model) => model?.providerId && model?.model)
+      .filter((model) => {
+        const key = modelKey({ provider_id: model.providerId, model: model.model });
+        if (knownKeys.has(key)) return false;
+        knownKeys.add(key);
+        return true;
+      })
+      .map((model) => ({
+        provider_id: model.providerId, model: model.model,
+        label: model.label || model.model, managed: false,
+      }));
+    return [...managedModels, ...fallbackEntries];
+  }
+
+  saveChatModel(input) {
+    const state = this._read();
+    const providerId = requiredText(input.providerId, "Provider", 100);
+    const model = requiredText(input.model, "Model", 200);
+    const label = optionalText(input.label, 100) || model;
+    const existingIndex = state.chatModels.findIndex(
+      (entry) => entry.providerId === providerId && entry.model === model,
+    );
+    const savedModel = { providerId, model, label };
+    if (existingIndex >= 0) state.chatModels[existingIndex] = savedModel;
+    else if (state.chatModels.length >= 100) throw new Error("Lze uložit nejvýše 100 chat modelů.");
+    else state.chatModels.push(savedModel);
+    this._write(state);
+    return { provider_id: providerId, model, label, managed: true };
+  }
+
+  deleteChatModel(providerId, model) {
+    const state = this._read();
+    state.chatModels = state.chatModels.filter(
+      (entry) => entry.providerId !== providerId || entry.model !== model,
+    );
+    this._write(state);
+  }
+
   _encrypt(apiKey) {
     if (!this.safeStorage.isEncryptionAvailable()) {
       throw new Error("Systémové šifrování není dostupné; API klíč nebyl uložen.");
@@ -77,12 +124,13 @@ class ProviderStore {
 
   _read() {
     if (!fs.existsSync(this.filePath)) {
-      return { providers: [], defaults: null };
+      return { providers: [], defaults: null, chatModels: [] };
     }
     const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
     const defaults = parsed.defaults || null;
     return {
       providers: Array.isArray(parsed.providers) ? parsed.providers : [],
+      chatModels: Array.isArray(parsed.chatModels) ? parsed.chatModels : [],
       defaults: defaults?.chatProviderId === "openai" && !defaults.chatModel
         ? null : defaults,
     };
@@ -102,9 +150,27 @@ class ProviderStore {
       base_url: profile.baseUrl,
       chat_api: profile.chatApi,
       has_api_key: Boolean(profile.encryptedApiKey),
+      is_available: true,
       builtin: false,
     };
   }
+}
+
+function modelKey(model) {
+  return `${model.provider_id}\u0000${model.model}`;
+}
+
+function requiredText(value, label, maxLength) {
+  const normalized = String(value || "").trim();
+  if (!normalized) throw new Error(`${label} je povinný.`);
+  if (normalized.length > maxLength) throw new Error(`${label} je příliš dlouhý.`);
+  return normalized;
+}
+
+function optionalText(value, maxLength) {
+  const normalized = String(value || "").trim();
+  if (normalized.length > maxLength) throw new Error("Popisek modelu je příliš dlouhý.");
+  return normalized;
 }
 
 module.exports = { ProviderStore };

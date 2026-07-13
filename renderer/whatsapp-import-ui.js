@@ -9,7 +9,7 @@ let selectedWhatsAppFile = null;
 let latestWhatsAppPreview = null;
 
 async function openWhatsAppImport() {
-  whatsappUiHost.showScreen("whatsapp");
+  whatsappUiHost.openDrawerPanel("whatsapp");
   await loadWhatsAppConversations();
 }
 
@@ -107,7 +107,10 @@ async function importWhatsAppFile() {
     whatsappUiHost.showToast(
       `WhatsApp: nově uloženo ${result.imported_count}, duplicity ${result.duplicate_count}.`,
     );
-    await loadWhatsAppConversations();
+    whatsappUiHost.showImportResult(
+      `WhatsApp: nově uloženo ${result.imported_count} zpráv, přeskočeno ${result.duplicate_count} duplicit.`,
+    );
+    await whatsappUiHost.refreshWorkspaceData();
   } catch (error) {
     whatsappUiHost.showToast(error.message, true);
   } finally {

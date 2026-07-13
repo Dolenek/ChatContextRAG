@@ -1,19 +1,19 @@
 let settingsState = null;
 let showSettingsScreen = () => {};
 let showSettingsToast = () => {};
-let resetChatConversation = () => {};
 
 function bindSettingsUi(dependencies) {
   showSettingsScreen = dependencies.showScreen;
   showSettingsToast = dependencies.showToast;
-  resetChatConversation = dependencies.resetConversation;
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
+  document.querySelector("#chat-model-form").addEventListener("submit", saveChatModel);
   document.querySelector("#embedding-index-form").addEventListener("submit", createIndex);
   document.querySelector("#cancel-provider-edit").addEventListener("click", resetProviderForm);
   document.querySelector("#refresh-settings-button").addEventListener("click", refreshSettings);
   document.querySelector("#embedding-provider-select").addEventListener("change", loadEmbeddingModels);
-  document.querySelector("#chat-provider-select").addEventListener("change", chatSelectionChanged);
-  document.querySelector("#chat-model-input").addEventListener("change", chatSelectionChanged);
+  document.querySelector("#chat-model-provider-select").addEventListener(
+    "change", loadChatModelSuggestions,
+  );
 }
 
 async function openSettings() {
@@ -26,9 +26,12 @@ async function refreshSettings() {
   try {
     settingsState = await window.chatContext.getSettings();
     renderProviders();
+    renderChatModels();
     renderIndexes();
     fillProviderSelect("#embedding-provider-select");
-    await loadEmbeddingModels();
+    fillProviderSelect("#chat-model-provider-select");
+    await Promise.all([loadEmbeddingModels(), loadChatModelSuggestions()]);
+    await window.modelSelector.prepare(settingsState);
   } catch (error) {
     showSettingsToast(error.message, true);
   }
@@ -40,50 +43,14 @@ async function refreshIndexState() {
   renderIndexes();
 }
 
-async function prepareChat() {
-  settingsState = await window.chatContext.getSettings();
-  fillProviderSelect("#chat-provider-select");
-  const defaults = settingsState.chatDefaults || {};
-  const providerSelect = document.querySelector("#chat-provider-select");
-  if ([...providerSelect.options].some((option) => option.value === defaults.chatProviderId)) {
-    providerSelect.value = defaults.chatProviderId;
-  }
-  document.querySelector("#chat-model-input").value = defaults.chatModel || "";
-  const active = settingsState.embeddings.indexes.find(
-    (item) => item.embedding_index_id === settingsState.embeddings.active_embedding_index_id,
-  );
-  document.querySelector("#active-embedding-index").textContent = active
-    ? `RAG: ${active.name} · ${active.model}` : "Není vybraný připravený RAG index";
-  updateChatAvailability(active);
-  await loadModels(providerSelect.value, "#chat-model-options");
-}
-
-function getChatSelection() {
-  return {
-    providerId: document.querySelector("#chat-provider-select").value || "openai",
-    model: document.querySelector("#chat-model-input").value.trim() || undefined,
-  };
-}
-
-async function chatSelectionChanged(changeEvent) {
-  if (changeEvent?.target?.id === "chat-provider-select") {
-    document.querySelector("#chat-model-input").value = "";
-    await loadModels(changeEvent.target.value, "#chat-model-options");
-  }
-  const selection = getChatSelection();
-  const active = settingsState.embeddings.indexes.find(
-    (item) => item.embedding_index_id === settingsState.embeddings.active_embedding_index_id,
-  );
-  updateChatAvailability(active);
-  await window.chatContext.saveChatDefault(selection.providerId, selection.model || "");
-  resetChatConversation("novým modelem");
-}
-
 function renderProviders() {
   const container = document.querySelector("#provider-list");
   container.replaceChildren(...settingsState.providers.map((provider) => {
+    const availability = provider.is_available ?? provider.has_api_key;
+    const access = provider.has_api_key ? "API klíč uložen"
+      : availability ? "lokální endpoint bez klíče" : "chybí API klíč";
     const row = createSettingsRow(
-      provider.name, `${provider.base_url} · ${provider.chat_api}`,
+      provider.name, `${provider.base_url} · ${provider.chat_api} · ${access}`,
     );
     if (!provider.builtin) {
       row.append(
@@ -93,6 +60,24 @@ function renderProviders() {
     }
     return row;
   }));
+}
+
+function renderChatModels() {
+  const providers = new Map(settingsState.providers.map(
+    (provider) => [provider.provider_id, provider.name],
+  ));
+  const rows = (settingsState.chatModels || []).map((model) => {
+    const detail = `${providers.get(model.provider_id) || model.provider_id} · ${model.model}`;
+    const row = createSettingsRow(model.label || model.model, detail);
+    if (model.managed) {
+      row.append(actionButton(
+        "Smazat", () => removeChatModel(model), "danger-link",
+      ));
+    }
+    return row;
+  });
+  if (!rows.length) rows.push(createDetail("Zatím není přidaný žádný chat model."));
+  document.querySelector("#chat-model-list").replaceChildren(...rows);
 }
 
 function renderIndexes() {
@@ -146,6 +131,21 @@ async function saveProvider(submitEvent) {
   } catch (error) { showSettingsToast(error.message, true); }
 }
 
+async function saveChatModel(submitEvent) {
+  submitEvent.preventDefault();
+  try {
+    await window.chatContext.saveChatModel({
+      providerId: document.querySelector("#chat-model-provider-select").value,
+      model: document.querySelector("#chat-model-input").value,
+      label: document.querySelector("#chat-model-label").value,
+    });
+    document.querySelector("#chat-model-input").value = "";
+    document.querySelector("#chat-model-label").value = "";
+    await refreshSettings();
+    showSettingsToast("Chat model byl přidán.");
+  } catch (error) { showSettingsToast(error.message, true); }
+}
+
 async function createIndex(submitEvent) {
   submitEvent.preventDefault();
   const dimensionsValue = document.querySelector("#embedding-dimensions").value;
@@ -173,6 +173,12 @@ function editProvider(provider) {
 
 function resetProviderForm() { document.querySelector("#provider-form").reset(); document.querySelector("#provider-id").value = ""; }
 async function removeProvider(id) { await runAndRefresh(() => window.chatContext.deleteProvider(id), "Provider byl smazán."); }
+async function removeChatModel(model) {
+  await runAndRefresh(
+    () => window.chatContext.deleteChatModel(model.provider_id, model.model),
+    "Chat model byl smazán.",
+  );
+}
 async function activateIndex(id) { await runAndRefresh(() => window.chatContext.activateEmbeddingIndex(id), "Aktivní index byl změněn."); }
 async function syncIndex(index) { await runAndRefresh(() => window.chatContext.syncEmbeddingIndex(index.embedding_index_id), "Synchronizace byla zařazena."); }
 async function rebuildIndex(index) {
@@ -195,8 +201,9 @@ function fillProviderSelect(selector) {
   const previous = select.value;
   select.replaceChildren(...settingsState.providers.map((provider) => {
     const option = document.createElement("option");
+    const available = provider.is_available ?? provider.has_api_key;
     option.value = provider.provider_id;
-    option.textContent = provider.has_api_key ? provider.name : `${provider.name} (bez klíče)`;
+    option.textContent = available ? provider.name : `${provider.name} (chybí klíč)`;
     return option;
   }));
   if ([...select.options].some((option) => option.value === previous)) select.value = previous;
@@ -204,6 +211,13 @@ function fillProviderSelect(selector) {
 
 async function loadEmbeddingModels() {
   await loadModels(document.querySelector("#embedding-provider-select").value, "#embedding-model-options");
+}
+
+async function loadChatModelSuggestions() {
+  await loadModels(
+    document.querySelector("#chat-model-provider-select").value,
+    "#chat-model-options",
+  );
 }
 
 async function loadModels(providerId, datalistSelector) {
@@ -215,18 +229,6 @@ async function loadModels(providerId, datalistSelector) {
   document.querySelector(datalistSelector).replaceChildren(...options);
 }
 
-function updateChatAvailability(activeIndex) {
-  const embeddingProvider = activeIndex && settingsState.providers.find(
-    (provider) => provider.provider_id === activeIndex.provider_id,
-  );
-  const chatProvider = settingsState.providers.find(
-    (provider) => provider.provider_id === getChatSelection().providerId,
-  );
-  document.querySelector("#chat-form button").disabled = !activeIndex
-    || activeIndex.status !== "ready" || !embeddingProvider?.has_api_key
-    || !chatProvider?.has_api_key;
-}
-
 function createSettingsRow(title, detail) {
   const row = document.createElement("article"); row.className = "settings-row";
   const heading = document.createElement("strong"); heading.textContent = title;
@@ -236,6 +238,6 @@ function createDetail(text, className = "") { const item = document.createElemen
 function actionButton(label, callback, className = "") { const button = document.createElement("button"); button.type = "button"; button.className = `settings-action ${className}`; button.textContent = label; button.addEventListener("click", callback); return button; }
 
 window.settingsUi = {
-  bind: bindSettingsUi, getChatSelection, open: openSettings,
-  prepareChat, refresh: refreshSettings, refreshIndexState,
+  bind: bindSettingsUi, open: openSettings,
+  refresh: refreshSettings, refreshIndexState,
 };

@@ -5,198 +5,218 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat Context</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="shell.css" />
+    <link rel="stylesheet" href="chat.css" />
+    <link rel="stylesheet" href="panels.css" />
   </head>
   <body>
-    <header class="app-bar">
-      <button id="home-button" class="brand" type="button" aria-label="Zpět na úvod">
-        <span class="brand-mark">C</span><span>Chat Context</span>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 3V5Z" /><path d="M9 9h6M9 12h4" /></symbol>
+      <symbol id="icon-sources" viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 17l8 4 8-4" /></symbol>
+      <symbol id="icon-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></symbol>
+      <symbol id="icon-context" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24"><path d="m4 4 17 8-17 8 4-8-4-8Z" /><path d="M8 12h13" /></symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M18 12a6 6 0 0 0-10.2-4.2L4 12m2 0a6 6 0 0 0 10.2 4.2L20 12" /></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></symbol>
+    </svg>
+
+    <header class="titlebar">
+      <div class="window-brand"><span class="brand-mark">C</span><span>Chat Context</span></div>
+      <span class="titlebar-title">Lokální konverzační archiv</span>
+      <button id="context-toggle" class="titlebar-action" type="button" aria-label="Zobrazit nalezený kontext">
+        <svg><use href="#icon-context" /></svg>
       </button>
-      <div id="discord-actions" class="discord-actions hidden">
-        <span id="scan-progress" class="scan-progress">Discord se ukládá raw; embeddings se spustí po scanu.</span>
-        <button id="capture-button" class="small-primary" type="button">Načíst poslední 4</button>
-        <button id="resume-scan-button" class="small-resume" type="button">Pokračovat od poslední načtené</button>
-        <button id="scan-channel-button" class="small-scan" type="button">Procházet do databáze</button>
-      </div>
-      <button id="open-settings-button" class="settings-button" type="button" aria-label="Nastavení">⚙</button>
     </header>
 
-    <main id="app" class="app-shell">
-      <section id="home-screen" class="screen home-screen">
-        <div class="eyebrow">SOUKROMÁ LOKÁLNÍ DATABÁZE</div>
-        <h1>Vaše konverzace.<br /><span>Váš kontext.</span></h1>
-        <p class="lead">Uložte si důležité zprávy z Discordu i WhatsAppu a najděte v nich odpověď během pár sekund.</p>
-        <div class="action-grid">
-          <button id="open-discord-button" class="action-card discord-card" type="button">
-            <span class="card-icon">⌁</span>
-            <span><strong>Nahrát pomocí Discordu</strong><small>Přihlaste se a vyberte otevřený chat</small></span>
-            <span class="arrow">→</span>
-          </button>
-          <button id="open-discord-bot-button" class="action-card discord-bot-card" type="button">
-            <span class="card-icon">B</span>
-            <span><strong>Přidat Discord bota</strong><small>Synchronizujte historii a nové zprávy automaticky</small></span>
-            <span class="arrow">→</span>
-          </button>
-          <button id="open-whatsapp-button" class="action-card whatsapp-card" type="button">
-            <span class="card-icon">W</span>
-            <span><strong>Nahrát WhatsApp export</strong><small>Importujte lokální TXT nebo ZIP konverzaci</small></span>
-            <span class="arrow">→</span>
-          </button>
-          <button id="open-chat-button" class="action-card database-card" type="button">
-            <span class="card-icon">✦</span>
-            <span><strong>Povídat s databází</strong><small>Ptejte se na uložené konverzace</small></span>
-            <span class="arrow">→</span>
-          </button>
-          <button id="open-overview-button" class="action-card overview-card" type="button">
-            <span class="card-icon">▦</span>
-            <span><strong>Zobrazit databázi</strong><small>Statistiky, zdroje a uložené chunky</small></span>
-            <span class="arrow">→</span>
-          </button>
-        </div>
-        <div class="trust-row"><span>● Data zůstávají u vás</span><span>● Volitelný lokální Discord bot</span><span>● PostgreSQL + pgvector</span></div>
-      </section>
+    <div class="app-layout">
+      <nav class="navigation-rail" aria-label="Hlavní navigace">
+        <button id="drawer-toggle" class="rail-button" type="button" aria-label="Rozbalit navigaci" aria-expanded="false">
+          <svg><use href="#icon-menu" /></svg><span class="tooltip">Rozbalit navigaci</span>
+        </button>
+        <button id="open-chat-button" class="rail-button active" type="button" aria-label="Chat" aria-current="page">
+          <svg><use href="#icon-chat" /></svg><span class="tooltip">Chat</span>
+        </button>
+        <button id="open-sources-button" class="rail-button" type="button" aria-label="Zdroje a importy">
+          <svg><use href="#icon-sources" /></svg><span class="tooltip">Zdroje a importy</span>
+        </button>
+        <button id="open-overview-button" class="rail-button" type="button" aria-label="Databáze">
+          <svg><use href="#icon-database" /></svg><span class="tooltip">Databáze</span>
+        </button>
+        <div class="rail-spacer"></div>
+        <button id="open-settings-button" class="rail-button" type="button" aria-label="Nastavení modelů">
+          <svg><use href="#icon-settings" /></svg><span class="tooltip">Nastavení modelů</span>
+        </button>
+        <span class="local-status" title="Data zůstávají lokálně"><svg><use href="#icon-lock" /></svg></span>
+      </nav>
 
-      <section id="discord-bot-screen" class="screen integration-screen hidden">
-        <div class="integration-heading">
-          <div class="eyebrow">DISCORD BOT</div>
-          <h2>Automatická synchronizace kanálů</h2>
-          <p>Bot funguje pouze při spuštěné aplikaci a po restartu bezpečně doplní nové zprávy.</p>
-        </div>
-        <div class="integration-panel">
-          <label for="discord-bot-token">Bot token z Discord Developer Portal</label>
-          <div class="integration-row">
+      <aside id="left-drawer" class="left-drawer" aria-label="Navigace a zdroje" aria-hidden="true">
+        <header class="drawer-header">
+          <div><small>Chat Context</small><h2 id="drawer-title">Zdroje a importy</h2></div>
+          <button id="drawer-close" class="icon-button" type="button" aria-label="Sbalit navigaci"><svg><use href="#icon-close" /></svg></button>
+        </header>
+        <div class="drawer-content">
+          <section id="sources-drawer-panel" class="drawer-panel active">
+            <div class="section-heading"><div><h3>Prohledávané konverzace</h3><p id="chat-scope-status">Načítám konverzace…</p></div></div>
+            <label class="field-label" for="chat-scope-select">Chatovat nad</label>
+            <select id="chat-scope-select"><option value="">Všechny uložené zprávy</option></select>
+            <div id="chat-scope-list" class="scope-list"></div>
+            <div class="section-heading source-actions-heading"><div><h3>Přidat nebo synchronizovat</h3><p>Pouze skutečně podporované zdroje.</p></div></div>
+            <div class="source-actions">
+              <button id="open-discord-button" class="source-action" type="button"><span class="source-logo discord-logo">D</span><span><strong>Vestavěný Discord</strong><small>Vyberte chat a načtěte historii</small></span></button>
+              <button id="open-discord-bot-button" class="source-action" type="button"><span class="source-logo discord-logo">B</span><span><strong>Discord bot</strong><small>Průběžná synchronizace kanálů</small></span></button>
+              <button id="open-whatsapp-button" class="source-action" type="button"><span class="source-logo whatsapp-logo">W</span><span><strong>WhatsApp export</strong><small>Import lokálního TXT nebo ZIP</small></span></button>
+            </div>
+          </section>
+
+          <section id="discord-drawer-panel" class="drawer-panel">
+            <button class="drawer-back" type="button" data-drawer-target="sources">← Zpět ke zdrojům</button>
+            <div class="integration-heading"><span class="source-logo discord-logo">D</span><div><h3>Vestavěný Discord</h3><p>Přihlaste se a otevřete konkrétní konverzaci.</p></div></div>
+            <p id="scan-progress" class="scan-progress">Discord se ukládá nejprve raw; indexace začne po dokončení.</p>
+            <div class="stacked-actions">
+              <button id="capture-button" class="primary-button" type="button">Načíst poslední 4</button>
+              <button id="resume-scan-button" class="secondary-button" type="button">Pokračovat od poslední načtené</button>
+              <button id="scan-channel-button" class="secondary-button accent" type="button">Procházet do databáze</button>
+              <button id="close-discord-button" class="quiet-button" type="button">Zavřít Discord</button>
+            </div>
+          </section>
+
+          <section id="discord-bot-drawer-panel" class="drawer-panel">
+            <button class="drawer-back" type="button" data-drawer-target="sources">← Zpět ke zdrojům</button>
+            <div class="integration-heading"><span class="source-logo discord-logo">B</span><div><h3>Discord bot</h3><p>Automatická synchronizace dostupných kanálů.</p></div></div>
+            <label class="field-label" for="discord-bot-token">Bot token</label>
             <input id="discord-bot-token" type="password" autocomplete="off" placeholder="Token se uloží šifrovaně" />
-            <button id="connect-discord-bot-button" class="primary-button" type="button">Připojit</button>
-          </div>
-          <p id="discord-bot-status" class="integration-status">Načítám stav…</p>
-          <div class="panel-actions integration-actions">
-            <button id="invite-discord-bot-button" class="secondary-button" type="button" disabled>Pozvat na server</button>
-            <button id="disconnect-discord-bot-button" class="danger-button" type="button" disabled>Odpojit</button>
-          </div>
-          <small>V cílovém kanálu spusťte <code>/chatcontext sync</code>. Příkaz vyžaduje oprávnění Manage Channels.</small>
-        </div>
-      </section>
-
-      <section id="whatsapp-screen" class="screen integration-screen hidden">
-        <div class="integration-heading">
-          <div class="eyebrow">WHATSAPP EXPORT</div>
-          <h2>Import lokální konverzace</h2>
-          <p>Načítá se pouze text a popisky médií; samotné soubory, OCR ani audio se nezpracovávají.</p>
-        </div>
-        <div class="integration-panel">
-          <div class="integration-row">
-            <button id="select-whatsapp-file-button" class="secondary-button" type="button">Vybrat TXT nebo ZIP</button>
-            <strong id="whatsapp-file-name">Žádný soubor</strong>
-          </div>
-          <div id="whatsapp-options" class="integration-fields hidden">
-            <label for="whatsapp-conversation-select">Cílová konverzace</label>
-            <select id="whatsapp-conversation-select"><option value="">Nová konverzace</option></select>
-            <label for="whatsapp-conversation-name">Název nové konverzace</label>
-            <input id="whatsapp-conversation-name" type="text" maxlength="300" placeholder="Např. Rodina" />
-            <label for="whatsapp-date-order">Pořadí data</label>
-            <select id="whatsapp-date-order"><option value="">Automaticky</option><option value="DMY">Den / měsíc / rok</option><option value="MDY">Měsíc / den / rok</option></select>
-            <label id="whatsapp-text-entry-label" for="whatsapp-text-entry" class="hidden">Textový soubor v ZIPu</label>
-            <select id="whatsapp-text-entry" class="hidden"></select>
-            <p id="whatsapp-preview-status" class="integration-status"></p>
-            <div id="whatsapp-preview-samples" class="preview-samples"></div>
-            <button id="import-whatsapp-button" class="primary-button" type="button" disabled>Importovat a zaindexovat</button>
-          </div>
-        </div>
-      </section>
-
-      <section id="result-screen" class="screen panel-screen hidden">
-        <div class="panel-heading"><span class="success-mark">✓</span><div><h2>Zprávy jsou uložené</h2><p id="import-summary"></p></div></div>
-        <div id="message-list" class="message-list"></div>
-        <div class="panel-actions"><button id="import-more-button" class="secondary-button" type="button">Nahrát další</button><button id="chat-after-import-button" class="primary-button" type="button">Povídat s databází</button></div>
-      </section>
-
-      <section id="chat-screen" class="screen chat-screen hidden">
-        <div class="chat-heading"><div class="eyebrow">DATABÁZE ZPRÁV</div><h2>Na co si chcete vzpomenout?</h2><p>Odpovědi vycházejí pouze z uložených zpráv.</p></div>
-        <div class="chat-scope-control">
-          <label for="chat-scope-select">Chatovat nad</label>
-          <select id="chat-scope-select" aria-describedby="chat-scope-status">
-            <option value="">Všechny uložené zprávy</option>
-          </select>
-          <small id="chat-scope-status">Načítám konverzace…</small>
-          <label for="chat-provider-select">API provider</label>
-          <select id="chat-provider-select"></select>
-          <small id="active-embedding-index">Načítám aktivní index…</small>
-          <label for="chat-model-input">Chat model</label>
-          <input id="chat-model-input" list="chat-model-options" maxlength="200" placeholder="Model ID" />
-          <datalist id="chat-model-options"></datalist>
-          <small>Změna založí nový chat.</small>
-        </div>
-        <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
-        <form id="chat-form" class="chat-form"><input id="question-input" type="text" minlength="2" placeholder="Zeptejte se databáze…" autocomplete="off" required /><button type="submit" aria-label="Odeslat">↑</button></form>
-      </section>
-
-      <section id="overview-screen" class="screen overview-screen hidden">
-        <div class="overview-heading">
-          <div><div class="eyebrow">PŘEHLED DATABÁZE</div><h2>Co je uložené?</h2><p>Souhrn zdrojů, metadat a vektorových chunků.</p></div>
-          <div class="overview-actions"><button id="index-pending-button" class="secondary-button" type="button" disabled>Načítám stav indexu…</button><button id="refresh-overview-button" class="secondary-button" type="button">Obnovit</button><button id="open-clear-database-button" class="danger-button" type="button">Vymazat databázi</button></div>
-        </div>
-        <div id="overview-stats" class="stats-grid"></div>
-        <div class="overview-breakdowns">
-          <section><h3>Konverzace</h3><div id="channel-counts" class="count-list"></div></section>
-          <section><h3>Autoři</h3><div id="author-counts" class="count-list"></div></section>
-          <section><h3>Embedding modely</h3><div id="model-counts" class="count-list"></div></section>
-          <section><h3>Indexovací úlohy</h3><div id="indexing-jobs" class="count-list"></div></section>
-        </div>
-        <div class="chunks-heading"><div><h3>Uložené chunky</h3><p id="chunk-range"></p></div></div>
-        <div id="database-chunks" class="database-chunks"></div>
-        <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
-      </section>
-
-      <section id="settings-screen" class="screen settings-screen hidden">
-        <div class="settings-heading">
-          <div><div class="eyebrow">NASTAVENÍ MODELŮ</div><h2>API a embedding indexy</h2><p>API klíče zůstávají zašifrované v systémovém úložišti.</p></div>
-          <button id="refresh-settings-button" class="secondary-button" type="button">Obnovit</button>
-        </div>
-        <div class="settings-grid">
-          <section class="settings-panel">
-            <h3>API provideři</h3>
-            <div id="provider-list" class="settings-list"></div>
-            <form id="provider-form" class="settings-form">
-              <input id="provider-id" type="hidden" />
-              <label for="provider-name">Název</label><input id="provider-name" required maxlength="100" />
-              <label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="https://api.example.com/v1" />
-              <label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Při úpravě ponechte prázdné" />
-              <label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select>
-              <div class="form-actions"><button class="primary-button" type="submit">Uložit provider</button><button id="cancel-provider-edit" class="secondary-button" type="button">Zrušit</button></div>
-            </form>
+            <button id="connect-discord-bot-button" class="primary-button full-width" type="button">Připojit</button>
+            <p id="discord-bot-status" class="integration-status">Načítám stav…</p>
+            <div class="stacked-actions">
+              <button id="invite-discord-bot-button" class="secondary-button" type="button" disabled>Pozvat na server</button>
+              <button id="disconnect-discord-bot-button" class="danger-button" type="button" disabled>Odpojit a odstranit token</button>
+            </div>
+            <p class="fine-print">V cílovém kanálu spusťte <code>/chatcontext sync</code>. Bot funguje pouze při spuštěné aplikaci.</p>
           </section>
-          <section class="settings-panel">
-            <h3>Embedding indexy</h3>
-            <div id="embedding-index-list" class="settings-list"></div>
-            <form id="embedding-index-form" class="settings-form">
-              <label for="embedding-index-name">Název indexu</label><input id="embedding-index-name" required maxlength="100" />
-              <label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select>
-              <label for="embedding-model-input">Embedding model</label><input id="embedding-model-input" list="embedding-model-options" required maxlength="200" placeholder="text-embedding-3-small" /><datalist id="embedding-model-options"></datalist>
-              <label for="embedding-dimensions">Rozměr</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Zjistit automaticky" />
-              <label class="checkbox-label"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky indexovat budoucí zprávy</label>
-              <button class="primary-button" type="submit">Vytvořit a naplnit index</button>
-            </form>
+
+          <section id="whatsapp-drawer-panel" class="drawer-panel">
+            <button class="drawer-back" type="button" data-drawer-target="sources">← Zpět ke zdrojům</button>
+            <div class="integration-heading"><span class="source-logo whatsapp-logo">W</span><div><h3>WhatsApp export</h3><p>Importujte textovou historii bez odesílání médií.</p></div></div>
+            <button id="select-whatsapp-file-button" class="secondary-button full-width" type="button">Vybrat TXT nebo ZIP</button>
+            <strong id="whatsapp-file-name" class="selected-file">Žádný soubor</strong>
+            <div id="whatsapp-options" class="integration-fields hidden">
+              <label for="whatsapp-conversation-select">Cílová konverzace</label>
+              <select id="whatsapp-conversation-select"><option value="">Nová konverzace</option></select>
+              <label for="whatsapp-conversation-name">Název nové konverzace</label>
+              <input id="whatsapp-conversation-name" type="text" maxlength="300" placeholder="Např. Rodina" />
+              <label for="whatsapp-date-order">Pořadí data</label>
+              <select id="whatsapp-date-order"><option value="">Automaticky</option><option value="DMY">Den / měsíc / rok</option><option value="MDY">Měsíc / den / rok</option></select>
+              <label id="whatsapp-text-entry-label" for="whatsapp-text-entry" class="hidden">Textový soubor v ZIPu</label>
+              <select id="whatsapp-text-entry" class="hidden"></select>
+              <p id="whatsapp-preview-status" class="integration-status"></p>
+              <div id="whatsapp-preview-samples" class="preview-samples"></div>
+              <button id="import-whatsapp-button" class="primary-button" type="button" disabled>Importovat a zaindexovat</button>
+            </div>
+          </section>
+
+          <section id="import-result-drawer-panel" class="drawer-panel">
+            <button class="drawer-back" type="button" data-drawer-target="sources">← Zpět ke zdrojům</button>
+            <div class="import-success">✓</div><h3>Import dokončen</h3><p id="import-summary" class="integration-status"></p>
+            <div id="message-list" class="message-list"></div>
+            <button id="chat-after-import-button" class="primary-button full-width" type="button">Povídat si s databází</button>
           </section>
         </div>
-      </section>
-    </main>
+      </aside>
+
+      <main id="workspace" class="workspace">
+        <section id="chat-screen" class="workspace-screen chat-screen">
+          <header class="workspace-heading chat-heading">
+            <div><p class="eyebrow">LOKÁLNÍ RAG DATABÁZE</p><h1>Ptejte se na historii vašich chatů</h1><p>Nahrajte své konverzace a bavte se o jejich kontextu.</p></div>
+            <button id="new-chat-button" class="secondary-button" type="button"><svg><use href="#icon-plus" /></svg>Nový chat</button>
+          </header>
+          <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><h2>Na co si chcete vzpomenout?</h2><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="question-input">Otázka pro databázi</label>
+            <input id="question-input" type="text" minlength="2" placeholder="Zeptejte se na cokoliv z vaší historie chatů…" autocomplete="off" required />
+            <button type="submit" aria-label="Odeslat"><svg><use href="#icon-send" /></svg></button>
+          </form>
+          <footer class="composer-footer">
+            <p class="composer-note">Rozsah: <strong id="active-scope-label">všechny uložené zprávy</strong><span aria-hidden="true"> · </span><span id="active-embedding-index">Načítám RAG index…</span></p>
+            <div id="model-selector" class="model-selector">
+              <button id="chat-model-trigger" class="model-trigger" type="button" aria-haspopup="menu" aria-expanded="false"><span id="selected-model-label">Načítám model…</span><span aria-hidden="true">⌃</span></button>
+              <div id="chat-model-menu" class="model-menu hidden" role="menu" aria-label="Vybrat model odpovědi">
+                <p>Provider</p><div id="model-provider-list" class="model-menu-list"></div>
+                <div id="model-list" class="model-submenu hidden" role="menu" aria-label="Modely providera"></div>
+              </div>
+            </div>
+          </footer>
+        </section>
+
+        <section id="overview-screen" class="workspace-screen overview-screen hidden">
+          <header class="workspace-heading overview-heading">
+            <div><p class="eyebrow">PŘEHLED DATABÁZE</p><h1>Co je uložené?</h1><p>Statistiky, metadata a vektorové chunky.</p></div>
+            <div class="overview-actions"><button id="refresh-overview-button" class="secondary-button" type="button"><svg><use href="#icon-refresh" /></svg>Obnovit</button><button id="open-clear-database-button" class="danger-button" type="button">Vymazat databázi</button></div>
+          </header>
+          <div id="overview-stats" class="stats-grid"></div>
+          <div class="overview-breakdowns">
+            <section><h3>Konverzace</h3><div id="channel-counts" class="count-list"></div></section>
+            <section><h3>Autoři</h3><div id="author-counts" class="count-list"></div></section>
+            <section><h3>Embedding modely</h3><div id="model-counts" class="count-list"></div></section>
+          </div>
+          <div class="chunks-heading"><div><h3>Uložené chunky</h3><p id="chunk-range"></p></div></div>
+          <div id="database-chunks" class="database-chunks"></div>
+          <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
+        </section>
+
+        <section id="settings-screen" class="workspace-screen settings-screen hidden">
+          <header class="workspace-heading settings-heading">
+            <div><p class="eyebrow">MODELY A API</p><h1>Nastavení providerů</h1><p>Chat modely a nezávislé embedding indexy nad stejnými raw zprávami.</p></div>
+            <button id="refresh-settings-button" class="secondary-button" type="button"><svg><use href="#icon-refresh" /></svg>Obnovit</button>
+          </header>
+          <div class="settings-grid">
+            <section class="settings-card"><h2>Provideři</h2><p>API klíče ukládá Electron pomocí zabezpečeného úložiště systému.</p><div id="provider-list" class="settings-list"></div></section>
+            <section class="settings-card"><h2>Přidat nebo upravit providera</h2><form id="provider-form" class="settings-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
+            <section class="settings-card settings-wide"><h2>Chat modely</h2><p>Modely přidané zde se zobrazují ve výběru u pravého spodního okraje chatu.</p><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid chat-model-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><button class="primary-button" type="submit">Přidat model</button></form></section>
+            <section class="settings-card settings-wide"><h2>Embedding indexy</h2><p>Aktivní připravený index určuje vektorové vyhledávání v chatu.</p><div id="embedding-index-list" class="settings-list"></div></section>
+            <section class="settings-card settings-wide"><h2>Vytvořit embedding index</h2><form id="embedding-index-form" class="settings-form settings-form-grid"><label for="embedding-index-name">Název</label><input id="embedding-index-name" required /><label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select><label for="embedding-model-input">Model</label><input id="embedding-model-input" list="embedding-model-options" required /><datalist id="embedding-model-options"></datalist><label for="embedding-dimensions">Rozměry</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Automaticky" /><label class="compact-toggle embedding-auto-sync"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky synchronizovat</label><button class="primary-button" type="submit">Vytvořit index</button></form></section>
+          </div>
+        </section>
+      </main>
+
+      <aside id="context-panel" class="context-panel" aria-label="Nalezený kontext">
+        <header class="context-header"><div><p class="eyebrow">VÝSLEDKY</p><h2>Nalezený kontext</h2></div><button id="context-close" class="icon-button" type="button" aria-label="Skrýt kontext"><svg><use href="#icon-close" /></svg></button></header>
+        <div class="context-scroll">
+          <section class="context-section">
+            <div id="context-empty" class="context-empty"><span>✦</span><p>Zdroje použité pro odpověď se zobrazí tady.</p></div>
+            <div id="context-list" class="context-list"></div>
+          </section>
+          <section id="index-panel" class="index-panel">
+            <div class="section-heading"><div><h3>Index</h3><p id="index-last-update">Načítám stav…</p></div><strong id="index-percent">—</strong></div>
+            <div class="index-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="index-progress-bar"></span></div>
+            <dl class="index-metrics"><div><dt>Raw zprávy</dt><dd id="index-raw-count">—</dd></div><div><dt>Zaindexováno</dt><dd id="indexed-count">—</dd></div><div><dt>Chunky</dt><dd id="index-chunk-count">—</dd></div><div><dt>Velikost databáze</dt><dd id="database-size">—</dd></div></dl>
+            <div id="indexing-jobs" class="count-list indexing-jobs"></div>
+            <button id="index-pending-button" class="secondary-button full-width" type="button" disabled>Načítám stav indexu…</button>
+          </section>
+          <section class="privacy-card"><svg><use href="#icon-lock" /></svg><div><h3>Data zůstávají lokálně</h3><p>Konverzace jsou uložené ve vaší databázi. Externí AI obdrží jen kontext potřebný k odpovědi.</p></div></section>
+        </div>
+      </aside>
+    </div>
+
     <div id="clear-database-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
-      <section class="danger-dialog">
-        <div class="danger-icon">!</div>
-        <h2 id="clear-dialog-title">Vymazat celou databázi?</h2>
-        <p>Tato akce nevratně odstraní všechny chunky, vektory a metadata. Discord přihlášení zůstane zachované.</p>
-        <label for="clear-confirmation-input">Pro potvrzení napište <strong>VYMAZAT</strong></label>
-        <input id="clear-confirmation-input" type="text" autocomplete="off" placeholder="VYMAZAT" />
-        <div class="dialog-actions"><button id="cancel-clear-button" class="secondary-button" type="button">Zrušit</button><button id="confirm-clear-button" class="danger-button" type="button" disabled>Trvale vymazat</button></div>
-      </section>
+      <section class="danger-dialog"><div class="danger-icon">!</div><h2 id="clear-dialog-title">Vymazat celou databázi?</h2><p>Tato akce nevratně odstraní všechny chunky, vektory a metadata. Discord přihlášení zůstane zachované.</p><label for="clear-confirmation-input">Pro potvrzení napište <strong>VYMAZAT</strong></label><input id="clear-confirmation-input" type="text" autocomplete="off" placeholder="VYMAZAT" /><div class="dialog-actions"><button id="cancel-clear-button" class="secondary-button" type="button">Zrušit</button><button id="confirm-clear-button" class="danger-button" type="button" disabled>Trvale vymazat</button></div></section>
     </div>
     <div id="toast" class="toast hidden" role="status"></div>
+
+    <script src="shell-controller.js"></script>
     <script src="chat-sources.js"></script>
+    <script src="context-panel.js"></script>
     <script src="chat-scope-selector.js"></script>
     <script src="indexing-controls.js"></script>
+    <script src="overview-controller.js"></script>
+    <script src="settings-ui.js"></script>
+    <script src="model-selector.js"></script>
     <script src="discord-bot-ui.js"></script>
     <script src="whatsapp-import-ui.js"></script>
     <script src="app.js"></script>
-    <script src="settings-ui.js"></script>
     <script src="chat-controller.js"></script>
     <script src="event-bindings.js"></script>
   </body>

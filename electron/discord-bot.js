@@ -4,14 +4,13 @@ const {
 const { DiscordBotBatcher } = require("./discord-bot-batcher");
 const { DiscordBotChannelSynchronizer, maximumId } = require("./discord-bot-channel-sync");
 const { discordChannelContext, discordMessageToInput } = require("./discord-bot-message");
-const { DiscordBotTokenStore } = require("./discord-bot-token-store");
 const { DiscordBotCommands } = require("./discord-bot-commands");
 
 class DiscordBotController {
   constructor(options) {
     this.api = options.api;
     this.onProgress = options.onProgress || (() => {});
-    this.tokenStore = options.tokenStore || new DiscordBotTokenStore();
+    this.tokenStore = options.tokenStore || createElectronTokenStore();
     this.client = null;
     this.states = new Map();
     this.lastError = null;
@@ -165,6 +164,11 @@ class DiscordBotController {
   async shutdown() {
     return this.disconnect(false);
   }
+}
+
+function createElectronTokenStore() {
+  const { DiscordBotTokenStore } = require("./discord-bot-token-store");
+  return new DiscordBotTokenStore();
 }
 
 module.exports = { DiscordBotController };

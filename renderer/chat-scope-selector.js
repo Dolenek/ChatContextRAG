@@ -1,5 +1,6 @@
 const chatScopeSelect = document.querySelector("#chat-scope-select");
 const chatScopeStatus = document.querySelector("#chat-scope-status");
+const chatScopeList = document.querySelector("#chat-scope-list");
 const availableChatScopes = new Map();
 let scopeChangeListener = () => {};
 
@@ -18,9 +19,14 @@ function renderChatScopes(scopes, preferredKey) {
   availableChatScopes.clear();
   const allOption = new Option("Všechny uložené zprávy", "");
   const sourceGroups = groupScopesBySource(scopes);
-  const groupElements = [...sourceGroups.entries()].map(createSourceGroup);
-  chatScopeSelect.replaceChildren(allOption, ...groupElements);
-  chatScopeSelect.value = availableChatScopes.has(preferredKey) ? preferredKey : "";
+  chatScopeSelect.replaceChildren(
+    allOption,
+    ...[...sourceGroups.entries()].map(createSourceGroup),
+  );
+  const selectedKey = availableChatScopes.has(preferredKey) ? preferredKey : "";
+  chatScopeSelect.value = selectedKey;
+  renderScopeButtons(scopes, selectedKey);
+  updateActiveScopeLabel();
   chatScopeStatus.textContent = scopes.length
     ? `${scopes.length} dostupných konverzací`
     : "Zatím není dostupná žádná zaindexovaná konverzace";
@@ -28,42 +34,86 @@ function renderChatScopes(scopes, preferredKey) {
 
 function groupScopesBySource(scopes) {
   return scopes.reduce((groups, scope) => {
-    const sourceScopes = groups.get(scope.source_type) || [];
-    sourceScopes.push(scope);
-    groups.set(scope.source_type, sourceScopes);
+    const sourceType = scope.source_type || "other";
+    if (!groups.has(sourceType)) groups.set(sourceType, []);
+    groups.get(sourceType).push(scope);
     return groups;
   }, new Map());
 }
 
 function createSourceGroup([sourceType, scopes]) {
   const group = document.createElement("optgroup");
-  group.label = sourceDisplayName(sourceType);
-  group.append(...scopes.map(createScopeOption));
+  group.label = sourceLabel(sourceType);
+  scopes.forEach((scope) => {
+    const key = scopeKey(scope);
+    availableChatScopes.set(key, scope);
+    const context = scope.container_name ? `${scope.container_name} / ` : "";
+    group.append(new Option(
+      `${context}${scope.display_name} · ${scope.message_count} zpráv`, key,
+    ));
+  });
   return group;
 }
 
-function createScopeOption(scope) {
-  const key = `${scope.source_type}:${scope.conversation_id}`;
-  availableChatScopes.set(key, scope);
-  const messageSuffix = scope.message_count === 1 ? "zpráva" : "zpráv";
-  return new Option(`${scope.display_name} · ${scope.message_count} ${messageSuffix}`, key);
+function renderScopeButtons(scopes, selectedKey) {
+  const buttons = [createScopeButton(null, "", selectedKey)];
+  scopes.forEach((scope) => buttons.push(createScopeButton(scope, scopeKey(scope), selectedKey)));
+  chatScopeList.replaceChildren(...buttons);
 }
 
-function sourceDisplayName(sourceType) {
-  if (sourceType === "discord") return "Discord kanály";
-  if (sourceType === "whatsapp") return "WhatsApp konverzace";
-  return sourceType.charAt(0).toUpperCase() + sourceType.slice(1);
+function createScopeButton(scope, key, selectedKey) {
+  const button = document.createElement("button");
+  const icon = document.createElement("span");
+  const copy = document.createElement("span");
+  const title = document.createElement("strong");
+  const detail = document.createElement("small");
+  const count = document.createElement("span");
+  button.className = "scope-item";
+  button.type = "button";
+  button.classList.toggle("active", key === selectedKey);
+  button.dataset.scopeKey = key;
+  icon.className = "scope-icon";
+  copy.className = "scope-copy";
+  count.className = "scope-count";
+  icon.textContent = scope ? sourceShortLabel(scope.source_type) : "✦";
+  title.textContent = scope?.display_name || "Všechny zprávy";
+  detail.textContent = scope?.container_name || (scope ? sourceLabel(scope.source_type) : "Celá databáze");
+  count.textContent = scope ? formatCount(scope.message_count) : "";
+  copy.append(title, detail);
+  button.append(icon, copy, count);
+  button.addEventListener("click", () => selectScope(key));
+  return button;
 }
 
-function getSelectedScope() {
-  const selected = availableChatScopes.get(chatScopeSelect.value);
-  if (!selected) return null;
-  return { source_type: selected.source_type, conversation_id: selected.conversation_id };
+function selectScope(key) {
+  if (chatScopeSelect.value === key) return;
+  chatScopeSelect.value = key;
+  chatScopeSelect.dispatchEvent(new Event("change"));
+}
+
+function handleScopeChange() {
+  document.querySelectorAll(".scope-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.scopeKey === chatScopeSelect.value);
+  });
+  updateActiveScopeLabel();
+  scopeChangeListener(selectedScopeLabel());
+}
+
+function updateActiveScopeLabel() {
+  document.querySelector("#active-scope-label").textContent = selectedScopeLabel().toLowerCase();
 }
 
 function selectedScopeLabel() {
   return availableChatScopes.get(chatScopeSelect.value)?.display_name
-    || "všemi uloženými zprávami";
+    || "Všechny uložené zprávy";
+}
+
+function getSelectedScope() {
+  const selected = availableChatScopes.get(chatScopeSelect.value);
+  return selected ? {
+    source_type: selected.source_type,
+    conversation_id: selected.conversation_id,
+  } : null;
 }
 
 function setScopeLoading(isLoading) {
@@ -71,10 +121,27 @@ function setScopeLoading(isLoading) {
   if (isLoading) chatScopeStatus.textContent = "Načítám konverzace…";
 }
 
-chatScopeSelect.addEventListener("change", () => {
-  scopeChangeListener(selectedScopeLabel());
-});
+function sourceLabel(sourceType) {
+  if (sourceType === "discord") return "Discord";
+  if (sourceType === "whatsapp") return "WhatsApp";
+  return "Ostatní zdroje";
+}
 
+function sourceShortLabel(sourceType) {
+  if (sourceType === "discord") return "D";
+  if (sourceType === "whatsapp") return "W";
+  return "?";
+}
+
+function formatCount(value) {
+  return Number(value || 0).toLocaleString("cs-CZ");
+}
+
+function scopeKey(scope) {
+  return `${scope.source_type}:${scope.conversation_id}`;
+}
+
+chatScopeSelect.addEventListener("change", handleScopeChange);
 window.chatScopeSelector = {
   bind: (listener) => { scopeChangeListener = listener; },
   getSelectedScope,

@@ -19,6 +19,10 @@ class SettingsIpcController {
       this.request("GET", `/settings/providers/${encodeURIComponent(providerId)}/models`));
     ipcMain.handle("settings:chat-default", (_event, selection) =>
       this.providerStore.setDefaults(selection.providerId, selection.model));
+    ipcMain.handle("settings:chat-model:save", (_event, model) =>
+      this.saveChatModel(model));
+    ipcMain.handle("settings:chat-model:delete", (_event, model) =>
+      this.deleteChatModel(model));
     ipcMain.handle("settings:index:create", async (_event, input) => {
       const index = await this.request("POST", "/settings/embedding-indexes", input);
       this.monitorJob(index.active_job_id);
@@ -61,10 +65,12 @@ class SettingsIpcController {
       chatProviderId: embeddings.default_chat_provider_id || "openai",
       chatModel: embeddings.default_chat_model || "",
     };
-    return {
-      providers, embeddings,
-      chatDefaults: this.providerStore.getDefaults(environmentDefaults),
-    };
+    const chatDefaults = this.providerStore.getDefaults(environmentDefaults);
+    const chatModels = this.providerStore.listChatModels([
+      { providerId: environmentDefaults.chatProviderId, model: environmentDefaults.chatModel },
+      { providerId: chatDefaults.chatProviderId, model: chatDefaults.chatModel },
+    ]);
+    return { providers, embeddings, chatDefaults, chatModels };
   }
 
   async saveProvider(profile) {
@@ -84,6 +90,23 @@ class SettingsIpcController {
     }
     this.providerStore.delete(providerId);
     await this.initializeRegistry();
+    return { deleted: true };
+  }
+
+  async saveChatModel(model) {
+    const settings = await this.getSettings();
+    if (!settings.providers.some((provider) => provider.provider_id === model.providerId)) {
+      throw new Error("Vybraný provider neexistuje.");
+    }
+    return this.providerStore.saveChatModel(model);
+  }
+
+  async deleteChatModel(model) {
+    const defaults = this.providerStore.getDefaults();
+    if (defaults.chatProviderId === model.providerId && defaults.chatModel === model.model) {
+      throw new Error("Aktivní chat model nelze smazat. Nejdřív vyberte jiný model.");
+    }
+    this.providerStore.deleteChatModel(model.providerId, model.model);
     return { deleted: true };
   }
 

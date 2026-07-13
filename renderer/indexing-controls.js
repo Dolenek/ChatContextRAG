@@ -141,7 +141,7 @@ window.indexingControls = (() => {
   function schedulePoll() {
     if (pollHandle) window.clearTimeout(pollHandle);
     pollHandle = null;
-    if (!refreshOverview || !isOverviewVisible() || !findActiveJob()) return;
+    if (!refreshOverview || !findActiveJob()) return;
     pollHandle = window.setTimeout(pollActiveJob, pollIntervalMs);
   }
 
@@ -149,14 +149,10 @@ window.indexingControls = (() => {
     return latestJobs.find((job) => ["queued", "running"].includes(job.status));
   }
 
-  function isOverviewVisible() {
-    return !document.querySelector("#overview-screen").classList.contains("hidden");
-  }
-
   async function pollActiveJob() {
     pollHandle = null;
     const activeJob = findActiveJob();
-    if (!isOverviewVisible() || !activeJob || pollInFlight) return;
+    if (!activeJob || pollInFlight) return;
     pollInFlight = true;
     try {
       const currentJob = await window.chatContext.getIndexingJob(activeJob.job_id);

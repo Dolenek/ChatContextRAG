@@ -25,3 +25,18 @@ def test_builtin_openai_provider_remains_available() -> None:
 
     assert view.provider_id == "openai"
     assert view.builtin is True
+
+
+def test_keyless_local_provider_uses_compatible_client_placeholder() -> None:
+    registry = ProviderRegistry("openai-secret")
+    registry.replace_custom([ProviderProfileInput(
+        provider_id="local", name="Local API", base_url="http://localhost:11434/v1/",
+        api_key=None, chat_api="chat_completions",
+    )])
+
+    view = {item.provider_id: item for item in registry.list_views()}["local"]
+    chat_provider = registry.create_chat_provider("local", "local-model")
+
+    assert view.has_api_key is False
+    assert view.is_available is True
+    assert chat_provider.client is not None

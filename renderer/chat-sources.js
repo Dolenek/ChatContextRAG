@@ -1,30 +1,53 @@
-function createChatSources(sources) {
-  if (!sources?.length) return null;
-  const section = document.createElement("section");
-  section.className = "chat-sources";
-  const heading = document.createElement("strong");
-  heading.className = "chat-sources-heading";
-  heading.textContent = "Použité zdroje";
-  section.append(heading, ...sources.map(createChatSourceCard));
-  return section;
+function createChatSourceCard(source) {
+  const card = document.createElement("article");
+  const heading = document.createElement("div");
+  const logo = document.createElement("span");
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  const metadata = document.createElement("small");
+  const score = document.createElement("span");
+  const content = document.createElement("p");
+  const sourcePresentation = presentSource(source);
+
+  card.className = "chat-source-card";
+  card.setAttribute("aria-label", "Použité zdroje");
+  heading.className = "source-card-heading";
+  logo.className = `source-logo ${sourcePresentation.logoClass}`;
+  copy.className = "source-card-copy";
+  score.className = "source-score";
+  logo.textContent = sourcePresentation.shortLabel;
+  title.textContent = source.channel || source.conversation_id || sourcePresentation.label;
+  metadata.textContent = formatSourceMetadata(source);
+  score.textContent = formatSimilarityScore(source.similarity_score);
+  content.textContent = source.content || "Zdroj neobsahuje textový náhled.";
+  copy.append(title, metadata);
+  heading.append(logo, copy, score);
+  card.append(heading, content);
+
+  const openButton = createSourceOpenButton(source);
+  if (openButton) card.append(openButton);
+  return card;
 }
 
-function createChatSourceCard(source, index) {
-  const details = document.createElement("details");
-  details.className = "chat-source-card";
-  const summary = document.createElement("summary");
-  const sourceLabel = source.source_type === "whatsapp" ? "WhatsApp" : "Discord";
-  summary.textContent = `[${index + 1}] ${sourceLabel} · ${source.channel || "Bez konverzace"} · ${source.author}`;
-  const metadata = document.createElement("small");
-  metadata.textContent = source.timestamp
+function presentSource(source) {
+  if (source.source_type === "whatsapp") {
+    return { label: "WhatsApp", shortLabel: "W", logoClass: "whatsapp-logo" };
+  }
+  return { label: "Discord", shortLabel: "D", logoClass: "discord-logo" };
+}
+
+function formatSourceMetadata(source) {
+  const author = source.author || "Neznámý autor";
+  const timestamp = source.timestamp
     ? new Date(source.timestamp).toLocaleString("cs-CZ")
     : "Bez času";
-  const content = document.createElement("p");
-  content.textContent = source.content;
-  details.append(summary, metadata, content);
-  const openButton = createSourceOpenButton(source);
-  if (openButton) details.append(openButton);
-  return details;
+  return `${author} · ${timestamp}`;
+}
+
+function formatSimilarityScore(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score)) return "—";
+  return score.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 }
 
 function createSourceOpenButton(source) {
@@ -35,18 +58,21 @@ function createSourceOpenButton(source) {
   button.className = "source-open-button";
   button.type = "button";
   button.textContent = "Otevřít v Discordu";
-  button.addEventListener("click", async () => {
-    try {
-      await window.chatContext.openDiscordSource({
-        message_id: messageId,
-        channel_id: source.channel_id,
-        guild_id: source.guild_id,
-      });
-    } catch (error) {
-      showToast(error.message, true);
-    }
-  });
+  button.addEventListener("click", () => openDiscordSource(source, messageId));
   return button;
 }
 
-window.chatSources = { createChatSources };
+async function openDiscordSource(source, messageId) {
+  try {
+    await window.chatContext.openDiscordSource({
+      message_id: messageId,
+      channel_id: source.channel_id,
+      guild_id: source.guild_id,
+    });
+    window.shellController.setDiscordActive(true);
+  } catch (error) {
+    window.appUi?.showToast(error.message, true);
+  }
+}
+
+window.chatSources = { createChatSourceCard };

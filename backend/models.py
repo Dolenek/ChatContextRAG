@@ -197,7 +197,7 @@ class ProviderProfileInput(BaseModel):
     provider_id: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
     name: str = Field(min_length=1, max_length=100)
     base_url: str = Field(min_length=8, max_length=1000)
-    api_key: str = Field(min_length=1, max_length=2000)
+    api_key: Optional[str] = Field(default=None, min_length=1, max_length=2000)
     chat_api: Literal["responses", "chat_completions"] = "responses"
 
 
@@ -207,6 +207,7 @@ class ProviderProfileView(BaseModel):
     base_url: str
     chat_api: Literal["responses", "chat_completions"]
     has_api_key: bool
+    is_available: bool = True
     builtin: bool = False
 
 
