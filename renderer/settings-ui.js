@@ -9,6 +9,9 @@ function bindSettingsUi(dependencies) {
   window.indexingApiKeyUi.bind({
     refreshSettings, showToast: showSettingsToast,
   });
+  window.indexingJobHistoryUi.bind({
+    refreshSettings, showToast: showSettingsToast,
+  });
   document.querySelector("#chat-model-form").addEventListener("submit", saveChatModel);
   document.querySelector("#embedding-index-form").addEventListener("submit", createIndex);
   document.querySelector("#cancel-provider-edit").addEventListener("click", resetProviderForm);
@@ -34,11 +37,12 @@ async function openSettings() {
 
 async function refreshSettings() {
   try {
-    settingsState = await window.chatContext.getSettings();
+    const indexingJobs = await loadSettingsState();
     renderProviders();
     window.indexingApiKeyUi.render(settingsState);
     renderChatModels();
     renderIndexes();
+    window.indexingJobHistoryUi.render(indexingJobs);
     fillProviderSelect("#embedding-provider-select");
     fillProviderSelect("#chat-model-provider-select");
     await Promise.all([loadEmbeddingModels(), loadChatModelSuggestions()]);
@@ -105,8 +109,18 @@ async function saveConnectionTarget(event) {
 
 async function refreshIndexState() {
   if (document.querySelector("#settings-screen").classList.contains("hidden")) return;
-  settingsState = await window.chatContext.getSettings();
+  const indexingJobs = await loadSettingsState();
   renderIndexes();
+  window.indexingJobHistoryUi.render(indexingJobs);
+}
+
+async function loadSettingsState() {
+  const [nextSettings, overview] = await Promise.all([
+    window.chatContext.getSettings(),
+    window.chatContext.getDatabaseOverview(1, 0),
+  ]);
+  settingsState = nextSettings;
+  return overview.indexing_jobs || [];
 }
 
 function renderProviders() {

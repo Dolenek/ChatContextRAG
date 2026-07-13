@@ -133,6 +133,8 @@
 .settings-row .error-detail { color: #ff9aaa; }
 .settings-action { border: 0; border-radius: 6px; padding: 4px 7px; color: #cfcdff; background: var(--violet-soft); font-size: 8px; }
 .settings-action.danger-link { color: #ff9aaa; background: rgba(239, 108, 128, 0.1); }
+.indexing-history > summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+.indexing-history > p { margin: 7px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .settings-form { display: grid; gap: 7px; }
 .settings-form label { color: var(--muted-strong); font-size: 10px; font-weight: 700; }
 .settings-form input, .settings-form select { padding: 8px 9px; font-size: 10px; }

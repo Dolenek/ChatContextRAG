@@ -97,6 +97,14 @@ test("right panel renders sources and a safe zero-index state", () => {
   assert.equal(elements.get("#context-empty").classList.contains("hidden"), true);
   assert.equal(elements.get("#index-percent").textContent, "—");
   assert.equal(elements.get("#index-progress-bar").style.width, "0%");
+
+  context.window.contextPanel.renderOverview({
+    raw_message_count: 100, indexed_message_count: 50, total_chunks: 12,
+    database_size: "1 MB", pending_message_count: 50,
+    indexing_jobs: [{ status: "queued" }, { status: "running" }],
+  });
+  assert.equal(elements.get("#index-last-update").textContent,
+    "Indexace právě probíhá · ve frontě: 1");
 });
 
 test("embedded Discord reserves the expanded import drawer", () => {

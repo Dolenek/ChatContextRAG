@@ -216,6 +216,13 @@
             <section class="settings-card"><h2>Přidat nebo upravit providera</h2><form id="provider-form" class="settings-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
             <section class="settings-card settings-wide"><h2>Chat modely</h2><p>Modely přidané zde se zobrazují ve výběru u pravého spodního okraje chatu.</p><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid chat-model-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><button class="primary-button" type="submit">Přidat model</button></form></section>
             <section class="settings-card settings-wide"><h2>Embedding indexy</h2><p>Aktivní připravený index určuje vektorové vyhledávání v chatu.</p><div id="embedding-index-list" class="settings-list"></div></section>
+            <section class="settings-card settings-wide">
+              <details class="indexing-history">
+                <summary>Historie indexování</summary>
+                <p>Dokončené, zrušené a neúspěšné úlohy. Aktivní průběh zůstává v pravém panelu.</p>
+                <div id="indexing-job-history" class="settings-list"></div>
+              </details>
+            </section>
             <section class="settings-card settings-wide"><h2>Vytvořit embedding index</h2><form id="embedding-index-form" class="settings-form settings-form-grid"><label for="embedding-index-name">Název</label><input id="embedding-index-name" required /><label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select><label for="embedding-model-input">Model</label><input id="embedding-model-input" list="embedding-model-options" required /><datalist id="embedding-model-options"></datalist><label for="embedding-dimensions">Rozměry</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Automaticky" /><label class="compact-toggle embedding-auto-sync"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky synchronizovat</label><button class="primary-button" type="submit">Vytvořit index</button></form></section>
           </div>
         </section>
@@ -254,6 +261,7 @@
     <script src="overview-controller.js"></script>
     <script src="archive-migration-ui.js"></script>
     <script src="indexing-api-key-ui.js"></script>
+    <script src="indexing-job-history-ui.js"></script>
     <script src="settings-ui.js"></script>
     <script src="model-selector.js"></script>
     <script src="discord-bot-ui.js"></script>

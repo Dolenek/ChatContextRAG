@@ -25,9 +25,19 @@ window.indexingControls = (() => {
   }
 
   function renderJobList() {
-    const rows = latestJobs.map(createJobRow);
+    const rows = visibleJobs().map(createJobRow);
     if (!rows.length) rows.push(createEmptyLabel());
     document.querySelector("#indexing-jobs").replaceChildren(...rows);
+  }
+
+  function visibleJobs() {
+    return latestJobs
+      .filter((job) => ["queued", "running"].includes(job.status))
+      .sort((left, right) => activeJobPriority(left) - activeJobPriority(right));
+  }
+
+  function activeJobPriority(job) {
+    return job.status === "running" ? 0 : 1;
   }
 
   function createJobRow(job) {
@@ -66,7 +76,7 @@ window.indexingControls = (() => {
   function progressPercent(job) {
     if (job.status === "completed") return 100;
     if (!job.total_messages) return 0;
-    return Math.min(100, Math.floor(job.processed_messages / job.total_messages * 100));
+    return Math.min(100, Math.floor(job.processed_messages * 100 / job.total_messages));
   }
 
   function jobStatusLabel(job, percent) {
@@ -79,7 +89,12 @@ window.indexingControls = (() => {
   }
 
   function jobPhaseLabel(job) {
-    if (job.status === "queued") return "Úloha čeká na volného indexovacího workera.";
+    if (job.status === "queued" && hasRunningJobForIndex(job)) {
+      return `${queuedMessageCount(job)} čeká na dokončení právě běžící úlohy; potom se spustí automaticky.`;
+    }
+    if (job.status === "queued") {
+      return `${queuedMessageCount(job)} čeká na volného indexovacího workera.`;
+    }
     if (job.status === "running" && job.processed_messages === 0) {
       return `Připravuji ${formatNumber(job.total_messages)} zpráv a první embedding dávku…`;
     }
@@ -101,10 +116,23 @@ window.indexingControls = (() => {
   }
 
   function maintenanceSourceLabel(job) {
+    const incrementalLabel = hasRunningJobForIndex(job)
+      ? "Navazující indexace" : "Indexace čekajících zpráv";
     const operation = {
       rebuild: "Rebuild indexu", sync: "Sync indexu",
-    }[job.job_type] || "Doplnění indexu";
+    }[job.job_type] || incrementalLabel;
     return [operation, job.embedding_index_name].filter(Boolean).join(" · ");
+  }
+
+  function hasRunningJobForIndex(queuedJob) {
+    return latestJobs.some((job) => job.job_id !== queuedJob.job_id
+      && job.embedding_index_id === queuedJob.embedding_index_id
+      && job.status === "running");
+  }
+
+  function queuedMessageCount(job) {
+    return job.total_messages
+      ? `${formatNumber(job.total_messages)} zpráv` : "Úloha";
   }
 
   function sourceTypeLabel(sourceType) {
@@ -124,16 +152,19 @@ window.indexingControls = (() => {
   function createEmptyLabel() {
     const label = document.createElement("span");
     label.className = "empty-label";
-    label.textContent = "Žádné indexovací úlohy";
+    label.textContent = "Žádné aktivní indexovací úlohy";
     return label;
   }
 
   function renderPendingButton() {
     const button = document.querySelector("#index-pending-button");
-    const hasActiveJob = latestJobs.some((job) =>
-      ["queued", "running"].includes(job.status));
-    button.disabled = latestPendingCount === 0 || hasActiveJob;
-    if (hasActiveJob) button.textContent = "Indexování běží…";
+    const hasRunningJob = latestJobs.some((job) => job.status === "running");
+    const queuedCount = latestJobs.filter((job) => job.status === "queued").length;
+    button.disabled = latestPendingCount === 0 || hasRunningJob || queuedCount > 0;
+    if (hasRunningJob && queuedCount) {
+      button.textContent = `Indexování běží · ve frontě: ${queuedCount}`;
+    } else if (hasRunningJob) button.textContent = "Indexování běží…";
+    else if (queuedCount) button.textContent = `Indexování čeká ve frontě · ${queuedCount}`;
     else if (latestPendingCount === 0) button.textContent = "Vše zaindexováno";
     else button.textContent = `Zaindexovat čekající (${latestPendingCount})`;
   }
@@ -141,32 +172,53 @@ window.indexingControls = (() => {
   function schedulePoll() {
     if (pollHandle) window.clearTimeout(pollHandle);
     pollHandle = null;
-    if (!refreshOverview || !findActiveJob()) return;
-    pollHandle = window.setTimeout(pollActiveJob, pollIntervalMs);
+    if (!refreshOverview || !findActiveJobs().length) return;
+    pollHandle = window.setTimeout(pollActiveJobs, pollIntervalMs);
   }
 
-  function findActiveJob() {
-    return latestJobs.find((job) => ["queued", "running"].includes(job.status));
+  function findActiveJobs() {
+    return latestJobs.filter((job) => ["queued", "running"].includes(job.status));
   }
 
-  async function pollActiveJob() {
+  async function pollActiveJobs() {
     pollHandle = null;
-    const activeJob = findActiveJob();
-    if (!activeJob || pollInFlight) return;
+    const activeJobs = findActiveJobs();
+    if (!activeJobs.length || pollInFlight) return;
     pollInFlight = true;
+    let reachedTerminalState = false;
     try {
-      const currentJob = await window.chatContext.getIndexingJob(activeJob.job_id);
-      latestJobs = latestJobs.map((job) =>
-        job.job_id === currentJob.job_id ? currentJob : job);
-      renderJobList();
-      renderPendingButton();
-      if (["queued", "running"].includes(currentJob.status)) schedulePoll();
-      else await refreshOverview();
-    } catch (_error) {
-      schedulePoll();
+      const results = await Promise.allSettled(activeJobs.map((job) =>
+        window.chatContext.getIndexingJob(job.job_id)));
+      const currentJobs = results
+        .filter((result) => result.status === "fulfilled")
+        .map((result) => result.value);
+      reachedTerminalState = currentJobs.some((job) =>
+        !["queued", "running"].includes(job.status));
+      mergeJobUpdates(currentJobs);
     } finally {
       pollInFlight = false;
     }
+    if (reachedTerminalState) await refreshOverview();
+    else schedulePoll();
+  }
+
+  function applyProgress(job) {
+    if (!job?.job_id) return;
+    mergeJobUpdates([job]);
+    if (["queued", "running"].includes(job.status)) schedulePoll();
+    else if (refreshOverview) void refreshOverview();
+  }
+
+  function mergeJobUpdates(updates) {
+    const updatesById = new Map(updates.map((job) => [job.job_id, job]));
+    latestJobs = latestJobs.map((job) => updatesById.get(job.job_id) || job);
+    updates.forEach((job) => {
+      if (!latestJobs.some((current) => current.job_id === job.job_id)) {
+        latestJobs.unshift(job);
+      }
+    });
+    renderJobList();
+    renderPendingButton();
   }
 
   async function queuePendingMessages() {
@@ -200,5 +252,5 @@ window.indexingControls = (() => {
     }
   }
 
-  return { bind, render, sourceLabel: jobSourceLabel };
+  return { applyProgress, bind, render, sourceLabel: jobSourceLabel };
 })();

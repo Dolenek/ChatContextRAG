@@ -223,9 +223,16 @@ when the user returns to chat; its open state is not persisted between starts.
 
 Grounding sources for the selected assistant answer appear in the right panel.
 The same panel reports raw and indexed message counts, chunks, database size,
-pending work, and recent indexing jobs. Below 1,100 px it becomes a drawer opened
+pending work, and active indexing jobs. Below 1,100 px it becomes a drawer opened
 from the title bar. The source and context areas scroll independently from the
-conversation.
+conversation. Active job rows update without a page reload through live events
+with polling as a fallback. Running jobs are pinned above queued work, and the
+summary distinguishes active processing from a queue that has no running job.
+A **Follow-up indexing** row means that additional
+messages are queued behind the currently running job; it starts automatically
+when the worker becomes available. Completed, failed, and cancelled jobs do not
+remain in the live panel. Open the collapsed **Indexing history** section in
+Settings for diagnostics or to retry a failed or cancelled job.
 
 ## Model and API settings
 

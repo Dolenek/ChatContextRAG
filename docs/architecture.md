@@ -284,7 +284,15 @@ renderer visible while Discord continues to run in its persistent partition.
 The web adapter uses browser file selection and multipart requests for WhatsApp
 exports. It hides embedded Discord controls and opens complete Discord source
 links in a new browser tab. `/api/events` carries best-effort indexing and bot
-progress over SSE; job polling remains authoritative across reconnects.
+progress over SSE. The renderer applies pushed job snapshots immediately and
+polls every queued and running job independently as the authoritative fallback
+across reconnects. A newer queued maintenance job therefore cannot mask the
+progress of an older running job. The live context panel renders only queued and
+running jobs. Terminal job records remain stored for diagnostics and appear in
+the collapsed indexing history under Settings; failed and cancelled entries can
+be retried there. Running jobs sort before queued jobs in the live panel, while
+the summary reports the queued count separately instead of treating queue
+presence as proof that a worker is processing data.
 
 ## Public API
 

@@ -28,10 +28,14 @@ window.contextPanel = (() => {
   }
 
   function indexStatusLabel(overview) {
-    const activeJob = (overview.indexing_jobs || []).find((job) =>
-      ["queued", "running"].includes(job.status));
-    if (activeJob?.status === "queued") return "Indexace čeká ve frontě";
-    if (activeJob?.status === "running") return "Indexace právě probíhá";
+    const jobs = overview.indexing_jobs || [];
+    const hasRunningJob = jobs.some((job) => job.status === "running");
+    const queuedCount = jobs.filter((job) => job.status === "queued").length;
+    if (hasRunningJob && queuedCount) {
+      return `Indexace právě probíhá · ve frontě: ${queuedCount}`;
+    }
+    if (hasRunningJob) return "Indexace právě probíhá";
+    if (queuedCount) return `Indexace čeká ve frontě · ${queuedCount}`;
     if (overview.pending_message_count) {
       return `${formatNumber(overview.pending_message_count)} zpráv čeká`;
     }

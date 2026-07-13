@@ -172,6 +172,7 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   assert.ok(html.indexOf('src="runtime-bridge.js"') < html.indexOf('src="shell-controller.js"'));
   assert.ok(html.indexOf('src="archive-migration-ui.js"') < html.indexOf('src="settings-ui.js"'));
   assert.ok(html.indexOf('src="indexing-api-key-ui.js"') < html.indexOf('src="settings-ui.js"'));
+  assert.ok(html.indexOf('src="indexing-job-history-ui.js"') < html.indexOf('src="settings-ui.js"'));
   assert.match(html, /id="archive-migration-start"/);
   assert.match(html, /id="archive-migration-index"/);
   assert.match(html, /id="archive-migration-checkpoint"/);

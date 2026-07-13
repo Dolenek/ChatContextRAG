@@ -20,6 +20,7 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(html, /id="indexing-api-key-form"/);
   assert.match(html, /id="indexing-key-provider"/);
   assert.match(html, /id="indexing-api-key"/);
+  assert.match(html, /id="indexing-job-history"/);
   assert.match(preload, /settings:provider:save/);
   assert.match(preload, /settings:chat-model:save/);
   assert.doesNotMatch(preload, /decryptString/);
@@ -28,6 +29,7 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
   assert.match(settingsUi, /Nastavit klíč pro indexing/);
   assert.match(read("renderer/indexing-api-key-ui.js"), /saveProvider/);
+  assert.match(read("renderer/indexing-job-history-ui.js"), /retryIndexingJob/);
   assert.match(controller, /getChatSelection/);
 });
 

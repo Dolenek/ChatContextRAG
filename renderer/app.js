@@ -103,6 +103,7 @@ function renderScanProgress(progress = {}) {
 
 function renderIndexingProgress(job) {
   if (!job) return;
+  window.indexingControls.applyProgress(job);
   const error = job.last_error ? ` · chyba: ${job.last_error}` : "";
   document.querySelector("#scan-progress").textContent =
     `RAG index: ${job.status} · zprávy ${job.processed_messages}/${job.total_messages} · chunky ${job.stored_chunks}${error}`;
