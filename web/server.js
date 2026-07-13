@@ -47,14 +47,20 @@ class WebApplication {
   }
 
   async handle(request, response) {
+    let url;
     try {
-      const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+      url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
       if (await this.handlePublic(request, response, url)) return;
       const identity = this.auth.authenticate(request);
       if (isMutation(request)) this.auth.authorizeMutation(request, identity);
       if (await this.handleAuthenticated(request, response, url, identity)) return;
       sendJson(response, 404, { detail: "Not found." });
     } catch (error) {
+      if (error.statusCode === 401 && request.method === "GET"
+        && url && !url.pathname.startsWith("/api/")) {
+        sendRedirect(response, "/login");
+        return;
+      }
       sendJson(response, error.statusCode || 500, { detail: error.message });
     }
   }
@@ -146,7 +152,7 @@ function createServices(config, backend, events) {
   const tokenStore = new SecretStore(
     path.join(config.stateDirectory, "discord-bot-token.enc"), encryption,
   );
-  const discord = new DiscordService({ backend, events, tokenStore });
+  const discord = new DiscordService({ backend, events, monitor, tokenStore });
   return { discord, monitor, settings };
 }
 

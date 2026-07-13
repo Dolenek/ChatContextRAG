@@ -9,6 +9,7 @@ class BackendProcess {
     this.process = null;
     this.internalToken = crypto.randomBytes(32).toString("hex");
     this.stderrLines = [];
+    this.spawnError = null;
   }
 
   async start() {
@@ -19,6 +20,7 @@ class BackendProcess {
 
   spawnPythonService() {
     this.stderrLines = [];
+    this.spawnError = null;
     const child = spawn(
       "py",
       ["-3.9", "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8765"],
@@ -29,6 +31,10 @@ class BackendProcess {
       },
     );
     child.stderr.on("data", (chunk) => this.captureStderr(chunk));
+    child.once("error", (error) => {
+      this.spawnError = error;
+      this.captureStderr(Buffer.from(error.message));
+    });
     return child;
   }
 
@@ -42,6 +48,9 @@ class BackendProcess {
   async waitUntilHealthy() {
     for (let attempt = 0; attempt < 240; attempt += 1) {
       if (await this.isHealthy()) return;
+      if (this.spawnError) {
+        throw new Error(this.failureMessage("FastAPI backend se nepodařilo spustit"));
+      }
       if (this.process?.exitCode !== null) {
         throw new Error(this.failureMessage("FastAPI backend předčasně skončil"));
       }

@@ -1,18 +1,28 @@
 const path = require("node:path");
 const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
 
+const { BackendClient } = require("../runtime/backend-client");
 const { BackendProcess, BACKEND_URL } = require("./backend-process");
+const { ConnectionIpcController } = require("./connection-ipc");
+const { ConnectionStore } = require("./connection-store");
 const { DiscordViewController } = require("./discord-view");
 const { IntegrationIpcController } = require("./integration-ipc");
-const { readBackendResponse } = require("./backend-response");
+const { LocalInfrastructure } = require("./local-infrastructure");
 const { ProviderStore } = require("./provider-store");
+const { RemoteEventForwarder } = require("./remote-event-forwarder");
+const { RemoteIntegrationIpcController } = require("./remote-integration-ipc");
+const { RemoteSettingsIpcController } = require("./remote-settings-ipc");
 const { SettingsIpcController } = require("./settings-ipc");
 
 const projectRoot = path.resolve(__dirname, "..");
 const backendProcess = new BackendProcess(projectRoot);
-let mainWindow;
+const localInfrastructure = new LocalInfrastructure(projectRoot);
+let activeTarget = { mode: "local" };
+let backendClient;
 let discordController;
 let integrationController;
+let mainWindow;
+let remoteEvents;
 let settingsController;
 
 async function createWindow() {
@@ -35,73 +45,39 @@ async function createWindow() {
   await mainWindow.loadFile(path.join(projectRoot, "renderer", "index.html"));
 }
 
-async function postJson(endpoint, body) {
-  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const responseBody = await readBackendResponse(response);
-  if (!response.ok) {
-    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
-  }
-  return responseBody;
+function postJson(endpoint, body) {
+  return backendClient.post(endpoint, body);
 }
 
-async function getJson(endpoint) {
-  const response = await fetch(`${BACKEND_URL}${endpoint}`);
-  const responseBody = await readBackendResponse(response);
-  if (!response.ok) {
-    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
-  }
-  return responseBody;
+function getJson(endpoint) {
+  return backendClient.get(endpoint);
 }
 
-async function deleteJson(endpoint, body) {
-  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const responseBody = await readBackendResponse(response);
-  if (!response.ok) {
-    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
-  }
-  return responseBody;
+function deleteJson(endpoint, body) {
+  return backendClient.delete(endpoint, body);
 }
 
-async function postMultipart(endpoint, form) {
-  const response = await fetch(`${BACKEND_URL}${endpoint}`, { method: "POST", body: form });
-  const responseBody = await readBackendResponse(response);
-  if (!response.ok) {
-    throw new Error(responseBody.detail || `Backend vrátil chybu ${response.status}.`);
-  }
-  return responseBody;
+function postMultipart(endpoint, form) {
+  return backendClient.multipart(endpoint, form);
 }
 
 function registerIpcHandlers() {
+  ipcMain.handle("runtime:capabilities", () => runtimeCapabilities());
   ipcMain.handle("discord:open", async () => discordController.open());
   ipcMain.handle("discord:source:open", (_event, source) =>
     discordController.openMessage(source.guild_id, source.channel_id, source.message_id));
   ipcMain.handle("discord:hide", () => discordController.hide());
-  ipcMain.handle("discord:capture", async () => {
-    const messages = await discordController.captureVisibleMessages();
-    const context = await discordController.getCurrentChannelContext();
-    const session = await createIngestionSession(context);
-    const result = await postJson("/messages/import", {
-      session_id: session.session_id, messages,
-    });
-    const finished = await finishIngestionSession(session.session_id, "completed");
-    monitorIndexingJobs(finished);
-    discordController.hide();
-    return result;
-  });
+  ipcMain.handle("discord:capture", captureDiscordMessages);
   ipcMain.handle("discord:scan:start", () => runManagedDiscordScan(false));
   ipcMain.handle("discord:scan:resume", () => runManagedDiscordScan(true));
   ipcMain.handle("discord:scan:stop", () => {
     discordController.stopChannelScan();
     return { stopping: true };
   });
+  registerDatabaseHandlers();
+}
+
+function registerDatabaseHandlers() {
   ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
   ipcMain.handle("database:chat-scopes", () => getJson("/chat/scopes"));
   ipcMain.handle("database:overview", (_event, pagination) => {
@@ -113,13 +89,25 @@ function registerIpcHandlers() {
     postJson(`/indexing/jobs/${jobId}/retry`, {}));
   ipcMain.handle("indexing:cancel", (_event, jobId) =>
     postJson(`/indexing/jobs/${jobId}/cancel`, {}));
-  ipcMain.handle("indexing:get", (_event, jobId) =>
-    getJson(`/indexing/jobs/${jobId}`));
+  ipcMain.handle("indexing:get", (_event, jobId) => getJson(`/indexing/jobs/${jobId}`));
   ipcMain.handle("indexing:pending", async () => {
     const job = await postJson("/indexing/jobs/pending", {});
     monitorIndexingJob(job.job_id);
     return job;
   });
+}
+
+async function captureDiscordMessages() {
+  const messages = await discordController.captureVisibleMessages();
+  const context = await discordController.getCurrentChannelContext();
+  const session = await createIngestionSession(context);
+  const result = await postJson("/messages/import", {
+    session_id: session.session_id, messages,
+  });
+  const finished = await finishIngestionSession(session.session_id, "completed");
+  monitorIndexingJobs(finished);
+  discordController.hide();
+  return result;
 }
 
 async function runManagedDiscordScan(shouldResume) {
@@ -135,17 +123,24 @@ async function runManagedDiscordScan(shouldResume) {
       (progress) => mainWindow.webContents.send("discord:scan:progress", progress),
     );
   } finally {
-    const reason = summary?.state === "completed" ? "completed" : "stopped";
-    const finished = await finishIngestionSession(session.session_id, reason);
-    monitorIndexingJobs(finished);
-    if (summary) summary.indexingJobId = finished.indexing_job_id;
+    summary = await finishManagedScan(session, summary);
   }
+  return summary;
+}
+
+async function finishManagedScan(session, summary) {
+  const reason = summary?.state === "completed" ? "completed" : "stopped";
+  const finished = await finishIngestionSession(session.session_id, reason);
+  monitorIndexingJobs(finished);
+  if (summary) summary.indexingJobId = finished.indexing_job_id;
   return summary;
 }
 
 function createIngestionSession(context) {
   return postJson("/ingestion/sessions", {
-    guild_id: context.guildId, channel_id: context.channelId, channel: context.channel,
+    guild_id: context.guildId,
+    channel_id: context.channelId,
+    channel: context.channel,
   });
 }
 
@@ -184,31 +179,68 @@ function monitorIndexingJobs(session) {
   jobIds.forEach((jobId) => monitorIndexingJob(jobId));
 }
 
-app.whenReady().then(async () => {
+function runtimeCapabilities() {
+  return {
+    mode: activeTarget.mode === "remote" ? "electron-remote" : "electron-local",
+    embeddedDiscord: true,
+    discordBot: true,
+    fileUpload: true,
+  };
+}
+
+async function configureLocalRuntime() {
+  await localInfrastructure.ensureDatabase();
+  await backendProcess.start();
+  backendClient = new BackendClient(BACKEND_URL);
+  const providerStore = new ProviderStore(app.getPath("userData"), safeStorage);
+  settingsController = new SettingsIpcController(
+    providerStore, backendProcess.internalToken, monitorIndexingJob,
+  );
+  settingsController.register();
+  await settingsController.initializeRegistry();
+  integrationController = new IntegrationIpcController({
+    postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
+  });
+  integrationController.register();
+}
+
+function configureRemoteRuntime(target) {
+  backendClient = new BackendClient(`${target.baseUrl}/api`, {
+    Authorization: `Bearer ${target.token}`,
+  });
+  settingsController = new RemoteSettingsIpcController(backendClient, monitorIndexingJob);
+  settingsController.register();
+  integrationController = new RemoteIntegrationIpcController({
+    client: backendClient, getMainWindow: () => mainWindow,
+  });
+  integrationController.register();
+  remoteEvents = new RemoteEventForwarder(target.baseUrl, target.token, () => mainWindow);
+}
+
+async function initializeApplication() {
+  const connectionStore = new ConnectionStore(app.getPath("userData"), safeStorage);
+  activeTarget = connectionStore.getActive();
+  new ConnectionIpcController({
+    store: connectionStore,
+    restart: () => setTimeout(() => { app.relaunch(); app.exit(0); }, 100),
+  }).register();
   registerIpcHandlers();
-  try {
-    await backendProcess.start();
-    const providerStore = new ProviderStore(app.getPath("userData"), safeStorage);
-    settingsController = new SettingsIpcController(
-      providerStore, backendProcess.internalToken, monitorIndexingJob,
-    );
-    settingsController.register();
-    await settingsController.initializeRegistry();
-    integrationController = new IntegrationIpcController({
-      postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
-    });
-    integrationController.register();
-    await createWindow();
-    await integrationController.restoreBot();
-  } catch (error) {
-    console.error(error);
-    backendProcess.stop();
-    app.exit(1);
-  }
+  if (activeTarget.mode === "local") await configureLocalRuntime();
+  else configureRemoteRuntime(activeTarget);
+  await createWindow();
+  await integrationController.restoreBot();
+  remoteEvents?.start();
+}
+
+app.whenReady().then(() => initializeApplication()).catch((error) => {
+  console.error(error);
+  backendProcess.stop();
+  app.exit(1);
 });
 
 app.on("window-all-closed", async () => {
   await integrationController?.shutdown();
+  remoteEvents?.stop();
   backendProcess.stop();
   if (process.platform !== "darwin") app.quit();
 });

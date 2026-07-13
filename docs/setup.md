@@ -2,10 +2,96 @@
 
 ## Prerequisites
 
-- Node.js 20 or newer
-- Python 3.9 through the Windows `py` launcher
-- Docker Desktop with Linux containers
-- An OpenAI API key
+- Linux web server: Docker Engine with the Compose plugin
+- Electron development: Node.js 20 or newer
+- Local Electron workspace: Python 3.9 through the Windows `py` launcher and Docker Desktop
+- An OpenAI API key or a configured OpenAI-compatible provider
+
+## Linux web server
+
+Copy `.env.example` to `.env`, set the PostgreSQL password, and generate the web
+secrets on a trusted machine:
+
+```bash
+npm run --silent web:secrets
+```
+
+Copy the generated `WEB_ADMIN_PASSWORD_HASH`, `CHAT_CONTEXT_SERVER_KEY`,
+`CHAT_CONTEXT_DESKTOP_TOKEN`, and `CHAT_CONTEXT_INTERNAL_TOKEN` values into
+`.env`. The command prints a random admin password unless
+`CHAT_CONTEXT_ADMIN_PASSWORD_INPUT` is supplied for that invocation. Store the
+printed password and desktop token in a password manager. The server refuses to
+start when any required secret is empty or when the server key is not a
+base64-encoded 32-byte value.
+
+Build and start the web profile:
+
+```bash
+docker compose --profile web up -d --build
+docker compose --profile web ps
+```
+
+Open `http://SERVER_IP:8080` and sign in with `WEB_ADMIN_USERNAME` (default
+`admin`) and the generated password. Change `WEB_PORT` or `WEB_BIND_ADDRESS` in
+`.env` to publish another host port or interface. Only the web gateway is
+published to the LAN. FastAPI stays on the Compose network and PostgreSQL's
+optional desktop port is bound to `127.0.0.1`.
+
+The gateway owns browser authentication, custom provider profiles, the Discord
+bot, and static UI assets. Provider API keys and the Discord bot token are
+encrypted in the `chat_context_server_state` volume. PostgreSQL data is in
+`chat_context_postgres`. Keep `CHAT_CONTEXT_SERVER_KEY` with backups: encrypted
+server secrets cannot be recovered without it.
+
+### HTTPS reverse proxy
+
+Plain HTTP is suitable only for a trusted LAN. It does not protect the admin
+password, session traffic, or Electron desktop token from network observers.
+For Caddy on the Docker host, bind the gateway to loopback with
+`WEB_BIND_ADDRESS=127.0.0.1`, set `WEB_TRUST_PROXY=1`, and use:
+
+```caddyfile
+chat-context.home.arpa {
+    reverse_proxy 127.0.0.1:8080
+    tls internal
+}
+```
+
+Install Caddy's local CA certificate on client devices, or replace `tls
+internal` with a publicly trusted certificate. An Nginx deployment must proxy
+the original `Host` header, set `X-Forwarded-Proto https`, disable response
+buffering for `/api/events`, and terminate TLS at the proxy.
+
+### Backup and recovery
+
+Back up both persistent stores and the `.env` secrets. A logical database dump
+can be created while the stack is running:
+
+```bash
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > chat-context.sql
+docker compose --profile web cp web:/var/lib/chat-context ./chat-context-server-state
+```
+
+Test restores on a separate deployment. Restoring provider or bot credentials
+also requires the original `CHAT_CONTEXT_SERVER_KEY`.
+
+## Electron local and remote workspaces
+
+Electron starts in **Local** mode by default. In that mode it starts the
+loopback PostgreSQL service and FastAPI before opening the workspace. Open
+**Settings > Workspace** to select **Remote**, enter the web server origin and
+`CHAT_CONTEXT_DESKTOP_TOKEN`, test the connection, and save. Electron encrypts
+the token with `safeStorage` and restarts; the renderer never receives it.
+
+Remote mode uses the Linux server for chat, overview, settings, WhatsApp import,
+Discord bot control, and indexing. The embedded signed-in Discord browser still
+runs locally, but captured or scanned messages are written directly to the
+server and indexed there. Remote mode does not start local Python, PostgreSQL,
+or Docker. A connection failure is reported and never falls back to the local
+database silently. Switching targets does not copy existing local messages.
+
+The desktop token has full workspace privileges. Prefer HTTPS when Electron and
+the server are not on an entirely trusted network.
 
 Install dependencies and create the private environment file:
 
@@ -19,15 +105,15 @@ Set `OPENAI_API_KEY` and PostgreSQL credentials in `.env`. Discord bot tokens do
 not belong in this file; the UI stores them with the operating-system encryption
 provided by Electron `safeStorage`.
 
-Run `run.bat` from the repository root. It validates the runtimes, starts the
-pgvector Docker service, waits for its health check, starts FastAPI on
-`127.0.0.1:8765`, and opens Electron. The first source-schema migration may take
+Run `run.bat` from the repository root. It refreshes available dependencies and
+opens Electron. Local mode starts the pgvector Docker service, waits for its
+health check, and starts FastAPI on `127.0.0.1:8765`. The first source-schema migration may take
 longer than an ordinary start, so Electron waits up to 60 seconds for FastAPI.
 If startup fails, `run.bat` keeps the console open and includes the captured
 backend error. A manual start is:
 
 ```powershell
-docker compose up -d --wait --wait-timeout 60
+docker compose up -d --wait --wait-timeout 60 postgres
 npm.cmd start
 ```
 

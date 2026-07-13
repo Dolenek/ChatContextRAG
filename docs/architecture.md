@@ -1,10 +1,40 @@
 # Architecture
 
-Chat Context is a local Electron desktop application backed by FastAPI,
-PostgreSQL with pgvector, and the OpenAI API. It imports conversations through
+Chat Context is a self-hosted web and Electron application backed by FastAPI,
+PostgreSQL with pgvector, and compatible AI providers. It imports conversations through
 independent source connectors and exposes multiple source-neutral embedding
 indexes over one canonical raw-message layer. One ready index is globally active
 for retrieval.
+
+## Runtime and hosting
+
+The same renderer runs in three explicit runtime modes: Electron Local,
+Electron Remote, and Web. `window.chatContext` is the stable renderer boundary.
+Electron supplies it through preload IPC; the browser supplies an HTTP/SSE
+adapter before the UI controllers load. Runtime capabilities control whether
+the embedded Discord browser is visible.
+
+The Linux web profile contains PostgreSQL, an internal FastAPI service, and a
+Node.js gateway. Only the gateway publishes a host port. It serves the renderer,
+owns browser authentication and the long-running Discord bot, keeps provider and
+bot secrets in an encrypted persistent store, and forwards an explicit allowlist
+of operations to FastAPI. The internal provider-registry endpoint is never
+proxied publicly. FastAPI remains the canonical ingestion, retrieval, indexing,
+and database service.
+
+One admin account authenticates browser sessions. Sessions are time limited and
+use an HttpOnly SameSite cookie plus a per-session CSRF token. Mutations also
+require a same-origin request. Login attempts are rate limited. A separately
+configured bearer token authenticates Electron Remote requests; it remains in
+the Electron main process and is encrypted at rest with `safeStorage`.
+
+Electron stores a Local or Remote `ConnectionTarget`. Local mode starts the
+loopback PostgreSQL and FastAPI processes and retains the existing encrypted
+desktop provider store. Remote mode skips local infrastructure and routes the
+entire workspace through the gateway. The local Discord `BrowserView` remains
+available in Remote mode, so its normalized ingestion batches are written
+directly to the server. Target changes never migrate or dual-write existing raw
+messages, and a failed remote connection never falls back to Local implicitly.
 
 ## Source connectors
 
@@ -14,11 +44,16 @@ only the currently selected channel. Manual capture, continuous upward scan,
 resume, cancellation, and Discord source deep links retain their existing
 behavior.
 
-The optional Discord bot runs in the Electron main process only while the
-desktop application is running. Its token is encrypted with Electron
+In an Electron Local workspace, the optional Discord bot runs in the main
+process only while the desktop application is running. Its token is encrypted with Electron
 `safeStorage` and is never exposed back to the renderer or stored in PostgreSQL,
 `.env`, or logs. The bot registers `/chatcontext sync`, `status`, and `stop`.
 Commands require the Discord `Manage Channels` permission.
+
+In Web and Electron Remote modes the bot instead runs in the Node gateway. Its
+token is encrypted with `CHAT_CONTEXT_SERVER_KEY`, persisted in the server-state
+volume, and restored when the gateway starts. Only one bot runtime is active for
+the selected workspace.
 
 The first `sync` walks the complete accessible channel history in 100-message
 pages. Durable sync state stores the oldest and newest cursors, backfill state,
@@ -140,6 +175,13 @@ the backend uses a non-secret SDK placeholder while sending requests only to the
 configured base URL. The Electron store also keeps the user-managed provider,
 model ID, and display label used to populate the composer selector. These model
 records contain no credentials.
+
+For a web workspace, the gateway owns the equivalent provider profiles, chat
+defaults, and managed model records. AES-256-GCM ciphertext is stored in the
+server-state volume and decrypted only long enough to synchronize the internal
+runtime registry. The browser, FastAPI responses, PostgreSQL, and logs receive
+only redacted provider views. Losing `CHAT_CONTEXT_SERVER_KEY` makes these
+encrypted credentials unrecoverable.
 Until Electron has persisted an explicit chat selection, the renderer uses the
 built-in provider and `OPENAI_CHAT_MODEL` reported by the backend. Database
 bootstrap likewise seeds the initial embedding index from
@@ -176,7 +218,17 @@ The embedded Discord `BrowserView` starts below the custom title bar and to the
 right of the locked-open import drawer. This keeps scan controls in the isolated
 renderer visible while Discord continues to run in its persistent partition.
 
+The web adapter uses browser file selection and multipart requests for WhatsApp
+exports. It hides embedded Discord controls and opens complete Discord source
+links in a new browser tab. `/api/events` carries best-effort indexing and bot
+progress over SSE; job polling remains authoritative across reconnects.
+
 ## Public API
+
+The web gateway exposes `/api/auth/login`, logout, session metadata, runtime
+capabilities, and `/api/events`. All workspace routes below are available under
+its authenticated `/api` facade. Browser calls use the session and CSRF token;
+Electron Remote calls use its bearer token.
 
 - `POST /ingestion/sessions` starts a source-neutral raw ingestion session.
 - `POST /messages/import` stores up to 400 normalized source messages.

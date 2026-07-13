@@ -14,11 +14,15 @@ function bindSettingsUi(dependencies) {
   document.querySelector("#chat-model-provider-select").addEventListener(
     "change", loadChatModelSuggestions,
   );
+  document.querySelector("#connection-mode").addEventListener("change", updateConnectionFields);
+  document.querySelector("#connection-form").addEventListener("submit", saveConnectionTarget);
+  document.querySelector("#test-connection-button").addEventListener("click", testConnectionTarget);
 }
 
 async function openSettings() {
   await window.chatContext.hideDiscord();
   showSettingsScreen("settings");
+  await refreshConnectionSettings();
   await refreshSettings();
 }
 
@@ -32,6 +36,59 @@ async function refreshSettings() {
     fillProviderSelect("#chat-model-provider-select");
     await Promise.all([loadEmbeddingModels(), loadChatModelSuggestions()]);
     await window.modelSelector.prepare(settingsState);
+  } catch (error) {
+    showSettingsToast(error.message, true);
+  }
+}
+
+async function refreshConnectionSettings() {
+  try {
+    const target = await window.chatContext.getConnectionTarget();
+    const card = document.querySelector("#connection-settings-card");
+    card.classList.toggle("hidden", target.mode === "web");
+    if (target.mode === "web") return;
+    document.querySelector("#connection-mode").value = target.mode;
+    document.querySelector("#connection-url").value = target.baseUrl || "";
+    document.querySelector("#connection-token").value = "";
+    document.querySelector("#connection-token").placeholder = target.hasToken
+      ? "Token je uložený; prázdné pole jej zachová" : "Vložte desktop API token";
+    document.querySelector("#connection-status").textContent = target.mode === "remote"
+      ? `Aktivní vzdálený workspace: ${target.baseUrl}` : "Aktivní lokální workspace";
+    updateConnectionFields();
+  } catch (error) {
+    showSettingsToast(error.message, true);
+  }
+}
+
+function connectionInput() {
+  return {
+    mode: document.querySelector("#connection-mode").value,
+    baseUrl: document.querySelector("#connection-url").value.trim(),
+    token: document.querySelector("#connection-token").value.trim(),
+  };
+}
+
+function updateConnectionFields() {
+  const remote = document.querySelector("#connection-mode").value === "remote";
+  document.querySelector("#connection-url").disabled = !remote;
+  document.querySelector("#connection-token").disabled = !remote;
+  document.querySelector("#test-connection-button").disabled = !remote;
+}
+
+async function testConnectionTarget() {
+  try {
+    await window.chatContext.testConnectionTarget(connectionInput());
+    showSettingsToast("Připojení k serveru funguje.");
+  } catch (error) {
+    showSettingsToast(error.message, true);
+  }
+}
+
+async function saveConnectionTarget(event) {
+  event.preventDefault();
+  try {
+    await window.chatContext.saveConnectionTarget(connectionInput());
+    showSettingsToast("Cíl byl uložen, aplikace se restartuje.");
   } catch (error) {
     showSettingsToast(error.message, true);
   }

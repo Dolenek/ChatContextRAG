@@ -4,6 +4,7 @@ class DiscordService {
   constructor(options) {
     this.backend = options.backend;
     this.events = options.events;
+    this.monitor = options.monitor;
     this.bot = new DiscordBotController({
       api: this.botApi(),
       tokenStore: options.tokenStore,
@@ -15,9 +16,7 @@ class DiscordService {
     return {
       createSession: (context) => this.backend.post("/ingestion/sessions", context),
       importMessages: (sessionId, messages) => this.importBatches(sessionId, messages),
-      finishSession: (sessionId, reason) => this.backend.post(
-        `/ingestion/sessions/${sessionId}/finish`, { reason },
-      ),
+      finishSession: (sessionId, reason) => this.finishSession(sessionId, reason),
       listSyncStates: (sourceType) => this.backend.get(
         `/integrations/sync-states?source_type=${encodeURIComponent(sourceType)}`,
       ),
@@ -34,6 +33,14 @@ class DiscordService {
       });
     }
     return latest;
+  }
+
+  async finishSession(sessionId, reason) {
+    const session = await this.backend.post(
+      `/ingestion/sessions/${sessionId}/finish`, { reason },
+    );
+    this.monitor?.startSessionJobs(session);
+    return session;
   }
 
   restore() {

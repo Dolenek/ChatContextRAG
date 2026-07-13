@@ -7,15 +7,15 @@ function hashPassword(password, salt = crypto.randomBytes(16)) {
     throw new Error("Admin password must contain at least 12 characters.");
   }
   const hash = crypto.scryptSync(password, salt, 32, scryptOptions);
-  return `scrypt$${salt.toString("base64")}$${hash.toString("base64")}`;
+  return `scrypt:${salt.toString("base64url")}:${hash.toString("base64url")}`;
 }
 
 function verifyPassword(password, encodedHash) {
-  const [algorithm, saltValue, hashValue] = String(encodedHash).split("$");
+  const [algorithm, saltValue, hashValue] = String(encodedHash).split(":");
   if (algorithm !== "scrypt" || !saltValue || !hashValue) return false;
   try {
-    const salt = Buffer.from(saltValue, "base64");
-    const expected = Buffer.from(hashValue, "base64");
+    const salt = Buffer.from(saltValue, "base64url");
+    const expected = Buffer.from(hashValue, "base64url");
     const actual = crypto.scryptSync(password, salt, expected.length, scryptOptions);
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
   } catch {

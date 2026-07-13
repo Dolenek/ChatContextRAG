@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - chat_context_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -16,5 +16,62 @@ services:
       retries: 15
     restart: unless-stopped
 
+  api:
+    profiles: ["web"]
+    build:
+      context: .
+      target: api
+    environment:
+      POSTGRES_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_EMBEDDING_DIMENSIONS: ${OPENAI_EMBEDDING_DIMENSIONS:-1536}
+      OPENAI_EMBEDDING_BATCH_SIZE: ${OPENAI_EMBEDDING_BATCH_SIZE:-64}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-5.6-luna}
+      CHAT_CONTEXT_INTERNAL_TOKEN: ${CHAT_CONTEXT_INTERNAL_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8765"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
+  web:
+    profiles: ["web"]
+    build:
+      context: .
+      target: web
+    environment:
+      CHAT_CONTEXT_API_URL: http://api:8765
+      CHAT_CONTEXT_STATE_DIR: /var/lib/chat-context
+      CHAT_CONTEXT_INTERNAL_TOKEN: ${CHAT_CONTEXT_INTERNAL_TOKEN:-}
+      CHAT_CONTEXT_SERVER_KEY: ${CHAT_CONTEXT_SERVER_KEY:-}
+      CHAT_CONTEXT_DESKTOP_TOKEN: ${CHAT_CONTEXT_DESKTOP_TOKEN:-}
+      WEB_ADMIN_USERNAME: ${WEB_ADMIN_USERNAME:-admin}
+      WEB_ADMIN_PASSWORD_HASH: ${WEB_ADMIN_PASSWORD_HASH:-}
+      WEB_BIND_ADDRESS: 0.0.0.0
+      WEB_PORT: 8080
+      WEB_SESSION_HOURS: ${WEB_SESSION_HOURS:-12}
+      WEB_TRUST_PROXY: ${WEB_TRUST_PROXY:-0}
+    ports:
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-8080}:8080"
+    volumes:
+      - chat_context_server_state:/var/lib/chat-context
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    restart: unless-stopped
+
 volumes:
   chat_context_postgres:
+  chat_context_server_state:

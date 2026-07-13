@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("chatContext", {
+  getRuntimeCapabilities: () => ipcRenderer.invoke("runtime:capabilities"),
+  getConnectionTarget: () => ipcRenderer.invoke("connection:get"),
+  testConnectionTarget: (target) => ipcRenderer.invoke("connection:test", target),
+  saveConnectionTarget: (target) => ipcRenderer.invoke("connection:save", target),
   openDiscord: () => ipcRenderer.invoke("discord:open"),
   openDiscordSource: (source) => ipcRenderer.invoke("discord:source:open", source),
   captureDiscord: () => ipcRenderer.invoke("discord:capture"),

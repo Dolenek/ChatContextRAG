@@ -64,12 +64,12 @@ function createSourceOpenButton(source) {
 
 async function openDiscordSource(source, messageId) {
   try {
-    await window.chatContext.openDiscordSource({
+    const result = await window.chatContext.openDiscordSource({
       message_id: messageId,
       channel_id: source.channel_id,
       guild_id: source.guild_id,
     });
-    window.shellController.setDiscordActive(true);
+    if (result?.embedded !== false) window.shellController.setDiscordActive(true);
   } catch (error) {
     window.appUi?.showToast(error.message, true);
   }

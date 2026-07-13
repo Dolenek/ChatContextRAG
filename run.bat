@@ -8,10 +8,6 @@ call :require_command node.exe "Node.js 20 nebo novejsi"
 if errorlevel 1 goto :failed
 call :require_command npm.cmd "npm"
 if errorlevel 1 goto :failed
-call :require_command py.exe "Python 3.9 pres Windows py launcher"
-if errorlevel 1 goto :failed
-call :require_command docker.exe "Docker Desktop"
-if errorlevel 1 goto :failed
 call :require_command powershell.exe "Windows PowerShell"
 if errorlevel 1 goto :failed
 call :validate_runtime_versions
@@ -24,15 +20,11 @@ if not exist ".env" (
 
 call :needs_rebuild
 if errorlevel 2 goto :failed
-if errorlevel 1 goto :start_infrastructure
+if errorlevel 1 goto :start_application
 call :rebuild
 if errorlevel 1 goto :failed
 
-:start_infrastructure
-echo [ChatContextRAG] Spoustim PostgreSQL...
-docker compose up -d --wait --wait-timeout 60
-if errorlevel 1 goto :failed
-
+:start_application
 echo [ChatContextRAG] Spoustim aplikaci...
 call npm.cmd start
 set "APP_EXIT_CODE=%ERRORLEVEL%"
@@ -52,8 +44,11 @@ exit /b %ERRORLEVEL%
 echo [ChatContextRAG] Soubory se zmenily, obnovuji zavislosti...
 call npm.cmd install --no-package-lock
 if errorlevel 1 exit /b 1
+where py.exe >nul 2>nul
+if errorlevel 1 goto :skip_python_dependencies
 py.exe -3.9 -m pip install -r backend\requirements.txt
 if errorlevel 1 exit /b 1
+:skip_python_dependencies
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "Set-Content -LiteralPath '%BUILD_STAMP%' -Value ([DateTime]::UtcNow.ToString('O'))"
 if errorlevel 1 exit /b 1
@@ -70,11 +65,6 @@ exit /b 1
 node.exe -e "process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)"
 if errorlevel 1 (
   echo [CHYBA] ChatContextRAG vyzaduje Node.js 20 nebo novejsi.
-  exit /b 1
-)
-py.exe -3.9 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 9) else 1)"
-if errorlevel 1 (
-  echo [CHYBA] ChatContextRAG vyzaduje Python 3.9 dostupny pres py launcher.
   exit /b 1
 )
 exit /b 0
