@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="shell.css" />
     <link rel="stylesheet" href="chat.css" />
     <link rel="stylesheet" href="panels.css" />
+    <link rel="stylesheet" href="settings-overlay.css" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -21,6 +22,7 @@
       <symbol id="icon-send" viewBox="0 0 24 24"><path d="m4 4 17 8-17 8 4-8-4-8Z" /><path d="M8 12h13" /></symbol>
       <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></symbol>
       <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M18 12a6 6 0 0 0-10.2-4.2L4 12m2 0a6 6 0 0 0 10.2 4.2L20 12" /></symbol>
+      <symbol id="icon-workspace" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></symbol>
       <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></symbol>
     </svg>
 
@@ -48,8 +50,8 @@
         </button>
         <div class="rail-spacer"></div>
         <button id="web-logout-button" class="rail-button hidden" type="button" aria-label="Odhlásit se"><svg><use href="#icon-close" /></svg><span class="tooltip">Odhlásit se</span></button>
-        <button id="open-settings-button" class="rail-button" type="button" aria-label="Nastavení modelů">
-          <svg><use href="#icon-settings" /></svg><span class="tooltip">Nastavení modelů</span>
+        <button id="open-settings-button" class="rail-button" type="button" aria-label="Otevřít nastavení" aria-haspopup="dialog" aria-expanded="false">
+          <svg><use href="#icon-settings" /></svg><span class="tooltip">Nastavení</span>
         </button>
         <span class="local-status" title="Data zůstávají lokálně"><svg><use href="#icon-lock" /></svg></span>
       </nav>
@@ -168,64 +170,6 @@
           <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
         </section>
 
-        <section id="settings-screen" class="workspace-screen settings-screen hidden">
-          <header class="workspace-heading settings-heading">
-            <div><p class="eyebrow">MODELY A API</p><h1>Nastavení providerů</h1><p>Chat modely a nezávislé embedding indexy nad stejnými raw zprávami.</p></div>
-            <button id="refresh-settings-button" class="secondary-button" type="button"><svg><use href="#icon-refresh" /></svg>Obnovit</button>
-          </header>
-          <div class="settings-grid">
-            <section id="connection-settings-card" class="settings-card settings-wide">
-              <h2>Workspace</h2><p id="connection-status">Načítám aktivní cíl…</p>
-              <form id="connection-form" class="settings-form settings-form-grid">
-                <label for="connection-mode">Datový cíl</label><select id="connection-mode"><option value="local">Lokální počítač</option><option value="remote">Vzdálený Linux server</option></select>
-                <label for="connection-url">URL serveru</label><input id="connection-url" type="url" placeholder="http://192.168.1.20:8080" />
-                <label for="connection-token">Desktop API token</label><input id="connection-token" type="password" autocomplete="off" placeholder="Prázdné pole zachová uložený token" />
-                <div class="settings-form-actions"><button id="test-connection-button" class="secondary-button" type="button">Otestovat</button><button class="primary-button" type="submit">Uložit a restartovat</button></div>
-              </form>
-              <div id="archive-migration-panel" class="archive-migration-panel hidden">
-                <div><h3>Přenos lokálního archivu</h3><p id="archive-migration-status">Přeneste raw zprávy a Discord synchronizační stav na vybraný server.</p></div>
-                <div id="archive-migration-progress" class="migration-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
-                <div id="archive-migration-details" class="migration-details">
-                  <p id="archive-migration-checkpoint" class="hidden"></p>
-                  <p id="archive-migration-last-batch" class="hidden"></p>
-                  <p id="archive-migration-diagnostic" class="hidden"></p>
-                </div>
-                <div class="settings-form-actions migration-actions">
-                  <button id="archive-migration-start" class="secondary-button" type="button">Přenést lokální archiv na server</button>
-                  <button id="archive-migration-pause" class="secondary-button hidden" type="button">Pozastavit</button>
-                  <button id="archive-migration-resume" class="primary-button hidden" type="button">Pokračovat</button>
-                  <button id="archive-migration-index" class="secondary-button hidden" type="button">Zaindexovat na serveru</button>
-                  <button id="archive-migration-switch" class="primary-button hidden" type="button">Přepnout na tento server</button>
-                  <button id="archive-migration-forget" class="quiet-button hidden" type="button">Zavřít / zapomenout průběh</button>
-                </div>
-              </div>
-            </section>
-            <section class="settings-card">
-              <h2>Provideři</h2>
-              <p>API klíč providera používá chat i embedding/indexing. Klíče jsou uložené šifrovaně.</p>
-              <div id="provider-list" class="settings-list"></div>
-              <form id="indexing-api-key-form" class="settings-form provider-key-form">
-                <label for="indexing-key-provider">Provider pro embedding / indexing</label>
-                <select id="indexing-key-provider" required></select>
-                <label for="indexing-api-key">API klíč</label>
-                <input id="indexing-api-key" type="password" autocomplete="off" required placeholder="Vložte API klíč providera" />
-                <p class="fine-print">Pro vestavěný OpenAI vložte projektový OpenAI API klíč. Renderer jej po uložení už nezobrazí.</p>
-                <button class="primary-button" type="submit">Uložit klíč pro indexing</button>
-              </form>
-            </section>
-            <section class="settings-card"><h2>Přidat nebo upravit providera</h2><form id="provider-form" class="settings-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
-            <section class="settings-card settings-wide"><h2>Chat modely</h2><p>Modely přidané zde se zobrazují ve výběru u pravého spodního okraje chatu.</p><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid chat-model-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><button class="primary-button" type="submit">Přidat model</button></form></section>
-            <section class="settings-card settings-wide"><h2>Embedding indexy</h2><p>Aktivní připravený index určuje vektorové vyhledávání v chatu.</p><div id="embedding-index-list" class="settings-list"></div></section>
-            <section class="settings-card settings-wide">
-              <details class="indexing-history">
-                <summary>Historie indexování</summary>
-                <p>Dokončené, zrušené a neúspěšné úlohy. Aktivní průběh zůstává v pravém panelu.</p>
-                <div id="indexing-job-history" class="settings-list"></div>
-              </details>
-            </section>
-            <section class="settings-card settings-wide"><h2>Vytvořit embedding index</h2><form id="embedding-index-form" class="settings-form settings-form-grid"><label for="embedding-index-name">Název</label><input id="embedding-index-name" required /><label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select><label for="embedding-model-input">Model</label><input id="embedding-model-input" list="embedding-model-options" required /><datalist id="embedding-model-options"></datalist><label for="embedding-dimensions">Rozměry</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Automaticky" /><label class="compact-toggle embedding-auto-sync"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky synchronizovat</label><button class="primary-button" type="submit">Vytvořit index</button></form></section>
-          </div>
-        </section>
       </main>
 
       <aside id="context-panel" class="context-panel" aria-label="Nalezený kontext">
@@ -247,6 +191,84 @@
       </aside>
     </div>
 
+    <div id="settings-overlay" class="settings-overlay hidden" aria-hidden="true">
+      <section id="settings-dialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" tabindex="-1">
+        <aside class="settings-navigation">
+          <button id="close-settings-button" class="settings-close-button" type="button" aria-label="Zavřít nastavení"><svg><use href="#icon-close" /></svg></button>
+          <div class="settings-navigation-heading"><strong id="settings-dialog-title">Nastavení</strong><small>Chat Context</small></div>
+          <nav class="settings-navigation-items" aria-label="Sekce nastavení">
+            <button class="settings-nav-item active" type="button" data-settings-section="providers" aria-controls="settings-providers-panel" aria-current="page"><svg><use href="#icon-lock" /></svg><span>Provideři a API klíče</span></button>
+            <button class="settings-nav-item" type="button" data-settings-section="chat-models" aria-controls="settings-chat-models-panel"><svg><use href="#icon-chat" /></svg><span>Chat modely</span></button>
+            <button class="settings-nav-item" type="button" data-settings-section="embedding-indexes" aria-controls="settings-embedding-indexes-panel"><svg><use href="#icon-database" /></svg><span>Embedding indexy</span></button>
+            <button class="settings-nav-item" type="button" data-settings-section="indexing-history" aria-controls="settings-indexing-history-panel"><svg><use href="#icon-refresh" /></svg><span>Historie indexování</span></button>
+            <button class="settings-nav-item" type="button" data-settings-section="workspace" aria-controls="settings-workspace-panel"><svg><use href="#icon-workspace" /></svg><span>Workspace</span></button>
+          </nav>
+        </aside>
+
+        <div class="settings-content">
+          <header class="settings-toolbar">
+            <div><p class="eyebrow">MODELY A API</p><p>Správa modelů, providerů a datového workspace.</p></div>
+            <button id="refresh-settings-button" class="secondary-button" type="button"><svg><use href="#icon-refresh" /></svg>Obnovit</button>
+          </header>
+          <div class="settings-content-scroll">
+            <section id="settings-providers-panel" class="settings-section" data-settings-panel="providers" aria-labelledby="settings-providers-title">
+              <header class="settings-section-heading"><h2 id="settings-providers-title">Provideři a API klíče</h2><p>Spravujte připojení k AI službám a jejich šifrované přístupové klíče.</p></header>
+              <div class="settings-section-stack">
+                <section class="settings-card">
+                  <h3>Provideři</h3><p>API klíč providera používá chat i embedding/indexing. Klíče jsou uložené šifrovaně.</p>
+                  <div id="provider-list" class="settings-list"></div>
+                  <form id="indexing-api-key-form" class="settings-form provider-key-form">
+                    <label for="indexing-key-provider">Provider pro embedding / indexing</label><select id="indexing-key-provider" required></select>
+                    <label for="indexing-api-key">API klíč</label><input id="indexing-api-key" type="password" autocomplete="off" required placeholder="Vložte API klíč providera" />
+                    <p class="fine-print">Pro vestavěný OpenAI vložte projektový OpenAI API klíč. Renderer jej po uložení už nezobrazí.</p>
+                    <button class="primary-button" type="submit">Uložit klíč pro indexing</button>
+                  </form>
+                </section>
+                <section class="settings-card"><h3>Přidat nebo upravit providera</h3><form id="provider-form" class="settings-form settings-two-column-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
+              </div>
+            </section>
+
+            <section id="settings-chat-models-panel" class="settings-section hidden" data-settings-panel="chat-models" aria-labelledby="settings-chat-models-title" aria-hidden="true">
+              <header class="settings-section-heading"><h2 id="settings-chat-models-title">Chat modely</h2><p>Vyberte modely, které budou dostupné ve výběru pod chatem.</p></header>
+              <section class="settings-card"><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid separated-settings-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><button class="primary-button" type="submit">Přidat model</button></form></section>
+            </section>
+
+            <section id="settings-embedding-indexes-panel" class="settings-section hidden" data-settings-panel="embedding-indexes" aria-labelledby="settings-embedding-indexes-title" aria-hidden="true">
+              <header class="settings-section-heading"><h2 id="settings-embedding-indexes-title">Embedding indexy</h2><p>Aktivní připravený index určuje vektorové vyhledávání v chatu.</p></header>
+              <div class="settings-section-stack">
+                <section class="settings-card"><h3>Dostupné indexy</h3><div id="embedding-index-list" class="settings-list"></div></section>
+                <section class="settings-card"><h3>Vytvořit embedding index</h3><form id="embedding-index-form" class="settings-form settings-form-grid"><label for="embedding-index-name">Název</label><input id="embedding-index-name" required /><label for="embedding-provider-select">Provider</label><select id="embedding-provider-select" required></select><label for="embedding-model-input">Model</label><input id="embedding-model-input" list="embedding-model-options" required /><datalist id="embedding-model-options"></datalist><label for="embedding-dimensions">Rozměry</label><input id="embedding-dimensions" type="number" min="1" max="4000" placeholder="Automaticky" /><label class="compact-toggle embedding-auto-sync"><input id="embedding-auto-sync" type="checkbox" checked /> Automaticky synchronizovat</label><button class="primary-button" type="submit">Vytvořit index</button></form></section>
+              </div>
+            </section>
+
+            <section id="settings-indexing-history-panel" class="settings-section hidden" data-settings-panel="indexing-history" aria-labelledby="settings-indexing-history-title" aria-hidden="true">
+              <header class="settings-section-heading"><h2 id="settings-indexing-history-title">Historie indexování</h2><p>Dokončené, zrušené a neúspěšné úlohy. Aktivní průběh zůstává v pravém panelu.</p></header>
+              <section class="settings-card"><div id="indexing-job-history" class="settings-list"></div></section>
+            </section>
+
+            <section id="settings-workspace-panel" class="settings-section hidden" data-settings-panel="workspace" aria-labelledby="settings-workspace-title" aria-hidden="true">
+              <header class="settings-section-heading"><h2 id="settings-workspace-title">Workspace</h2><p>Zvolte, kde aplikace uchovává data, a spravujte přenos lokálního archivu.</p></header>
+              <section id="connection-settings-card" class="settings-card">
+                <h3>Datový cíl</h3><p id="connection-status">Načítám aktivní cíl…</p>
+                <form id="connection-form" class="settings-form settings-form-grid">
+                  <label for="connection-mode">Datový cíl</label><select id="connection-mode"><option value="local">Lokální počítač</option><option value="remote">Vzdálený Linux server</option></select>
+                  <label for="connection-url">URL serveru</label><input id="connection-url" type="url" placeholder="http://192.168.1.20:8080" />
+                  <label for="connection-token">Desktop API token</label><input id="connection-token" type="password" autocomplete="off" placeholder="Prázdné pole zachová uložený token" />
+                  <div class="settings-form-actions"><button id="test-connection-button" class="secondary-button" type="button">Otestovat</button><button class="primary-button" type="submit">Uložit a restartovat</button></div>
+                </form>
+                <div id="archive-migration-panel" class="archive-migration-panel hidden">
+                  <div><h3>Přenos lokálního archivu</h3><p id="archive-migration-status">Přeneste raw zprávy a Discord synchronizační stav na vybraný server.</p></div>
+                  <div id="archive-migration-progress" class="migration-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+                  <div id="archive-migration-details" class="migration-details"><p id="archive-migration-checkpoint" class="hidden"></p><p id="archive-migration-last-batch" class="hidden"></p><p id="archive-migration-diagnostic" class="hidden"></p></div>
+                  <div class="settings-form-actions migration-actions"><button id="archive-migration-start" class="secondary-button" type="button">Přenést lokální archiv na server</button><button id="archive-migration-pause" class="secondary-button hidden" type="button">Pozastavit</button><button id="archive-migration-resume" class="primary-button hidden" type="button">Pokračovat</button><button id="archive-migration-index" class="secondary-button hidden" type="button">Zaindexovat na serveru</button><button id="archive-migration-switch" class="primary-button hidden" type="button">Přepnout na tento server</button><button id="archive-migration-forget" class="quiet-button hidden" type="button">Zavřít / zapomenout průběh</button></div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div id="clear-database-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
       <section class="danger-dialog"><div class="danger-icon">!</div><h2 id="clear-dialog-title">Vymazat celou databázi?</h2><p>Tato akce nevratně odstraní všechny chunky, vektory a metadata. Discord přihlášení zůstane zachované.</p><label for="clear-confirmation-input">Pro potvrzení napište <strong>VYMAZAT</strong></label><input id="clear-confirmation-input" type="text" autocomplete="off" placeholder="VYMAZAT" /><div class="dialog-actions"><button id="cancel-clear-button" class="secondary-button" type="button">Zrušit</button><button id="confirm-clear-button" class="danger-button" type="button" disabled>Trvale vymazat</button></div></section>
     </div>
@@ -262,6 +284,7 @@
     <script src="archive-migration-ui.js"></script>
     <script src="indexing-api-key-ui.js"></script>
     <script src="indexing-job-history-ui.js"></script>
+    <script src="settings-overlay.js"></script>
     <script src="settings-ui.js"></script>
     <script src="model-selector.js"></script>
     <script src="discord-bot-ui.js"></script>

@@ -133,7 +133,7 @@ input::placeholder { color: #68738e; }
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 60;
+  z-index: 110;
   max-width: 420px;
   padding: 13px 17px;
   border: 1px solid #2e7650;

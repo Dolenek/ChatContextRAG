@@ -47,6 +47,8 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.doesNotMatch(html, /id="home-screen"/);
   assert.match(shellCss, /@media \(max-width: 1100px\)/);
   assert.match(shellCss, /\.context-panel\.open/);
+  assert.match(html, /id="settings-overlay"/);
+  assert.doesNotMatch(html, /id="settings-screen"/);
 });
 
 test("shell opens the source drawer and switches workspaces", () => {
@@ -120,7 +122,7 @@ test("embedded Discord reserves the expanded import drawer", () => {
 function createShellElements() {
   const ids = [
     "left-drawer", "context-panel", "drawer-toggle", "drawer-title", "chat-screen",
-    "overview-screen", "settings-screen", "open-chat-button", "open-overview-button",
+    "overview-screen", "open-chat-button", "open-overview-button",
     "open-settings-button", "drawer-close", "context-toggle", "context-close",
     "sources-drawer-panel", "discord-drawer-panel", "discord-bot-drawer-panel",
     "whatsapp-drawer-panel", "import-result-drawer-panel",

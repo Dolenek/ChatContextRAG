@@ -216,10 +216,14 @@ endpoint and the last `/health` result.
 ## Desktop workspace
 
 The application opens directly in the chat workspace. The narrow rail on the
-left switches between chat, database detail, and model settings. **Sources and
-imports** opens an overlay drawer containing the searchable conversation scope
-and all Discord and WhatsApp ingestion controls. The drawer is collapsed again
-when the user returns to chat; its open state is not persisted between starts.
+left switches between chat and database detail. **Settings** opens a modal over
+the current screen with separate sections for **Providers and API keys**, **Chat
+models**, **Embedding indexes**, **Indexing history**, and the Electron-only
+**Workspace** target. Closing the modal discards unfinished form values. **Sources
+and imports** opens an overlay drawer containing the searchable conversation
+scope and all Discord and WhatsApp ingestion controls. The drawer is collapsed
+again when the user returns to chat; its open state is not persisted between
+starts.
 
 Grounding sources for the selected assistant answer appear in the right panel.
 The same panel reports raw and indexed message counts, chunks, database size,
@@ -231,20 +235,20 @@ summary distinguishes active processing from a queue that has no running job.
 A **Follow-up indexing** row is the single catch-up created after an initial
 index build, or an explicit synchronization requested by the user. Completed,
 failed, and cancelled jobs do not
-remain in the live panel. Open the collapsed **Indexing history** section in
-Settings for diagnostics or to retry a failed or cancelled job.
+remain in the live panel. Open **Settings > Indexing history** for diagnostics or
+to retry a failed or cancelled job.
 
 ## Model and API settings
 
 The built-in **OpenAI** provider initially reads its API key and default model
 IDs from `.env`. The same key is used for OpenAI chat and embedding/indexing.
-It can also be set in **Settings > Providers > Provider for embedding / indexing**
+It can also be set in **Settings > Providers and API keys** under **Provider for embedding / indexing**
 without editing `.env`; choose OpenAI, paste the project API key, and select
 **Save key for indexing**. This encrypted saved override takes precedence for
 the running provider and survives application restarts. The renderer never
 receives the saved value again.
 
-Use the general provider form in **Settings** to add other OpenAI-compatible
+Use the provider form in **Settings > Providers and API keys** to add other OpenAI-compatible
 profiles. A profile supplies a display name, the complete API base URL (normally
 ending in `/v1`), an optional API key, and either the Responses or Chat
 Completions protocol. Keyless profiles are intended for trusted local
@@ -267,7 +271,7 @@ models by provider. The chat screen remembers the last selection, and changing
 it starts a fresh visible chat history. `OPENAI_CHAT_MODEL` remains available as
 an unmanaged fallback even when it has not been added manually.
 
-Settings can keep multiple embedding indexes over the same canonical raw
+**Settings > Embedding indexes** can keep multiple indexes over the same canonical raw
 messages. Creating an index makes one small embedding request to validate its
 dimension, then queues all raw messages. Exactly one ready index is active for
 RAG search. **Sync** embeds missing raw messages, **Rebuild** atomically publishes

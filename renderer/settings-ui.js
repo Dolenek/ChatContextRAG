@@ -1,10 +1,11 @@
 let settingsState = null;
-let showSettingsScreen = () => {};
 let showSettingsToast = () => {};
+let prepareSettingsOpen = async () => {};
 
 function bindSettingsUi(dependencies) {
-  showSettingsScreen = dependencies.showScreen;
   showSettingsToast = dependencies.showToast;
+  prepareSettingsOpen = dependencies.prepareOpen;
+  window.settingsOverlay.bind({ onClose: resetSettingsDrafts });
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
   window.indexingApiKeyUi.bind({
     refreshSettings, showToast: showSettingsToast,
@@ -29,10 +30,10 @@ function bindSettingsUi(dependencies) {
 }
 
 async function openSettings() {
-  await window.chatContext.hideDiscord();
-  showSettingsScreen("settings");
-  await refreshConnectionSettings();
-  await refreshSettings();
+  await prepareSettingsOpen();
+  resetSettingsDrafts();
+  window.settingsOverlay.open();
+  await Promise.all([refreshConnectionSettings(), refreshSettings()]);
 }
 
 async function refreshSettings() {
@@ -108,7 +109,7 @@ async function saveConnectionTarget(event) {
 }
 
 async function refreshIndexState() {
-  if (document.querySelector("#settings-screen").classList.contains("hidden")) return;
+  if (!window.settingsOverlay.isOpen()) return;
   const indexingJobs = await loadSettingsState();
   renderIndexes();
   window.indexingJobHistoryUi.render(indexingJobs);
@@ -257,6 +258,15 @@ function editProvider(provider) {
 }
 
 function resetProviderForm() { document.querySelector("#provider-form").reset(); document.querySelector("#provider-id").value = ""; }
+
+function resetSettingsDrafts() {
+  [
+    "#connection-form", "#provider-form", "#indexing-api-key-form",
+    "#chat-model-form", "#embedding-index-form",
+  ].forEach((selector) => document.querySelector(selector).reset());
+  document.querySelector("#provider-id").value = "";
+  document.querySelector("#connection-token").value = "";
+}
 async function removeProvider(id) { await runAndRefresh(() => window.chatContext.deleteProvider(id), "Provider byl smazán."); }
 async function removeChatModel(model) {
   await runAndRefresh(

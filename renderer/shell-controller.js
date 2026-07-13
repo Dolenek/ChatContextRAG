@@ -6,7 +6,6 @@ window.shellController = (() => {
   const screenElements = {
     chat: document.querySelector("#chat-screen"),
     overview: document.querySelector("#overview-screen"),
-    settings: document.querySelector("#settings-screen"),
   };
   const panelTitles = {
     sources: "Zdroje a importy",
@@ -47,8 +46,6 @@ window.shellController = (() => {
     document.querySelector("#open-chat-button").toggleAttribute("aria-current", screenName === "chat");
     document.querySelector("#open-overview-button").classList.toggle("active", screenName === "overview");
     document.querySelector("#open-overview-button").toggleAttribute("aria-current", screenName === "overview");
-    document.querySelector("#open-settings-button").classList.toggle("active", screenName === "settings");
-    document.querySelector("#open-settings-button").toggleAttribute("aria-current", screenName === "settings");
   }
 
   function setDiscordActive(isActive) {

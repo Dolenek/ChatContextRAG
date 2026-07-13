@@ -270,10 +270,12 @@ Discord** action.
 
 The renderer is a framework-free three-panel workspace. A narrow navigation rail
 opens an overlay drawer for source scope and connector workflows, the center
-switches between chat, database detail, and settings, and the right panel renders
-grounding sources plus a compact index snapshot. The context panel becomes a
-drawer below 1,100 px. Each area owns its scrolling so long source lists and
-database results do not move the chat composer.
+switches between chat and database detail, and the right panel renders grounding
+sources plus a compact index snapshot. Settings opens as an accessible modal over
+the current center screen. Its navigation separates providers and API keys, chat
+models, embedding indexes, indexing history, and the Electron-only workspace
+target. The context panel becomes a drawer below 1,100 px. Each area owns its
+scrolling so long source lists and database results do not move the chat composer.
 
 Controllers share one database-overview snapshot between the right status panel,
 the full database view, and indexing controls. Chat response sources are handed
@@ -298,7 +300,7 @@ polls every queued and running job independently with an adaptive backoff as the
 across reconnects. A newer queued maintenance job therefore cannot mask the
 progress of an older running job. The live context panel renders only queued and
 running jobs. Terminal job records remain stored for diagnostics and appear in
-the collapsed indexing history under Settings; failed and cancelled entries can
+the **Indexing history** settings section; failed and cancelled entries can
 be retried there. Running jobs sort before queued jobs in the live panel, while
 the summary reports the queued count separately instead of treating queue
 presence as proof that a worker is processing data.

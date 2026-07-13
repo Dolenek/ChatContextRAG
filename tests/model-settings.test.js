@@ -14,7 +14,8 @@ test("settings UI is isolated through preload and carries model selection to cha
   const modelSelector = read("renderer/model-selector.js");
   const controller = read("renderer/chat-controller.js");
 
-  assert.match(html, /id="settings-screen"/);
+  assert.match(html, /id="settings-overlay" class="settings-overlay hidden"/);
+  assert.match(html, /role="dialog" aria-modal="true"/);
   assert.match(html, /id="chat-model-input"/);
   assert.match(html, /id="chat-model-trigger"/);
   assert.match(html, /id="indexing-api-key-form"/);
@@ -28,6 +29,7 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(modelSelector, /model-provider-list/);
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
   assert.match(settingsUi, /Nastavit klíč pro indexing/);
+  assert.match(settingsUi, /onClose: resetSettingsDrafts/);
   assert.match(read("renderer/indexing-api-key-ui.js"), /saveProvider/);
   assert.match(read("renderer/indexing-job-history-ui.js"), /retryIndexingJob/);
   assert.match(controller, /getChatSelection/);

@@ -57,10 +57,10 @@ window.modelSelector.bind({
   showToast: window.appUi.showToast,
 });
 window.settingsUi.bind({
-  showScreen: (screenName) => {
-    window.shellController.setDiscordActive(false);
-    window.shellController.showScreen(screenName);
+  prepareOpen: async () => {
+    await window.appUi.closeDiscordView(false);
     window.shellController.closeDrawer();
+    window.shellController.closeContext();
   },
   showToast: window.appUi.showToast,
 });
