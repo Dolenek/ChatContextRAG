@@ -21,14 +21,20 @@ class ConnectionIpcController {
 
   async test(input) {
     if (input.mode === "local") return { mode: "local", reachable: true };
-    const baseUrl = normalizeServerUrl(input.baseUrl);
-    const token = input.token?.trim() || this.savedRemoteToken();
-    if (!token) throw new Error("Remote workspace token is required.");
+    const { baseUrl, token } = this.resolveTarget(input);
     const client = new BackendClient(`${baseUrl}/api`, {
       Authorization: `Bearer ${token}`,
     });
     const capabilities = await client.get("/runtime");
     return { mode: "remote", reachable: true, capabilities };
+  }
+
+  resolveTarget(input) {
+    if (this.store.resolveRemote) return this.store.resolveRemote(input);
+    const baseUrl = normalizeServerUrl(input.baseUrl);
+    const token = input.token?.trim() || this.savedRemoteToken();
+    if (!token) throw new Error("Remote workspace token is required.");
+    return { baseUrl, token };
   }
 
   savedRemoteToken() {

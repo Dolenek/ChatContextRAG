@@ -36,6 +36,7 @@ Module._load = function loadWithElectronMocks(request, parent, isMain) {
 };
 
 const { BackendProcess } = require("../electron/backend-process");
+const { ArchiveMigrationIpcController } = require("../electron/archive-migration-ipc");
 const { ConnectionIpcController } = require("../electron/connection-ipc");
 const { DiscordBotTokenStore } = require("../electron/discord-bot-token-store");
 const { IntegrationIpcController } = require("../electron/integration-ipc");
@@ -75,6 +76,30 @@ test("connection IPC registers get, test, and save with restart after validation
   const input = { mode: "remote", baseUrl: "https://server", token: "token" };
   assert.deepEqual(await handlers.get("connection:save")(null, input), input);
   assert.deepEqual(calls, [["test", input], ["save", input], ["restart"]]);
+});
+
+test("archive migration IPC exposes lifecycle operations", async () => {
+  handlers.clear();
+  const calls = [];
+  const migration = new Proxy({}, {
+    get: (_target, method) => async (...arguments) => {
+      calls.push([method, ...arguments]);
+      return { operation: method };
+    },
+  });
+  new ArchiveMigrationIpcController(migration).register();
+
+  await handlers.get("migration:inspect")(null, { baseUrl: "http://server" });
+  await handlers.get("migration:start")(null, { baseUrl: "http://server" });
+  await handlers.get("migration:pause")();
+  await handlers.get("migration:resume")();
+  await handlers.get("migration:status")();
+  await handlers.get("migration:index")();
+  await handlers.get("migration:forget")();
+
+  assert.deepEqual(calls.map((call) => call[0]), [
+    "inspect", "start", "pause", "resume", "getStatus", "index", "forget",
+  ]);
 });
 
 test("local integration IPC selects and uploads WhatsApp files and opens bot invites", async () => {

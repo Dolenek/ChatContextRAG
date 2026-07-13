@@ -12,6 +12,7 @@ const { EventHub } = require("../web/event-hub");
 const { readBody, readJson, sendJson, sendRedirect, sendStatic } = require("../web/http-utils");
 const { IndexingMonitor } = require("../web/indexing-monitor");
 const { SettingsRouter } = require("../web/settings-router");
+const { MigrationRouter, mergeDiscordState } = require("../web/migration-router");
 
 test("web configuration validates required secrets, ports, and session duration", () => {
   assert.throws(() => loadWebConfig({}), /adminPasswordHash.*serverKey/);
@@ -136,6 +137,7 @@ test("API route allowlist normalizes identifiers and rejects unsupported methods
   assert.equal(matchBackendRoute("GET", "/api/internal/provider-registry"), null);
   assert.deepEqual(runtimeCapabilities(), {
     mode: "web", embeddedDiscord: false, discordBot: true, fileUpload: true,
+    migrationExport: false, migrationImport: true, migrationProtocolVersion: 1,
   });
 });
 
@@ -158,6 +160,50 @@ test("API router proxies facade calls and starts returned indexing jobs", async 
   assert.equal(handled, true);
   assert.deepEqual(monitored, ["job-1"]);
   assert.match(response.body, /\/chat\?language=cs/);
+});
+
+test("migration router requires bearer auth and safely merges Discord state", async () => {
+  const calls = [];
+  const backend = {
+    get: async (pathname) => {
+      calls.push(["get", pathname]);
+      return pathname.startsWith("/integrations") ? [{
+        source_type: "discord", conversation_id: "20", oldest_cursor: "200",
+        newest_cursor: "500", tracking_enabled: false, backfill_complete: false,
+      }] : { status: "running", raw_message_count: 0 };
+    },
+    post: async (pathname, body) => { calls.push(["post", pathname, body]); return body; },
+  };
+  const router = new MigrationRouter(backend, { startSessionJobs: () => {} });
+  const url = "/api/migrations/migration-1/sync-states";
+
+  await assert.rejects(
+    router.handle(requestFrom('{"states":[]}', "PUT"), fakeResponse(), url, { kind: "session" }),
+    (error) => error.statusCode === 403,
+  );
+  const response = fakeResponse();
+  await router.handle(requestFrom(JSON.stringify({ states: [{
+    source_type: "discord", conversation_id: "20", oldest_cursor: "100",
+    newest_cursor: "450", tracking_enabled: true, backfill_complete: true,
+  }] }), "PUT"), response, url, { kind: "bearer" });
+
+  const saved = calls.find((call) => call[0] === "post")[2];
+  assert.equal(saved.oldest_cursor, "100");
+  assert.equal(saved.newest_cursor, "500");
+  assert.equal(saved.tracking_enabled, false);
+  assert.equal(saved.backfill_complete, true);
+  assert.equal(saved.active_session_id, null);
+});
+
+test("migration state merge keeps destination labels and handles cursor boundaries", () => {
+  const merged = mergeDiscordState(
+    { conversation_id: "20", conversation_label: "Server", tracking_enabled: true },
+    { source_type: "discord", conversation_id: "20", conversation_label: "Local" },
+  );
+
+  assert.equal(merged.conversation_label, "Server");
+  assert.equal(merged.tracking_enabled, true);
+  assert.equal(merged.last_error, null);
 });
 
 test("Discord web service chunks imports and monitors finished sessions", async () => {

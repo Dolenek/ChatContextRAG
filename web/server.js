@@ -88,7 +88,9 @@ class WebApplication {
     if (request.method === "POST" && url.pathname === "/api/auth/logout") {
       return this.handleLogout(request, response);
     }
-    if (url.pathname.startsWith("/api/")) return this.api.handle(request, response, url);
+    if (url.pathname.startsWith("/api/")) {
+      return this.api.handle(request, response, url, identity);
+    }
     if (request.method !== "GET") return false;
     return this.serveRenderer(response, url.pathname);
   }
@@ -121,6 +123,7 @@ class WebApplication {
       csrf_token: identity.kind === "session" ? identity.session.csrfToken : null,
       capabilities: {
         mode: "web", embeddedDiscord: false, discordBot: true, fileUpload: true,
+        migrationExport: false, migrationImport: true, migrationProtocolVersion: 1,
       },
     });
     return true;

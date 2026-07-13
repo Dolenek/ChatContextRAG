@@ -20,7 +20,9 @@ class PostgresIndexingJobRepository:
         self.connect = connect
         self.lease_seconds = lease_seconds
 
-    def finish_session(self, session_id: str, reason: str) -> IngestionSessionView:
+    def finish_session(
+        self, session_id: str, reason: str, queue_indexing: bool = True,
+    ) -> IngestionSessionView:
         self.ensure_schema()
         try:
             with self.connect() as connection:
@@ -31,30 +33,75 @@ class PostgresIndexingJobRepository:
                 ).fetchone()
                 if not row:
                     self._raise_session_error(connection, session_id)
-                index_rows = connection.execute(
-                    """SELECT idx.id FROM embedding_indexes idx
-                       LEFT JOIN rag_application_settings settings ON settings.id=1
-                       WHERE idx.status='ready' AND idx.auto_sync
-                       ORDER BY (idx.id=settings.active_embedding_index_id) DESC,idx.created_at"""
-                ).fetchall()
-                job_ids = []
-                for index_row in index_rows:
-                    job_id = str(uuid.uuid4())
-                    connection.execute(
-                        queue_job_sql(), (job_id, session_id, index_row[0], row[0]),
-                    )
-                    stored = connection.execute(
-                        "SELECT id FROM indexing_jobs WHERE session_id=%s AND embedding_index_id=%s",
-                        (session_id, index_row[0]),
-                    ).fetchone()[0]
-                    job_ids.append(stored)
-            return IngestionSessionView(
-                session_id=session_id, status=reason, raw_message_count=row[0],
-                indexing_job_id=job_ids[0] if job_ids else None,
-                indexing_job_ids=job_ids,
-            )
+                job_ids = self._queue_session_jobs(connection, session_id, row[0]) \
+                    if queue_indexing else []
+            return self._session_view(session_id, reason, row[0], job_ids)
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL ingestion finalization failed.") from error
+
+    def get_session(self, session_id: str) -> IngestionSessionView:
+        self.ensure_schema()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT status,raw_message_count FROM ingestion_sessions WHERE id=%s",
+                (session_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Ingestion session was not found.")
+            job_ids = self._session_job_ids(connection, session_id)
+        return self._session_view(session_id, row[0], row[1], job_ids)
+
+    def queue_session_indexing(self, session_id: str) -> IngestionSessionView:
+        self.ensure_schema()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT status,raw_message_count FROM ingestion_sessions WHERE id=%s FOR UPDATE",
+                (session_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Ingestion session was not found.")
+            if row[0] != "completed":
+                raise ValueError("Only a completed ingestion session can be indexed.")
+            job_ids = self._queue_session_jobs(connection, session_id, row[1])
+        return self._session_view(session_id, row[0], row[1], job_ids)
+
+    def _queue_session_jobs(self, connection, session_id: str, total: int) -> List[str]:
+        index_rows = connection.execute(
+            """SELECT idx.id FROM embedding_indexes idx
+               LEFT JOIN rag_application_settings settings ON settings.id=1
+               WHERE idx.status='ready' AND idx.auto_sync
+               ORDER BY (idx.id=settings.active_embedding_index_id) DESC,idx.created_at"""
+        ).fetchall()
+        return [self._queue_session_job(connection, session_id, row[0], total)
+                for row in index_rows]
+
+    @staticmethod
+    def _queue_session_job(connection, session_id: str, index_id: str, total: int) -> str:
+        existing = connection.execute(
+            "SELECT id FROM indexing_jobs WHERE session_id=%s AND embedding_index_id=%s",
+            (session_id, index_id),
+        ).fetchone()
+        if existing:
+            return existing[0]
+        job_id = str(uuid.uuid4())
+        connection.execute(queue_job_sql(), (job_id, session_id, index_id, total))
+        return job_id
+
+    @staticmethod
+    def _session_job_ids(connection, session_id: str) -> List[str]:
+        rows = connection.execute(
+            "SELECT id FROM indexing_jobs WHERE session_id=%s ORDER BY created_at,id",
+            (session_id,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    @staticmethod
+    def _session_view(session_id, status, raw_count, job_ids) -> IngestionSessionView:
+        return IngestionSessionView(
+            session_id=session_id, status=status, raw_message_count=raw_count,
+            indexing_job_id=job_ids[0] if job_ids else None,
+            indexing_job_ids=job_ids,
+        )
 
     def get(self, job_id: str) -> IndexingJobView:
         self.ensure_schema()

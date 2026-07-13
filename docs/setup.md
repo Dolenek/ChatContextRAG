@@ -121,8 +121,47 @@ server and indexed there. Remote mode does not start local Python, PostgreSQL,
 or Docker. A connection failure is reported and never falls back to the local
 database silently. Switching targets does not copy existing local messages.
 
+Existing messages move only when the explicit archive migration described below
+is started. Merely saving a Local or Remote target never copies or dual-writes
+data.
+
 The desktop token has full workspace privileges. Prefer HTTPS when Electron and
 the server are not on an entirely trusted network.
+
+### Migrate a Local archive to the server
+
+Keep Electron in **Local** mode and make sure the Linux gateway is reachable
+from the desktop. In **Settings > Workspace**, select **Remote**, enter the
+server origin and desktop token, then choose **Transfer local archive to
+server** (**Přenést lokální archiv na server** in the UI). This remembers the
+encrypted remote credential without changing the active workspace. The
+confirmation reports the stable local snapshot size and the current server
+message count.
+
+The transfer merges raw messages and Discord synchronization cursors through
+the gateway. Matching external message IDs are updated from the Local archive;
+server-only messages remain. Provider profiles, API keys, Discord bot tokens,
+embedding vectors, model selections, and indexing-job history are not copied.
+The server never connects to the desktop PostgreSQL port.
+
+Progress is checkpointed after every acknowledged batch. **Pozastavit** finishes
+the current request and leaves both sessions resumable. After an Electron or
+gateway restart, return to Local settings and choose **Pokračovat**. A checkpoint
+is bound to one normalized server origin; use **Zavřít / zapomenout průběh**
+before starting with a different server. Forgetting does not roll back messages
+already accepted by the server.
+
+After verification, choose **Zaindexovat na serveru** to queue jobs only for the
+migrated snapshot and ready server indexes with auto-sync enabled. This is a
+separate confirmation because remote embedding providers may incur charges. A
+server without a ready auto-sync index keeps the raw messages and can index them
+after its provider and index are configured. Choose **Switch to this server**
+to save the existing target and restart Electron in Remote mode.
+
+The snapshot contains messages present when transfer starts. Local ingestion
+may continue after the snapshot is created; run the same idempotent transfer
+again later to copy newer messages. Plain HTTP exposes the desktop token and
+conversation contents to LAN observers, so use it only on a trusted network.
 
 Install dependencies and create the private environment file:
 

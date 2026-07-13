@@ -15,6 +15,9 @@ function bindSettingsUi(dependencies) {
     "change", loadChatModelSuggestions,
   );
   document.querySelector("#connection-mode").addEventListener("change", updateConnectionFields);
+  document.querySelector("#connection-url").addEventListener(
+    "input", () => window.archiveMigrationUi.connectionSelectionChanged(),
+  );
   document.querySelector("#connection-form").addEventListener("submit", saveConnectionTarget);
   document.querySelector("#test-connection-button").addEventListener("click", testConnectionTarget);
 }
@@ -55,6 +58,7 @@ async function refreshConnectionSettings() {
     document.querySelector("#connection-status").textContent = target.mode === "remote"
       ? `Aktivní vzdálený workspace: ${target.baseUrl}` : "Aktivní lokální workspace";
     updateConnectionFields();
+    await window.archiveMigrationUi.refresh(target);
   } catch (error) {
     showSettingsToast(error.message, true);
   }
@@ -73,6 +77,7 @@ function updateConnectionFields() {
   document.querySelector("#connection-url").disabled = !remote;
   document.querySelector("#connection-token").disabled = !remote;
   document.querySelector("#test-connection-button").disabled = !remote;
+  window.archiveMigrationUi.connectionSelectionChanged();
 }
 
 async function testConnectionTarget() {

@@ -34,7 +34,32 @@ desktop provider store. Remote mode skips local infrastructure and routes the
 entire workspace through the gateway. The local Discord `BrowserView` remains
 available in Remote mode, so its normalized ingestion batches are written
 directly to the server. Target changes never migrate or dual-write existing raw
-messages, and a failed remote connection never falls back to Local implicitly.
+messages automatically, and a failed remote connection never falls back to
+Local implicitly. Electron Local additionally offers an explicit, resumable
+archive migration to a compatible gateway.
+
+The migration protocol advertises versioned import/export capabilities through
+`RuntimeCapabilities`. Local FastAPI snapshots current message IDs into an
+otherwise ordinary completed ingestion session. This gives pagination a stable
+source set while normal ingestion resumes immediately after snapshot creation.
+Only the Electron main process can read the internal export endpoints, using the
+ephemeral internal FastAPI token.
+
+Electron sends size-bounded batches to bearer-only gateway migration routes and
+stores the acknowledged cursor in its private user-data directory. The remote
+session links every accepted ID, including messages already present there, so
+its count can verify the complete snapshot. Repeating a lost batch is
+idempotent. A browser admin session cannot call migration routes, internal
+export routes are never proxied, and neither PostgreSQL service is exposed to
+the other host.
+
+Message conflicts use the Local row for the same external ID while retaining
+unrelated server rows. Discord cursor ranges are unioned; an existing server
+tracking preference wins, and active sessions or old errors are discarded.
+Completion creates no embedding work. A later explicit action queues the
+migration session against ready auto-sync indexes, keeping paid provider calls
+separate from data transfer. Provider secrets, bot tokens, embeddings, and model
+configuration are outside the migration contract.
 
 ## Source connectors
 
@@ -241,8 +266,11 @@ Electron Remote calls use its bearer token.
 
 - `POST /ingestion/sessions` starts a source-neutral raw ingestion session.
 - `POST /messages/import` stores up to 400 normalized source messages.
-- `POST /ingestion/sessions/{id}/finish` queues per-index jobs and returns the
-  compatible first job ID plus all job IDs.
+- `POST /ingestion/sessions/{id}/finish` normally queues per-index jobs and
+  returns the compatible first job ID plus all job IDs. Internal migration
+  completion may explicitly defer that work.
+- `GET /ingestion/sessions/{id}` reports durable session state and
+  `POST /ingestion/sessions/{id}/index` explicitly queues deferred jobs.
 - `GET /ingestion/conversations` lists raw conversations for a source.
 - `GET /integrations/sync-states` and `POST /integrations/sync-state` persist
   connector cursors.
@@ -260,6 +288,12 @@ Electron Remote calls use its bearer token.
 - `GET /database/resume-point` remains the embedded Discord resume endpoint.
 - `GET /database/overview` reports raw, index, source, and job statistics.
 - `DELETE /database` requires `VYMAZAT` and clears stored conversation data.
+
+`/api/migrations`, its message and sync-state children, completion, status, and
+index actions are bearer-only gateway routes used by Electron Local. Browser
+sessions receive `403` even with a valid CSRF token. Local
+`/internal/migration-exports` snapshot, page, and cleanup routes require the
+internal token and are not present in the gateway allowlist.
 
 ## Extension boundary
 

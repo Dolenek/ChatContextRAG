@@ -23,7 +23,20 @@ class FakeIngestionService:
 
     def finish_session(self, session_id, request):
         return IngestionSessionView(
-            session_id=session_id, status=request.reason, indexing_job_id="job-1",
+            session_id=session_id, status=request.reason,
+            indexing_job_id="job-1" if request.queue_indexing else None,
+            indexing_job_ids=["job-1"] if request.queue_indexing else [],
+        )
+
+    def get_session(self, session_id):
+        return IngestionSessionView(
+            session_id=session_id, status="completed", raw_message_count=42,
+        )
+
+    def queue_session_indexing(self, session_id):
+        return IngestionSessionView(
+            session_id=session_id, status="completed", raw_message_count=42,
+            indexing_job_id="job-migration", indexing_job_ids=["job-migration"],
         )
 
     def get_job(self, job_id):
@@ -128,12 +141,21 @@ def test_overview_and_ingestion_job_routes() -> None:
     finish_response = client.post(
         "/ingestion/sessions/session-1/finish", json={"reason": "completed"},
     )
+    no_index_response = client.post(
+        "/ingestion/sessions/session-2/finish",
+        json={"reason": "completed", "queue_indexing": False},
+    )
+    migration_session = client.get("/ingestion/sessions/session-1")
+    migration_index = client.post("/ingestion/sessions/session-1/index")
     job_response = client.get("/indexing/jobs/job-1")
     pending_response = client.post("/indexing/jobs/pending")
     retry_response = client.post("/indexing/jobs/job-1/retry")
     cancel_response = client.post("/indexing/jobs/job-1/cancel")
     assert session_response.status_code == 200
     assert finish_response.json()["indexing_job_id"] == "job-1"
+    assert no_index_response.json()["indexing_job_id"] is None
+    assert migration_session.json()["raw_message_count"] == 42
+    assert migration_index.json()["indexing_job_ids"] == ["job-migration"]
     assert job_response.json()["status"] == "queued"
     assert pending_response.json()["total_messages"] == 84
     assert retry_response.json()["status"] == "queued"

@@ -49,8 +49,20 @@ class MessageIngestionService:
     def finish_session(
         self, session_id: str, request: FinishIngestionRequest,
     ) -> IngestionSessionView:
-        result = self.raw_repository.finish_session(session_id, request.reason)
-        self.indexing_worker.wake()
+        result = self.raw_repository.finish_session(
+            session_id, request.reason, request.queue_indexing,
+        )
+        if result.indexing_job_ids:
+            self.indexing_worker.wake()
+        return result
+
+    def get_session(self, session_id: str) -> IngestionSessionView:
+        return self.raw_repository.get_session(session_id)
+
+    def queue_session_indexing(self, session_id: str) -> IngestionSessionView:
+        result = self.raw_repository.queue_session_indexing(session_id)
+        if result.indexing_job_ids:
+            self.indexing_worker.wake()
         return result
 
     def get_job(self, job_id: str) -> IndexingJobView:

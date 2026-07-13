@@ -5,6 +5,18 @@ contextBridge.exposeInMainWorld("chatContext", {
   getConnectionTarget: () => ipcRenderer.invoke("connection:get"),
   testConnectionTarget: (target) => ipcRenderer.invoke("connection:test", target),
   saveConnectionTarget: (target) => ipcRenderer.invoke("connection:save", target),
+  inspectArchiveMigration: (target) => ipcRenderer.invoke("migration:inspect", target),
+  startArchiveMigration: (target) => ipcRenderer.invoke("migration:start", target),
+  pauseArchiveMigration: () => ipcRenderer.invoke("migration:pause"),
+  resumeArchiveMigration: () => ipcRenderer.invoke("migration:resume"),
+  getArchiveMigrationStatus: () => ipcRenderer.invoke("migration:status"),
+  indexArchiveMigration: () => ipcRenderer.invoke("migration:index"),
+  forgetArchiveMigration: () => ipcRenderer.invoke("migration:forget"),
+  onArchiveMigrationProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("migration:progress", listener);
+    return () => ipcRenderer.removeListener("migration:progress", listener);
+  },
   openDiscord: () => ipcRenderer.invoke("discord:open"),
   openDiscordSource: (source) => ipcRenderer.invoke("discord:source:open", source),
   captureDiscord: () => ipcRenderer.invoke("discord:capture"),

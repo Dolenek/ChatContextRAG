@@ -92,6 +92,14 @@ test("connection target validates URLs and keeps the token encrypted", () => {
     mode: "remote", baseUrl: "https://server.example", hasToken: true,
   });
   assert.equal(store.getActive().token, "secret");
+  store.save({ mode: "local" });
+  store.rememberRemote({ baseUrl: "https://server.example", token: "replacement" });
+  assert.equal(store.getPublic().mode, "local");
+  assert.equal(store.resolveRemote({ baseUrl: "https://server.example" }).token, "replacement");
+  assert.throws(
+    () => store.resolveRemote({ baseUrl: "https://other.example" }),
+    /token is required/,
+  );
   const persisted = fs.readFileSync(
     path.join(directory, "chat-context", "connection.json"), "utf8",
   );
@@ -134,6 +142,15 @@ test("gateway protects APIs with session CSRF or desktop bearer authentication",
     body: JSON.stringify({ question: "hello" }),
   });
   assert.equal(acceptedMutation.status, 200);
+  const browserMigration = await fetch(`${origin}/api/migrations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json", Cookie: cookie, Origin: origin,
+      "X-CSRF-Token": session.csrf_token,
+    },
+    body: "{}",
+  });
+  assert.equal(browserMigration.status, 403);
   const desktop = await fetch(`${origin}/api/runtime`, {
     headers: { Authorization: "Bearer desktop-token-that-is-long-enough" },
   });
@@ -153,6 +170,9 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   const styles = fs.readFileSync(path.join(__dirname, "..", "renderer", "styles.css"), "utf8");
 
   assert.ok(html.indexOf('src="runtime-bridge.js"') < html.indexOf('src="shell-controller.js"'));
+  assert.ok(html.indexOf('src="archive-migration-ui.js"') < html.indexOf('src="settings-ui.js"'));
+  assert.match(html, /id="archive-migration-start"/);
+  assert.match(html, /id="archive-migration-index"/);
   assert.match(bridge, /mode: "web", hasToken: false/);
   assert.match(bridge, /Promise\.resolve\(\{ embedded: false \}\)/);
   assert.match(styles, /\.web-runtime #open-discord-button/);
@@ -165,7 +185,10 @@ test("web and Electron bridges expose the shared workspace contract", () => {
   );
   const methods = [
     "getRuntimeCapabilities", "getConnectionTarget", "testConnectionTarget",
-    "saveConnectionTarget", "openDiscord", "openDiscordSource", "captureDiscord",
+    "saveConnectionTarget", "inspectArchiveMigration", "startArchiveMigration",
+    "pauseArchiveMigration", "resumeArchiveMigration", "getArchiveMigrationStatus",
+    "indexArchiveMigration", "forgetArchiveMigration", "onArchiveMigrationProgress",
+    "openDiscord", "openDiscordSource", "captureDiscord",
     "startDiscordScan", "resumeDiscordScan", "stopDiscordScan", "onDiscordScanProgress",
     "onIndexingProgress", "hideDiscord", "askDatabase", "getChatScopes",
     "getDatabaseOverview", "clearDatabase", "retryIndexingJob", "cancelIndexingJob",

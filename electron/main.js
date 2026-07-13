@@ -2,6 +2,9 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
 
 const { BackendClient } = require("../runtime/backend-client");
+const { ArchiveMigrationController } = require("./archive-migration");
+const { ArchiveMigrationIpcController } = require("./archive-migration-ipc");
+const { ArchiveMigrationStore } = require("./archive-migration-store");
 const { BackendProcess, BACKEND_URL } = require("./backend-process");
 const { ConnectionIpcController } = require("./connection-ipc");
 const { ConnectionStore } = require("./connection-store");
@@ -18,11 +21,13 @@ const projectRoot = path.resolve(__dirname, "..");
 const backendProcess = new BackendProcess(projectRoot);
 const localInfrastructure = new LocalInfrastructure(projectRoot);
 let activeTarget = { mode: "local" };
+let activeDiscordScan = null;
 let backendClient;
 let discordController;
 let integrationController;
 let mainWindow;
 let remoteEvents;
+let sourceMigrationClient;
 let settingsController;
 
 async function createWindow() {
@@ -68,8 +73,8 @@ function registerIpcHandlers() {
     discordController.openMessage(source.guild_id, source.channel_id, source.message_id));
   ipcMain.handle("discord:hide", () => discordController.hide());
   ipcMain.handle("discord:capture", captureDiscordMessages);
-  ipcMain.handle("discord:scan:start", () => runManagedDiscordScan(false));
-  ipcMain.handle("discord:scan:resume", () => runManagedDiscordScan(true));
+  ipcMain.handle("discord:scan:start", () => runTrackedDiscordScan(false));
+  ipcMain.handle("discord:scan:resume", () => runTrackedDiscordScan(true));
   ipcMain.handle("discord:scan:stop", () => {
     discordController.stopChannelScan();
     return { stopping: true };
@@ -126,6 +131,17 @@ async function runManagedDiscordScan(shouldResume) {
     summary = await finishManagedScan(session, summary);
   }
   return summary;
+}
+
+async function runTrackedDiscordScan(shouldResume) {
+  if (activeDiscordScan) throw new Error("A Discord scan is already running.");
+  const operation = runManagedDiscordScan(shouldResume);
+  activeDiscordScan = operation;
+  try {
+    return await operation;
+  } finally {
+    if (activeDiscordScan === operation) activeDiscordScan = null;
+  }
 }
 
 async function finishManagedScan(session, summary) {
@@ -185,6 +201,9 @@ function runtimeCapabilities() {
     embeddedDiscord: true,
     discordBot: true,
     fileUpload: true,
+    migrationExport: activeTarget.mode === "local",
+    migrationImport: false,
+    migrationProtocolVersion: 1,
   };
 }
 
@@ -192,6 +211,9 @@ async function configureLocalRuntime() {
   await localInfrastructure.ensureDatabase();
   await backendProcess.start();
   backendClient = new BackendClient(BACKEND_URL);
+  sourceMigrationClient = new BackendClient(BACKEND_URL, {
+    "X-Chat-Context-Token": backendProcess.internalToken,
+  });
   const providerStore = new ProviderStore(app.getPath("userData"), safeStorage);
   settingsController = new SettingsIpcController(
     providerStore, backendProcess.internalToken, monitorIndexingJob,
@@ -205,6 +227,7 @@ async function configureLocalRuntime() {
 }
 
 function configureRemoteRuntime(target) {
+  sourceMigrationClient = null;
   backendClient = new BackendClient(`${target.baseUrl}/api`, {
     Authorization: `Bearer ${target.token}`,
   });
@@ -217,6 +240,40 @@ function configureRemoteRuntime(target) {
   remoteEvents = new RemoteEventForwarder(target.baseUrl, target.token, () => mainWindow);
 }
 
+async function createSourceSnapshot() {
+  await stopActiveDiscordScan();
+  await integrationController.shutdown();
+  try {
+    const snapshot = await sourceMigrationClient.post("/internal/migration-exports", {});
+    const syncStates = await sourceMigrationClient.get(
+      "/integrations/sync-states?source_type=discord",
+    );
+    return { ...snapshot, syncStates };
+  } finally {
+    await integrationController.restoreBot();
+  }
+}
+
+async function stopActiveDiscordScan() {
+  if (!activeDiscordScan) return;
+  discordController.stopChannelScan();
+  await activeDiscordScan.catch(() => {});
+}
+
+function registerArchiveMigration(connectionStore) {
+  const migration = new ArchiveMigrationController({
+    sourceClient: sourceMigrationClient,
+    connectionStore,
+    stateStore: new ArchiveMigrationStore(app.getPath("userData")),
+    createRemoteClient: (target) => new BackendClient(`${target.baseUrl}/api`, {
+      Authorization: `Bearer ${target.token}`,
+    }),
+    createSourceSnapshot,
+    onProgress: (progress) => mainWindow?.webContents.send("migration:progress", progress),
+  });
+  new ArchiveMigrationIpcController(migration).register();
+}
+
 async function initializeApplication() {
   const connectionStore = new ConnectionStore(app.getPath("userData"), safeStorage);
   activeTarget = connectionStore.getActive();
@@ -227,6 +284,7 @@ async function initializeApplication() {
   registerIpcHandlers();
   if (activeTarget.mode === "local") await configureLocalRuntime();
   else configureRemoteRuntime(activeTarget);
+  registerArchiveMigration(connectionStore);
   await createWindow();
   await integrationController.restoreBot();
   remoteEvents?.start();

@@ -1,5 +1,6 @@
 const { readBody, readJson, sendJson } = require("./http-utils");
 const { SettingsRouter } = require("./settings-router");
+const { MigrationRouter } = require("./migration-router");
 
 class ApiRouter {
   constructor(options) {
@@ -8,9 +9,10 @@ class ApiRouter {
     this.events = options.events;
     this.monitor = options.monitor;
     this.settings = new SettingsRouter(options.settings);
+    this.migrations = new MigrationRouter(options.backend, options.monitor);
   }
 
-  async handle(request, response, url) {
+  async handle(request, response, url, identity) {
     const pathname = url.pathname;
     if (request.method === "GET" && pathname === "/api/runtime") {
       return this.json(response, runtimeCapabilities());
@@ -21,6 +23,9 @@ class ApiRouter {
     }
     if (pathname.startsWith("/api/settings")) {
       return this.settings.handle(request, response, pathname);
+    }
+    if (pathname.startsWith("/api/migrations")) {
+      return this.migrations.handle(request, response, pathname, identity);
     }
     if (pathname.startsWith("/api/discord-bot")) {
       return this.handleDiscord(request, response, pathname);
@@ -126,6 +131,7 @@ function matchParameterizedRoute(method, pathname) {
 function runtimeCapabilities() {
   return {
     mode: "web", embeddedDiscord: false, discordBot: true, fileUpload: true,
+    migrationExport: false, migrationImport: true, migrationProtocolVersion: 1,
   };
 }
 

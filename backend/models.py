@@ -173,6 +173,7 @@ class IngestionSessionView(BaseModel):
 
 class FinishIngestionRequest(BaseModel):
     reason: Literal["completed", "stopped"]
+    queue_indexing: bool = True
 
 
 class IndexingJobView(BaseModel):

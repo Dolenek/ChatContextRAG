@@ -66,8 +66,16 @@ class PostgresRawMessageRepository:
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL raw message write failed.") from error
 
-    def finish_session(self, session_id: str, reason: str) -> IngestionSessionView:
-        return self.job_repository.finish_session(session_id, reason)
+    def finish_session(
+        self, session_id: str, reason: str, queue_indexing: bool = True,
+    ) -> IngestionSessionView:
+        return self.job_repository.finish_session(session_id, reason, queue_indexing)
+
+    def get_session(self, session_id: str) -> IngestionSessionView:
+        return self.job_repository.get_session(session_id)
+
+    def queue_session_indexing(self, session_id: str) -> IngestionSessionView:
+        return self.job_repository.queue_session_indexing(session_id)
 
     def get_job(self, job_id: str) -> IndexingJobView:
         return self.job_repository.get(job_id)
@@ -300,3 +308,7 @@ class PostgresRawMessageRepository:
 
     def _connect(self):
         return psycopg.connect(self.database_dsn)
+
+    def open_connection(self):
+        """Return a repository connection for collaborating persistence services."""
+        return self._connect()

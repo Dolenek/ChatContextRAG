@@ -24,7 +24,7 @@ class ConnectionStore {
     return {
       mode: "remote",
       baseUrl: normalizeServerUrl(state.baseUrl),
-      token: this.safeStorage.decryptString(Buffer.from(state.encryptedToken, "base64")),
+      token: this.decrypt(state.encryptedToken),
     };
   }
 
@@ -34,12 +34,36 @@ class ConnectionStore {
       this.write({ ...existing, mode: "local" });
       return this.getPublic();
     }
-    const baseUrl = normalizeServerUrl(input.baseUrl);
-    const encryptedToken = input.token?.trim()
-      ? this.encrypt(input.token.trim()) : existing.encryptedToken;
-    if (!encryptedToken) throw new Error("Remote workspace token is required.");
-    this.write({ mode: "remote", baseUrl, encryptedToken });
+    const remote = this.prepareRemote(input, existing);
+    this.write({ mode: "remote", ...remote });
     return this.getPublic();
+  }
+
+  rememberRemote(input) {
+    const existing = this.read();
+    const remote = this.prepareRemote(input, existing);
+    this.write({ ...existing, ...remote, mode: existing.mode });
+    return { baseUrl: remote.baseUrl, hasToken: true };
+  }
+
+  resolveRemote(input) {
+    const existing = this.read();
+    const baseUrl = normalizeServerUrl(input.baseUrl || existing.baseUrl);
+    if (input.token?.trim()) return { baseUrl, token: input.token.trim() };
+    if (existing.baseUrl !== baseUrl || !existing.encryptedToken) {
+      throw new Error("Remote workspace token is required for this server.");
+    }
+    return { baseUrl, token: this.decrypt(existing.encryptedToken) };
+  }
+
+  prepareRemote(input, existing) {
+    const baseUrl = normalizeServerUrl(input.baseUrl);
+    const sameServer = existing.baseUrl === baseUrl;
+    const encryptedToken = input.token?.trim()
+      ? this.encrypt(input.token.trim())
+      : sameServer ? existing.encryptedToken : null;
+    if (!encryptedToken) throw new Error("Remote workspace token is required.");
+    return { baseUrl, encryptedToken };
   }
 
   encrypt(token) {
@@ -51,6 +75,10 @@ class ConnectionStore {
       throw new Error("Linux plaintext secret storage is not allowed.");
     }
     return this.safeStorage.encryptString(token).toString("base64");
+  }
+
+  decrypt(encryptedToken) {
+    return this.safeStorage.decryptString(Buffer.from(encryptedToken, "base64"));
   }
 
   read() {

@@ -9,9 +9,10 @@ from psycopg.types.json import Jsonb
 
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.models import IngestionSessionRequest
+from backend.migration_exports import MigrationExportService
 from backend.raw_message_writer import RawMessageWriter
 from backend.raw_repository import PostgresRawMessageRepository
-from backend.vector_models import ConversationChunk, EmbeddedChunk
+from backend.vector_models import ConversationChunk, EmbeddedChunk, NormalizedMessage
 
 
 TEST_DSN = os.environ.get("POSTGRES_TEST_DSN")
@@ -105,6 +106,53 @@ def test_finished_session_fans_out_to_every_auto_sync_index() -> None:
         repository.delete_session(session.session_id)
         with psycopg.connect(TEST_DSN) as connection:
             connection.execute("DELETE FROM embedding_indexes WHERE id=ANY(%s)", (index_ids,))
+
+
+@pytest.mark.skipif(not TEST_DSN, reason="POSTGRES_TEST_DSN is not configured")
+def test_migration_snapshot_is_stable_and_can_finish_without_indexing() -> None:
+    identity = f"zz-migration-{uuid.uuid4().hex}"
+    first_id, later_id = f"{identity}-a", f"{identity}-b"
+    repository = PostgresRawMessageRepository(TEST_DSN)
+    repository.ensure_schema()
+    source_session = repository.create_session(IngestionSessionRequest(
+        source_type="test", conversation_id=identity,
+    ))
+    exports = MigrationExportService(repository.ensure_schema, repository.open_connection)
+    snapshot = None
+    try:
+        repository.store_messages(source_session.session_id, [_raw_message(first_id, 1)])
+        snapshot = exports.create_snapshot()
+        repository.store_messages(source_session.session_id, [_raw_message(later_id, 2)])
+        page = exports.get_page(snapshot.export_id, identity, 400)
+
+        assert first_id in {message.external_id for message in page.messages}
+        assert later_id not in {message.external_id for message in page.messages}
+        completed = repository.finish_session(
+            source_session.session_id, "completed", queue_indexing=False,
+        )
+        assert completed.indexing_job_ids == []
+    finally:
+        if snapshot:
+            exports.delete_snapshot(snapshot.export_id)
+        repository.delete_session(source_session.session_id)
+        with psycopg.connect(TEST_DSN) as connection:
+            connection.execute(
+                "DELETE FROM source_messages WHERE external_id=ANY(%s)",
+                ([first_id, later_id],),
+            )
+            connection.execute(
+                "DELETE FROM message_contents WHERE content_hash=ANY(%s)",
+                ([RawMessageWriter.content_hash(f"content {first_id}"),
+                  RawMessageWriter.content_hash(f"content {later_id}")],),
+            )
+
+
+def _raw_message(external_id: str, order: int) -> NormalizedMessage:
+    return NormalizedMessage(
+        external_id=external_id, author="Ada", content=f"content {external_id}",
+        timestamp=None, channel="migration", channel_id=None, guild_id=None,
+        source_type="test", conversation_id="migration", message_order=order,
+    )
 
 
 class _TestIdentity:

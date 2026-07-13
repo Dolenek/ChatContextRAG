@@ -31,6 +31,9 @@ from backend.provider_registry import ProviderRegistry
 from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 from backend.settings_routes import register_settings_routes
 from backend.settings_service import ApplicationSettingsService
+from backend.migration_exports import (
+    MigrationExportService, register_migration_export_routes,
+)
 
 
 def create_app(
@@ -38,6 +41,7 @@ def create_app(
     chat_service: Optional[DatabaseChatService] = None,
     overview_service: Optional[DatabaseOverviewService] = None,
     settings_service: Optional[ApplicationSettingsService] = None,
+    migration_export_service: Optional[MigrationExportService] = None,
 ) -> FastAPI:
     application = FastAPI(title="Chat Context RAG API", version="0.4.0")
     application.add_middleware(
@@ -53,6 +57,9 @@ def create_app(
     _register_ingestion_routes(
         application, active_ingestion, WhatsAppImportCoordinator(active_ingestion),
     )
+    active_exports = migration_export_service or _migration_exports(active_ingestion)
+    if active_exports:
+        register_migration_export_routes(application, active_exports, internal_token)
     _register_chat_routes(application, active_chat)
     _register_database_routes(application, active_overview)
     if active_settings:
@@ -158,6 +165,18 @@ def _register_ingestion_routes(
     ) -> IngestionSessionView:
         return ingestion_service.finish_session(session_id, request)
 
+    @application.get(
+        "/ingestion/sessions/{session_id}", response_model=IngestionSessionView,
+    )
+    def ingestion_session(session_id: str) -> IngestionSessionView:
+        return ingestion_service.get_session(session_id)
+
+    @application.post(
+        "/ingestion/sessions/{session_id}/index", response_model=IngestionSessionView,
+    )
+    def index_ingestion_session(session_id: str) -> IngestionSessionView:
+        return ingestion_service.queue_session_indexing(session_id)
+
     @application.get("/indexing/jobs/{job_id}", response_model=IndexingJobView)
     def indexing_job(job_id: str) -> IndexingJobView:
         return ingestion_service.get_job(job_id)
@@ -228,6 +247,13 @@ def _resolve_services(
     if ingestion_service and chat_service and overview_service:
         return ingestion_service, chat_service, overview_service, settings_service, None
     return _build_default_services()
+
+
+def _migration_exports(ingestion_service) -> Optional[MigrationExportService]:
+    repository = getattr(ingestion_service, "raw_repository", None)
+    if not repository:
+        return None
+    return MigrationExportService(repository.ensure_schema, repository.open_connection)
 
 
 def _build_default_services() -> tuple:
