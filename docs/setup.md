@@ -66,6 +66,10 @@ Open `http://SERVER_IP:8080` and sign in with `WEB_ADMIN_USERNAME` (default
 published to the LAN. FastAPI stays on the Compose network and PostgreSQL's
 optional desktop port is bound to `127.0.0.1`.
 
+Open **Settings > Workspace** and set the archive's IANA calendar timezone.
+New and migrated workspaces start at `UTC`; the primary Prague workspace uses
+`Europe/Prague`. This setting controls future adaptive date filters.
+
 The gateway owns browser authentication, custom provider profiles, the Discord
 bot, and static UI assets. Provider API keys and the Discord bot token are
 encrypted in the `chat_context_server_state` volume. PostgreSQL data is in
@@ -89,7 +93,8 @@ chat-context.home.arpa {
 Install Caddy's local CA certificate on client devices, or replace `tls
 internal` with a publicly trusted certificate. An Nginx deployment must proxy
 the original `Host` header, set `X-Forwarded-Proto https`, disable response
-buffering for `/api/events`, and terminate TLS at the proxy.
+buffering for `/api/events` and `/api/chat/stream`, and terminate TLS at the
+proxy.
 
 ### Backup and recovery
 
@@ -216,47 +221,8 @@ endpoint and the last `/health` result.
 
 ## Desktop workspace
 
-The application opens directly in the chat workspace. The left navigation starts
-expanded with icons and labels; its top button switches to a compact icon-only
-rail and the chosen desktop mode is restored on the next start. Below 700 px the
-expanded rail overlays the workspace and begins compact without changing that
-saved preference. Embedded Discord also uses the compact rail temporarily.
-**New chat** always opens a blank conversation while retaining the currently
-selected source, model, and model-appropriate default retrieval mode. Adaptive
-chat requests have a 120-second backend deadline and a 130-second Electron/web
-gateway timeout; ordinary API requests keep the shared 30-second timeout. In
-expanded mode, **Recent** lists the ten most
-recently active backend-stored chats directly between **Database** and
-**Settings**. The list is hidden in icon-only mode. Selecting a row restores its
-messages, grounding sources, source scope, model, retrieval mode, and evidence
-limit without changing the global model default. Its context menu supports
-rename and permanent deletion. Deleting
-the currently open chat starts a new blank conversation.
-
-The rail switches between chat and database detail. **Settings** opens a modal over
-the current screen with separate sections for **Providers and API keys**, **Chat
-models**, **Embedding indexes**, **Indexing history**, and the Electron-only
-**Workspace** target. Closing the modal discards unfinished form values. **Sources
-and imports** independently opens an overlay drawer containing the searchable
-conversation scope and all Discord and WhatsApp ingestion controls. The drawer is
-collapsed again when the user returns to chat; its open state is not persisted
-between starts. The chat heading also has a **Sources** action for the same drawer.
-In the web runtime, **Log out** is at the bottom of the settings navigation;
-Electron has no logout action.
-
-Grounding sources for the selected assistant answer appear in the right panel.
-The same panel reports raw and indexed message counts, chunks, database size,
-pending work, and active indexing jobs in a card anchored at the bottom. Below
-1,100 px it becomes a drawer opened
-from the title bar. The source and context areas scroll independently from the
-conversation. Active job rows update without a page reload through live events
-with polling as a fallback. Running jobs are pinned above queued work, and the
-summary distinguishes active processing from a queue that has no running job.
-A **Follow-up indexing** row is the single catch-up created after an initial
-index build, or an explicit synchronization requested by the user. Completed,
-failed, and cancelled jobs do not
-remain in the live panel. Open **Settings > Indexing history** for diagnostics or
-to retry a failed or cancelled job.
+Desktop chat, navigation, adaptive retrieval, timezone, and indexing operation
+are documented in [Desktop operation](desktop-operation.md).
 
 ## Model and API settings
 
@@ -361,7 +327,9 @@ database:
 
 ```powershell
 $env:POSTGRES_TEST_DSN = "postgresql://user:password@127.0.0.1:5433/chat_context_test"
-py -3.9 -m pytest backend/test_postgres_integration.py -q
+py -3.9 -m pytest backend/test_postgres_integration.py `
+  backend/test_message_context_integration.py `
+  backend/test_time_retrieval_integration.py -q
 ```
 
 Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`;

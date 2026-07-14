@@ -20,6 +20,10 @@ from backend.raw_schema import raw_schema_statements
 from backend.vector_models import NormalizedMessage
 
 
+def _repository_schema_statements(model: str, dimensions: int) -> List[str]:
+    return raw_schema_statements(model, dimensions)
+
+
 class PostgresRawMessageRepository:
     def __init__(
         self, database_dsn: str,
@@ -125,9 +129,10 @@ class PostgresRawMessageRepository:
     def load_message_context(
         self, anchor_id: str, before_count: int, after_count: int,
         scope: Optional[ChatScope] = None,
+        time_range=None,
     ) -> List[NormalizedMessage]:
         return self.message_context_reader.load(
-            anchor_id, before_count, after_count, scope,
+            anchor_id, before_count, after_count, scope, time_range,
         )
 
     def iter_session_messages(
@@ -202,7 +207,9 @@ class PostgresRawMessageRepository:
             self._initialized = True
 
     def _create_schema(self) -> None:
-        statements = self._schema_statements()
+        statements = _repository_schema_statements(
+            self.default_embedding_model, self.default_embedding_dimensions,
+        )
         try:
             with psycopg.connect(self.database_dsn) as connection:
                 connection.execute("SELECT pg_advisory_xact_lock(1812199000)")
@@ -212,11 +219,8 @@ class PostgresRawMessageRepository:
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL raw schema initialization failed.") from error
 
-    def _schema_statements(self) -> List[str]:
-        return raw_schema_statements(self.default_embedding_model, self.default_embedding_dimensions)
-
     def _connect(self):
-        return psycopg.connect(self.database_dsn)
+        return psycopg.connect(self.database_dsn, connect_timeout=10)
 
     def open_connection(self):
         return self._connect()

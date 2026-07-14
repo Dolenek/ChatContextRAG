@@ -3,6 +3,7 @@ from typing import Callable, List, Optional
 import psycopg
 
 from backend.chat_models import ChatScope
+from backend.archive_time import ArchiveTimeRange
 from backend.openai_gateway import ExternalIntegrationError
 from backend.vector_models import NormalizedMessage
 
@@ -15,6 +16,7 @@ class PostgresMessageContextReader:
     def load(
         self, anchor_message_id: str, before_count: int, after_count: int,
         scope: Optional[ChatScope],
+        time_range: Optional[ArchiveTimeRange] = None,
     ) -> List[NormalizedMessage]:
         self._validate_counts(before_count, after_count)
         self.ensure_schema()
@@ -24,6 +26,7 @@ class PostgresMessageContextReader:
                 rows = connection.execute(
                     self._query(), self._parameters(
                         anchor_message_id, before_count, after_count, scope,
+                        time_range,
                     ),
                 ).fetchall()
         except psycopg.Error as error:
@@ -38,11 +41,14 @@ class PostgresMessageContextReader:
             raise ValueError("At least one context message must be requested.")
 
     @staticmethod
-    def _parameters(anchor_id, before_count, after_count, scope):
+    def _parameters(anchor_id, before_count, after_count, scope, time_range):
         source_type = scope.source_type if scope else None
         conversation_id = scope.conversation_id if scope else None
+        start_at = time_range.start_at if time_range else None
+        end_at = time_range.end_at if time_range else None
         return (
-            anchor_id, source_type, source_type, conversation_id, conversation_id,
+            start_at, end_at, anchor_id,
+            source_type, source_type, conversation_id, conversation_id,
             before_count, after_count,
         )
 
@@ -53,7 +59,8 @@ class PostgresMessageContextReader:
                      m.conversation_label,m.container_id,m.container_label,
                      m.source_metadata,m.message_order"""
         return f"""WITH anchor AS (
-                  SELECT external_id,source_type,conversation_id,message_order
+                  SELECT external_id,source_type,conversation_id,message_order,
+                         %s::timestamptz range_start,%s::timestamptz range_end
                   FROM source_messages WHERE external_id=%s
                     AND (%s::text IS NULL OR source_type=%s)
                     AND (%s::text IS NULL OR conversation_id=%s)),
@@ -61,6 +68,8 @@ class PostgresMessageContextReader:
                   (SELECT m.external_id,m.message_order FROM source_messages m,anchor a
                    WHERE m.source_type=a.source_type AND m.conversation_id=a.conversation_id
                      AND m.message_order<a.message_order
+                     AND (a.range_start IS NULL OR m.sent_at>=a.range_start)
+                     AND (a.range_end IS NULL OR m.sent_at<a.range_end)
                    ORDER BY m.message_order DESC,m.external_id DESC LIMIT %s)
                   UNION ALL
                   (SELECT m.external_id,m.message_order FROM source_messages m,anchor a
@@ -69,6 +78,8 @@ class PostgresMessageContextReader:
                   (SELECT m.external_id,m.message_order FROM source_messages m,anchor a
                    WHERE m.source_type=a.source_type AND m.conversation_id=a.conversation_id
                      AND m.message_order>a.message_order
+                     AND (a.range_start IS NULL OR m.sent_at>=a.range_start)
+                     AND (a.range_end IS NULL OR m.sent_at<a.range_end)
                    ORDER BY m.message_order,m.external_id LIMIT %s))
                 SELECT {columns} FROM nearby_ids nearby
                 JOIN source_messages m ON m.external_id=nearby.external_id

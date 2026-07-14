@@ -7,6 +7,7 @@ from backend.models import (
     ActiveEmbeddingIndexUpdate, EmbeddingIndexCreate, EmbeddingIndexUpdate,
     EmbeddingIndexView, EmbeddingSettingsView, IndexingJobView,
     ProviderModelList, ProviderProfileView, ProviderRegistryUpdate,
+    WorkspaceSettingsUpdate, WorkspaceSettingsView,
 )
 from backend.provider_registry import ProviderRegistry
 from backend.raw_repository import PostgresRawMessageRepository
@@ -21,6 +22,7 @@ class ApplicationSettingsService:
         indexing_worker: PersistentIndexingWorker,
         default_chat_provider_id: str = "openai",
         default_chat_model: Optional[str] = None,
+        workspace_settings=None,
     ) -> None:
         self.registry = registry
         self.indexes = indexes
@@ -29,6 +31,7 @@ class ApplicationSettingsService:
         self.indexing_worker = indexing_worker
         self.default_chat_provider_id = default_chat_provider_id
         self.default_chat_model = default_chat_model
+        self.workspace_settings = workspace_settings
 
     def list_providers(self) -> List[ProviderProfileView]:
         return self.registry.list_views()
@@ -56,6 +59,18 @@ class ApplicationSettingsService:
             return ProviderModelList(
                 models=[], warning=f"Model list is unavailable: {error}",
             )
+
+    def get_workspace_settings(self) -> WorkspaceSettingsView:
+        if not self.workspace_settings:
+            return WorkspaceSettingsView(timezone_name="UTC")
+        return self.workspace_settings.get()
+
+    def update_workspace_settings(
+        self, update: WorkspaceSettingsUpdate,
+    ) -> WorkspaceSettingsView:
+        if not self.workspace_settings:
+            raise ValueError("Workspace settings storage is not configured.")
+        return self.workspace_settings.update(update)
 
     def embedding_settings(self) -> EmbeddingSettingsView:
         active = self.indexes.active()

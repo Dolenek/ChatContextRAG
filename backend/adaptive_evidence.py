@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from backend.chat_models import ChatSource
+from backend.archive_time import ArchiveTimeRange
 from backend.source_context import SourceContextProjector
 
 
@@ -12,6 +13,7 @@ MAX_EVIDENCE_MESSAGES = 48
 class EvidenceRecord:
     evidence_id: str
     source: ChatSource
+    time_range: Optional[ArchiveTimeRange] = None
 
 
 class EvidenceRegistry:
@@ -21,10 +23,13 @@ class EvidenceRegistry:
         self.records: List[EvidenceRecord] = []
         self.ids_by_message: Dict[Tuple[str, str, str], str] = {}
 
-    def add_sources(self, sources: Sequence[ChatSource], origin: str) -> dict:
+    def add_sources(
+        self, sources: Sequence[ChatSource], origin: str,
+        time_range: Optional[ArchiveTimeRange] = None,
+    ) -> dict:
         messages, exhausted = [], False
         for source in sources:
-            payload = self._add_source(source, origin)
+            payload = self._add_source(source, origin, time_range)
             if payload:
                 messages.append(payload)
             elif self.is_exhausted:
@@ -38,10 +43,12 @@ class EvidenceRegistry:
         }
 
     def source_for(self, evidence_id: str) -> Optional[ChatSource]:
+        record = self.record_for(evidence_id)
+        return record.source if record else None
+
+    def record_for(self, evidence_id: str) -> Optional[EvidenceRecord]:
         return next(
-            (record.source for record in self.records
-             if record.evidence_id == evidence_id),
-            None,
+            (record for record in self.records if record.evidence_id == evidence_id), None,
         )
 
     def sources(self) -> List[ChatSource]:
@@ -56,7 +63,10 @@ class EvidenceRegistry:
             or len(self.records) >= MAX_EVIDENCE_MESSAGES
         )
 
-    def _add_source(self, source: ChatSource, origin: str) -> Optional[dict]:
+    def _add_source(
+        self, source: ChatSource, origin: str,
+        time_range: Optional[ArchiveTimeRange],
+    ) -> Optional[dict]:
         key = self._message_key(source)
         if not key:
             return None
@@ -71,7 +81,7 @@ class EvidenceRegistry:
             return None
         evidence_id = f"E{len(self.records) + 1}"
         stored_source = source.model_copy(update={"evidence_origin": origin})
-        self.records.append(EvidenceRecord(evidence_id, stored_source))
+        self.records.append(EvidenceRecord(evidence_id, stored_source, time_range))
         self.ids_by_message[key] = evidence_id
         self.character_count += len(visible_content)
         return self._payload(evidence_id, stored_source, visible_content)

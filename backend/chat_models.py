@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -8,6 +8,8 @@ ReasoningEffort = Literal[
     "none", "minimal", "low", "medium", "high", "xhigh", "max",
 ]
 RetrievalMode = Literal["deterministic", "adaptive"]
+ToolName = Literal["search_archive", "read_message_context", "unknown"]
+ToolActivityStatus = Literal["running", "completed", "failed", "skipped"]
 
 DEFAULT_EVIDENCE_CHARACTER_LIMIT = 24_000
 MIN_EVIDENCE_CHARACTER_LIMIT = 4_000
@@ -84,6 +86,26 @@ class ChatSource(BaseModel):
     evidence_origin: Literal["search", "context"] = "search"
 
 
+class ChatToolActivity(BaseModel):
+    sequence: int = Field(ge=1)
+    tool_name: ToolName
+    status: ToolActivityStatus
+    query: Optional[str] = Field(default=None, max_length=1000)
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    timezone_name: Optional[str] = Field(default=None, max_length=100)
+    normalized_start_at: Optional[datetime] = None
+    normalized_end_at: Optional[datetime] = None
+    evidence_id: Optional[str] = Field(default=None, max_length=32)
+    before_count: Optional[int] = Field(default=None, ge=0, le=10)
+    after_count: Optional[int] = Field(default=None, ge=0, le=10)
+    result_message_count: Optional[int] = Field(default=None, ge=0)
+    new_evidence_count: Optional[int] = Field(default=None, ge=0)
+    budget_exhausted: bool = False
+    error_code: Optional[str] = Field(default=None, max_length=100)
+    duration_ms: Optional[int] = Field(default=None, ge=0)
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: List[ChatSource]
@@ -95,6 +117,7 @@ class ChatResponse(BaseModel):
     chat_session_title: Optional[str] = None
     retrieval_mode: RetrievalMode = "deterministic"
     evidence_character_limit: Optional[int] = None
+    tool_activity: List[ChatToolActivity] = Field(default_factory=list)
 
 
 class ChatSessionSummary(BaseModel):
@@ -109,6 +132,7 @@ class ChatSessionMessage(BaseModel):
     content: str
     sources: List[ChatSource] = Field(default_factory=list)
     created_at: Optional[datetime] = None
+    tool_activity: List[ChatToolActivity] = Field(default_factory=list)
 
 
 class ChatSessionDetail(ChatSessionSummary):

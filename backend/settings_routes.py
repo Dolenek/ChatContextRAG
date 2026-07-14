@@ -5,6 +5,7 @@ from backend.models import (
     ActiveEmbeddingIndexUpdate, EmbeddingIndexCreate, EmbeddingIndexUpdate,
     EmbeddingIndexView, EmbeddingSettingsView, IndexingJobView,
     ProviderModelList, ProviderProfileView, ProviderRegistryUpdate,
+    WorkspaceSettingsUpdate, WorkspaceSettingsView,
 )
 from backend.settings_service import ApplicationSettingsService
 
@@ -16,6 +17,21 @@ def register_settings_routes(
     _register_provider_routes(application, service, internal_token)
     _register_embedding_routes(application, service)
     _register_embedding_job_routes(application, service)
+    _register_workspace_routes(application, service)
+
+
+def _register_workspace_routes(
+    application: FastAPI, service: ApplicationSettingsService,
+) -> None:
+    @application.get("/settings/workspace", response_model=WorkspaceSettingsView)
+    def workspace_settings() -> WorkspaceSettingsView:
+        return service.get_workspace_settings()
+
+    @application.put("/settings/workspace", response_model=WorkspaceSettingsView)
+    def update_workspace_settings(
+        update: WorkspaceSettingsUpdate,
+    ) -> WorkspaceSettingsView:
+        return service.update_workspace_settings(update)
 
 
 def _register_provider_routes(

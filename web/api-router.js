@@ -1,4 +1,4 @@
-const { readBody, readJson, sendJson } = require("./http-utils");
+const { readBody, readJson, securityHeaders, sendJson } = require("./http-utils");
 const { SettingsRouter } = require("./settings-router");
 const { MigrationRouter } = require("./migration-router");
 
@@ -38,7 +38,33 @@ class ApiRouter {
         "/ingestion/conversations?source_type=whatsapp",
       ));
     }
+    if (request.method === "POST" && pathname === "/api/chat/stream") {
+      return this.handleChatStream(request, response);
+    }
     return this.handleBackendFacade(request, response, url);
+  }
+
+  async handleChatStream(request, response) {
+    const body = await readJson(request);
+    const cancellation = new AbortController();
+    const handleClose = () => {
+      if (!response.writableEnded) cancellation.abort();
+    };
+    response.on("close", handleClose);
+    startNdjsonResponse(response);
+    try {
+      await this.backend.streamNdjson("/chat/stream", body, (record) => {
+        if (!response.destroyed) writeNdjson(response, record);
+      }, { timeoutMs: 130_000, signal: cancellation.signal });
+    } catch (error) {
+      if (!cancellation.signal.aborted && !response.destroyed) {
+        writeNdjson(response, streamTransportError(error));
+      }
+    } finally {
+      response.off("close", handleClose);
+      if (!response.destroyed) response.end();
+    }
+    return true;
   }
 
   async handleDiscord(request, response, pathname) {
@@ -142,6 +168,30 @@ function runtimeCapabilities() {
   return {
     mode: "web", embeddedDiscord: false, discordBot: true, fileUpload: true,
     migrationExport: false, migrationImport: true, migrationProtocolVersion: 1,
+  };
+}
+
+function startNdjsonResponse(response) {
+  response.writeHead(200, {
+    ...securityHeaders,
+    "Content-Type": "application/x-ndjson; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Accel-Buffering": "no",
+  });
+  response.flushHeaders?.();
+}
+
+function writeNdjson(response, record) {
+  response.write(`${JSON.stringify(record)}\n`);
+}
+
+function streamTransportError(error) {
+  const timeout = error?.code === "BACKEND_TIMEOUT";
+  return {
+    type: "error",
+    code: timeout ? "timeout" : "stream_transport_error",
+    detail: timeout ? "Adaptivní odpověď překročila časový limit."
+      : "Spojení s chatovacím backendem bylo přerušeno.",
   };
 }
 

@@ -20,6 +20,8 @@ class RemoteSettingsIpcController {
       this.client.post("/settings/chat-models", model));
     ipcMain.handle("settings:chat-model:delete", (_event, model) =>
       this.client.delete("/settings/chat-models", model));
+    ipcMain.handle("settings:workspace:update", (_event, timezoneName) =>
+      this.client.put("/settings/workspace", { timezoneName }));
     this.registerIndexHandlers();
   }
 

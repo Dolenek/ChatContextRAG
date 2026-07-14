@@ -35,8 +35,10 @@ Adaptive retrieval is a bounded three-turn agent loop:
 
 The internal read-only tools are:
 
-- `search_archive(query)`: searches at most eight chunks and resolves them to
-  original messages before returning evidence.
+- `search_archive(query, date_from, date_to)`: searches at most eight chunks and
+  resolves them to original messages before returning evidence. Dates are
+  nullable `YYYY-MM-DD` values. They are inclusive calendar dates in the
+  workspace timezone and remain separate from the semantic query.
 - `read_message_context(evidence_id, before_count, after_count)`: accepts only an
   evidence ID already issued in the loop and reads zero to ten messages on each
   side of its anchor. At least one neighbor is required. This read follows
@@ -46,6 +48,35 @@ The internal read-only tools are:
 Scope is not a model-controlled tool argument. The executor always attaches the
 scope from `ChatRequest`. A global search can find any conversation, while every
 context read remains in the conversation of its selected anchor.
+
+The workspace timezone is loaded once for each adaptive request. The prompt
+receives its IANA name, the current local time, and instructions to express a
+calendar constraint through the structured date arguments. New and migrated
+workspaces use `UTC`; an administrator may change the shared value through
+`GET`/`PUT /settings/workspace`. The value is request-specific and is not pinned
+to a chat session.
+
+## Calendar-bounded retrieval
+
+The server converts local dates with the IANA timezone database into a UTC
+half-open interval `[start, end)`. `date_to` is implemented as the following
+local midnight, so the complete final date is included and daylight-saving
+transitions are not assumed to last 24 hours.
+
+The interval is enforced in PostgreSQL at every evidence boundary:
+
+- vector candidates must have a chunk interval overlapping the requested range;
+- full-text candidates must have a canonical message timestamp inside it;
+- messages projected from a matching chunk are filtered again by timestamp;
+- `read_message_context` inherits the anchor evidence's interval and cannot
+  cross it, even though it ignores the ordinary 20-minute chunk boundary.
+
+Both candidate paths inspect at most 32 rows. A bounded interval is divided into
+at most eight temporal buckets. The best reciprocal-rank candidate from each
+non-empty bucket is selected first, then remaining positions are filled by the
+global score. The model still receives at most eight chunks and 48 unique
+messages. Time-aware chunk and canonical-message indexes support these filters;
+retrieval and context statements retain their 10-second timeout.
 
 ## Evidence and security
 
@@ -83,8 +114,8 @@ non-strict schemas and the same server-side argument validation.
 Every adaptive model request disables SDK retries. The complete loop has a
 120-second deadline, each provider request is capped by the remaining deadline
 and 45 seconds, and each retrieval database operation has a 10-second statement
-timeout. Electron and the web gateway allow 130 seconds only for adaptive
-`/chat` requests; other backend requests retain their ordinary timeout.
+timeout. Electron and the web gateway allow 130 seconds only for adaptive chat
+requests; other backend requests retain their ordinary timeout.
 
 ## API and persistence
 
@@ -98,6 +129,19 @@ old stored source JSON valid. Chat sessions persist scope, provider, model,
 reasoning effort, mode, and evidence limit. A continuation must match all six
 properties. Restored sessions use their stored mode and limit; changing any of
 these composer settings starts a new chat.
+
+`POST /chat/stream` returns NDJSON records named `tool_started`,
+`tool_completed`, `tool_failed`, `tool_skipped`, `final`, and `error`. The web
+gateway forwards records as they arrive, while Electron correlates IPC progress
+by request ID. `POST /chat` remains synchronous and returns the same final audit.
+Each assistant message persists `tool_activity`; old rows migrate to `[]`.
+
+The audit contains only the tool order, name, status, typed safe arguments,
+workspace timezone, normalized UTC interval, result and new-evidence counts,
+budget state, safe error code, and duration. It never stores model reasoning,
+provider payloads, tool-output message content, credentials, or server-owned
+scope. A disconnected client aborts the proxy read; the backend loop remains
+bounded by its deadline.
 
 The source projector resolves retrieved chunks into original messages, keeps
 retrieval order, deduplicates messages, and retains exact chunk context. Stored

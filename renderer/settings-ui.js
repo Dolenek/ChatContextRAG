@@ -12,6 +12,9 @@ function bindSettingsUi(dependencies) {
     showToast: showSettingsToast,
   });
   window.settingsOverlay.bind({ onClose: resetSettingsDrafts });
+  window.workspaceTimezoneUi.bind({
+    refreshSettings, showToast: showSettingsToast,
+  });
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
   window.indexingApiKeyUi.bind({
     refreshSettings, showToast: showSettingsToast,
@@ -47,6 +50,7 @@ async function refreshSettings() {
     renderProviders();
     window.indexingApiKeyUi.render(settingsState);
     window.chatModelSettingsUi.render(settingsState);
+    window.workspaceTimezoneUi.render(settingsState.workspace);
     renderIndexes();
     window.indexingJobHistoryUi.render(indexingJobs);
     fillProviderSelect("#embedding-provider-select");

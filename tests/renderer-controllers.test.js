@@ -67,7 +67,7 @@ test("chat controller sends bounded history and delegates safe message rendering
     },
     window: {
       chatContext: {
-        askDatabase: async (...arguments) => {
+        askDatabaseStreaming: async (...arguments) => {
           requests.push(arguments);
           return {
             answer: "grounded", sources: [{ content: "source" }],
@@ -97,6 +97,7 @@ test("chat controller sends bounded history and delegates safe message rendering
         },
         appendThinking: () => ({ thinking: true }),
         replaceThinking: (_entry, text, sources) => renderedAssistants.push([text, sources]),
+        updateThinking: () => {},
         removeThinking: () => {}, markFailed: () => {},
         markPersisted: (entry) => persistedEntries.push(entry.text),
         resetComposer: () => { questionInput.value = ""; },

@@ -6,6 +6,7 @@ const { ArchiveMigrationController } = require("./archive-migration");
 const { ArchiveMigrationIpcController } = require("./archive-migration-ipc");
 const { ArchiveMigrationStore } = require("./archive-migration-store");
 const { BackendProcess, BACKEND_URL } = require("./backend-process");
+const { ChatIpcController } = require("./chat-ipc");
 const { ConnectionIpcController } = require("./connection-ipc");
 const { ConnectionStore } = require("./connection-store");
 const { DiscordViewController } = require("./discord-view");
@@ -84,6 +85,7 @@ function registerIpcHandlers() {
     return { stopping: true };
   });
   registerDatabaseHandlers();
+  new ChatIpcController(ipcMain, () => backendClient).register();
 }
 
 function registerDatabaseHandlers() {

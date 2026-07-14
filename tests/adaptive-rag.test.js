@@ -63,7 +63,8 @@ test("adaptive mode is wired through both bridges with bounded proxy timeouts", 
   assert.match(html, /retrieval-mode-selector\.js/);
   assert.match(read("electron/preload.js"), /evidence_character_limit/);
   assert.match(read("renderer/runtime-bridge.js"), /retrieval_mode/);
-  assert.match(read("electron/main.js"), /timeoutMs: 130_000/);
+  assert.match(read("electron/chat-ipc.js"), /timeoutMs: 130_000/);
   assert.match(read("web/api-router.js"), /timeoutMs: 130_000/);
+  assert.match(read("renderer/chat-controller.js"), /askDatabaseStreaming/);
   assert.match(read("renderer/chat-sources.js"), /evidence_origin === "context"/);
 });

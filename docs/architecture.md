@@ -262,6 +262,9 @@ Electron Remote calls use its bearer token.
   evidence limit, and `session_id`. Completed turns append only to a session
   with the same fixed context; responses include its ID, title, effective mode,
   and evidence limit.
+- `POST /chat/stream` performs the same operation and emits NDJSON tool activity
+  before a complete final response. The synchronous route returns the same
+  persisted tool audit without intermediate records.
 - `GET /chat/sessions?limit=N` lists recent session summaries; the renderer loads
   20 and initially shows six.
 - `GET /chat/sessions/{id}` returns original context, ordered messages, and
@@ -270,6 +273,8 @@ Electron Remote calls use its bearer token.
 - `/settings/providers` lists redacted provider metadata and model suggestions.
 - `/settings/embedding-indexes` manages independent vector indexes, activation,
   sync, rebuild, and deletion.
+- `GET` and `PUT /settings/workspace` read or update the validated IANA timezone
+  used to interpret structured archive dates.
 - `GET /database/resume-point` remains the embedded Discord resume endpoint.
 - `GET /database/status` reports exact raw, active-index, source, size, and
   recent-job metrics without loading breakdowns or chunk content.

@@ -23,6 +23,8 @@ class SettingsIpcController {
       this.saveChatModel(model));
     ipcMain.handle("settings:chat-model:delete", (_event, model) =>
       this.deleteChatModel(model));
+    ipcMain.handle("settings:workspace:update", (_event, timezoneName) =>
+      this.request("PUT", "/settings/workspace", { timezone_name: timezoneName }));
     ipcMain.handle("settings:index:create", async (_event, input) => {
       const index = await this.request("POST", "/settings/embedding-indexes", input);
       this.monitorJob(index.active_job_id);
@@ -57,9 +59,10 @@ class SettingsIpcController {
   }
 
   async getSettings() {
-    const [providers, embeddings] = await Promise.all([
+    const [providers, embeddings, workspace] = await Promise.all([
       this.request("GET", "/settings/providers"),
       this.request("GET", "/settings/embedding-indexes"),
+      this.request("GET", "/settings/workspace"),
     ]);
     const environmentDefaults = {
       chatProviderId: embeddings.default_chat_provider_id || "openai",
@@ -70,7 +73,7 @@ class SettingsIpcController {
       { providerId: environmentDefaults.chatProviderId, model: environmentDefaults.chatModel },
       { providerId: chatDefaults.chatProviderId, model: chatDefaults.chatModel },
     ]);
-    return { providers, embeddings, chatDefaults, chatModels };
+    return { providers, embeddings, workspace, chatDefaults, chatModels };
   }
 
   async saveProvider(profile) {

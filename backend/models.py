@@ -11,6 +11,7 @@ from backend.chat_models import (
     ChatHistoryTurn, ChatRequest, ChatResponse, ChatScope, ChatScopeList,
     ChatScopeOption, ChatSessionDetail, ChatSessionMessage, ChatSessionRename,
     ChatSessionSummary, ChatSource, ChatSourceChunk,
+    ChatToolActivity,
     DEFAULT_EVIDENCE_CHARACTER_LIMIT, MAX_EVIDENCE_CHARACTER_LIMIT,
     MIN_EVIDENCE_CHARACTER_LIMIT, ReasoningEffort, RetrievalMode,
 )
@@ -162,6 +163,14 @@ class EmbeddingSettingsView(BaseModel):
 
 class ActiveEmbeddingIndexUpdate(BaseModel):
     embedding_index_id: str = Field(min_length=1, max_length=100)
+
+
+class WorkspaceSettingsView(BaseModel):
+    timezone_name: str = Field(min_length=1, max_length=100)
+
+
+class WorkspaceSettingsUpdate(WorkspaceSettingsView):
+    pass
 
 
 class SourceConversationView(BaseModel):

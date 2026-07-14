@@ -52,12 +52,15 @@ async function requestAnswer(question, requestHistory, userEntry, thinkingEntry)
     ...window.modelSelector.getChatSelection(),
     ...window.retrievalModeSelector.getSelection(),
   };
-  const response = await window.chatContext.askDatabase(
+  const request = chatSelection.retrievalMode === "adaptive"
+    ? window.chatContext.askDatabaseStreaming : window.chatContext.askDatabase;
+  const response = await request(
     question, requestHistory, scope, chatSelection, activeSessionId,
+    (record) => window.conversationView.updateThinking(thinkingEntry, record),
   );
   window.conversationView.markPersisted(userEntry);
   window.conversationView.replaceThinking(
-    thinkingEntry, response.answer, response.sources || [],
+    thinkingEntry, response.answer, response.sources || [], response.tool_activity || [],
   );
   conversationHistory.push({ role: "assistant", content: response.answer });
   activeSessionId = response.chat_session_id || null;

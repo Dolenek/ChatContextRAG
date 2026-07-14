@@ -118,6 +118,9 @@ test("settings router decodes identifiers and forwards JSON lifecycle requests",
 
   assert.equal(await router.handle(requestFrom("", "GET"), response, "/api/settings"), true);
   assert.equal(await router.handle(
+    requestFrom("", "GET"), response, "/api/settings/workspace",
+  ), true);
+  assert.equal(await router.handle(
     requestFrom('{"auto_sync":false}', "PATCH"), response,
     "/api/settings/embedding-indexes/index%20one",
   ), true);
@@ -127,8 +130,9 @@ test("settings router decodes identifiers and forwards JSON lifecycle requests",
   assert.equal(await router.handle(requestFrom("", "GET"), response, "/api/not-settings"), false);
 
   assert.deepEqual(calls[0], ["getSettings"]);
-  assert.deepEqual(calls[1], ["updateIndex", "index one", { auto_sync: false }]);
-  assert.deepEqual(calls[2], ["deleteProvider", "local api"]);
+  assert.deepEqual(calls[1], ["getWorkspaceSettings"]);
+  assert.deepEqual(calls[2], ["updateIndex", "index one", { auto_sync: false }]);
+  assert.deepEqual(calls[3], ["deleteProvider", "local api"]);
 });
 
 test("API route allowlist normalizes identifiers and rejects unsupported methods", () => {

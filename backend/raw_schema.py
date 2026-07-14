@@ -60,12 +60,19 @@ def _message_schema_statements() -> List[str]:
         """UPDATE source_messages SET conversation_id=COALESCE(conversation_id,channel_id),
             conversation_label=COALESCE(conversation_label,channel),
             container_id=COALESCE(container_id,guild_id)""",
+    ] + _message_index_statements()
+
+
+def _message_index_statements() -> List[str]:
+    return [
         """CREATE INDEX IF NOT EXISTS source_messages_conversation_order
             ON source_messages(source_type,conversation_id,message_order)""",
         """CREATE INDEX IF NOT EXISTS source_messages_content_order
             ON source_messages(content_hash,message_order)""",
         """CREATE INDEX IF NOT EXISTS source_messages_global_order
             ON source_messages(message_order,external_id)""",
+        """CREATE INDEX IF NOT EXISTS source_messages_scope_time
+            ON source_messages(source_type,conversation_id,sent_at,external_id)""",
     ]
 
 
@@ -115,7 +122,10 @@ def _embedding_schema_statements(model: str, dimensions: int) -> List[str]:
             last_error TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW())""",
         """CREATE TABLE IF NOT EXISTS rag_application_settings (
             id INTEGER PRIMARY KEY CHECK(id=1),active_embedding_index_id TEXT
-            REFERENCES embedding_indexes(id) ON DELETE SET NULL)""",
+            REFERENCES embedding_indexes(id) ON DELETE SET NULL,
+            timezone_name TEXT NOT NULL DEFAULT 'UTC')""",
+        """ALTER TABLE rag_application_settings ADD COLUMN IF NOT EXISTS timezone_name TEXT
+            NOT NULL DEFAULT 'UTC'""",
         f"""INSERT INTO embedding_indexes
             (id,name,provider_id,model,dimensions,requested_dimensions,status,auto_sync)
             VALUES ('default-openai','Default OpenAI index','openai',
@@ -191,6 +201,7 @@ def chat_session_schema_statements() -> List[str]:
             session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
             position INTEGER NOT NULL,role TEXT NOT NULL CHECK(role IN ('user','assistant')),
             content TEXT NOT NULL,sources JSONB NOT NULL DEFAULT '[]',
+            tool_activity JSONB NOT NULL DEFAULT '[]',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY(session_id,position))""",
         """ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_effort TEXT""",
@@ -198,6 +209,8 @@ def chat_session_schema_statements() -> List[str]:
             NOT NULL DEFAULT 'deterministic'""",
         """ALTER TABLE chat_sessions
             ADD COLUMN IF NOT EXISTS evidence_character_limit INTEGER""",
+        """ALTER TABLE chat_session_messages ADD COLUMN IF NOT EXISTS tool_activity JSONB
+            NOT NULL DEFAULT '[]'""",
         """CREATE INDEX IF NOT EXISTS chat_sessions_recent
             ON chat_sessions(updated_at DESC,id)""",
     ]

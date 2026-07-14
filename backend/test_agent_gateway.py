@@ -91,6 +91,9 @@ def test_responses_preserves_calls_and_uses_function_call_outputs():
         "type": "function", "name": "search_archive",
     }
     assert client.requests[0]["tools"][0]["strict"] is True
+    search_schema = client.requests[0]["tools"][0]["parameters"]
+    assert search_schema["required"] == ["query", "date_from", "date_to"]
+    assert search_schema["properties"]["date_to"]["type"] == ["string", "null"]
     assert client.requests[0]["reasoning"] == {"effort": "high"}
     tool_output = next(
         item for item in client.requests[1]["input"]
@@ -121,6 +124,9 @@ def test_chat_completions_preserves_tool_role_and_non_strict_schema():
     tool_definition = client.requests[0]["tools"][0]["function"]
     assert tool_definition["strict"] is False
     assert "additionalProperties" not in tool_definition["parameters"]
+    assert tool_definition["parameters"]["required"] == [
+        "query", "date_from", "date_to",
+    ]
     assert client.requests[0]["tool_choice"] == {
         "type": "function", "function": {"name": "search_archive"},
     }

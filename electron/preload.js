@@ -1,4 +1,30 @@
+const { randomUUID } = require("node:crypto");
 const { contextBridge, ipcRenderer } = require("electron");
+
+function createChatRequest(question, history, scope, chatSelection, sessionId) {
+  return {
+    question, history, scope,
+    chat_provider_id: chatSelection.providerId,
+    chat_model: chatSelection.model,
+    ...(chatSelection.reasoningEffort
+      ? { reasoning_effort: chatSelection.reasoningEffort } : {}),
+    retrieval_mode: chatSelection.retrievalMode || "deterministic",
+    ...(chatSelection.retrievalMode === "adaptive"
+      ? { evidence_character_limit: chatSelection.evidenceCharacterLimit } : {}),
+    ...(sessionId ? { session_id: sessionId } : {}),
+  };
+}
+
+function askDatabaseStreaming(question, history, scope, selection, sessionId, onActivity) {
+  const requestId = randomUUID();
+  const listener = (_event, progress) => {
+    if (progress.requestId === requestId) onActivity(progress.record);
+  };
+  ipcRenderer.on("database:chat-progress", listener);
+  const request = createChatRequest(question, history, scope, selection, sessionId);
+  return ipcRenderer.invoke("database:ask-stream", { requestId, request })
+    .finally(() => ipcRenderer.removeListener("database:chat-progress", listener));
+}
 
 contextBridge.exposeInMainWorld("chatContext", {
   getRuntimeCapabilities: () => ipcRenderer.invoke("runtime:capabilities"),
@@ -34,17 +60,10 @@ contextBridge.exposeInMainWorld("chatContext", {
   },
   hideDiscord: () => ipcRenderer.invoke("discord:hide"),
   askDatabase: (question, history, scope, chatSelection = {}, sessionId = null) =>
-    ipcRenderer.invoke("database:ask", {
-      question, history, scope,
-      chat_provider_id: chatSelection.providerId,
-      chat_model: chatSelection.model,
-      ...(chatSelection.reasoningEffort
-        ? { reasoning_effort: chatSelection.reasoningEffort } : {}),
-      retrieval_mode: chatSelection.retrievalMode || "deterministic",
-      ...(chatSelection.retrievalMode === "adaptive"
-        ? { evidence_character_limit: chatSelection.evidenceCharacterLimit } : {}),
-      ...(sessionId ? { session_id: sessionId } : {}),
-    }),
+    ipcRenderer.invoke("database:ask", createChatRequest(
+      question, history, scope, chatSelection, sessionId,
+    )),
+  askDatabaseStreaming: askDatabaseStreaming,
   getChatScopes: () => ipcRenderer.invoke("database:chat-scopes"),
   listChatSessions: (limit = 10) => ipcRenderer.invoke("chat-sessions:list", limit),
   getChatSession: (sessionId) => ipcRenderer.invoke("chat-sessions:get", sessionId),
@@ -85,6 +104,8 @@ contextBridge.exposeInMainWorld("chatContext", {
   saveChatModel: (model) => ipcRenderer.invoke("settings:chat-model:save", model),
   deleteChatModel: (providerId, model) =>
     ipcRenderer.invoke("settings:chat-model:delete", { providerId, model }),
+  updateWorkspaceSettings: (timezoneName) =>
+    ipcRenderer.invoke("settings:workspace:update", timezoneName),
   createEmbeddingIndex: (input) => ipcRenderer.invoke("settings:index:create", input),
   updateEmbeddingIndex: (indexId, update) =>
     ipcRenderer.invoke("settings:index:update", { indexId, update }),

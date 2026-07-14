@@ -10,6 +10,15 @@ class SettingsRouter {
     if (method === "GET" && pathname === "/api/settings") {
       return this.respond(response, this.coordinator.getSettings());
     }
+    if (method === "GET" && pathname === "/api/settings/workspace") {
+      return this.respond(response, this.coordinator.getWorkspaceSettings());
+    }
+    if (method === "PUT" && pathname === "/api/settings/workspace") {
+      const input = await readJson(request);
+      return this.respond(
+        response, this.coordinator.updateWorkspaceSettings(input.timezoneName),
+      );
+    }
     if (method === "POST" && pathname === "/api/settings/providers") {
       return this.respond(response, this.saveProvider(request));
     }

@@ -1,4 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 30_000;
+const { consumeNdjsonResponse } = require("./ndjson-stream");
 
 class BackendClient {
   constructor(baseUrl, defaultHeaders = {}, options = {}) {
@@ -35,6 +36,12 @@ class BackendClient {
     return this.requestRaw(method, path, body, headers, options);
   }
 
+  streamNdjson(path, body, onRecord, options = {}) {
+    const fetchOptions = { method: "POST", headers: { ...this.defaultHeaders } };
+    this.setBody(fetchOptions, body);
+    return this.performStream(path, fetchOptions, onRecord, options);
+  }
+
   async request(method, path, body, extraHeaders = {}, requestOptions = {}) {
     const options = {
       method,
@@ -63,6 +70,25 @@ class BackendClient {
       return responseBody;
     } catch (error) {
       throw requestError(error, cancellation, { endpoint, method, path, timeoutMs });
+    } finally {
+      cancellation.dispose();
+    }
+  }
+
+  async performStream(path, fetchOptions, onRecord, requestOptions) {
+    const timeoutMs = requestOptions.timeoutMs ?? this.timeoutMs;
+    const cancellation = createCancellation(requestOptions.signal, timeoutMs);
+    const endpoint = `${this.baseUrl}${path}`;
+    try {
+      const response = await fetch(endpoint, {
+        ...fetchOptions, signal: cancellation.signal,
+      });
+      if (!response.ok) throw responseError(response, await parseResponse(response));
+      await consumeNdjsonResponse(response, onRecord);
+    } catch (error) {
+      throw requestError(error, cancellation, {
+        endpoint, method: "POST", path, timeoutMs,
+      });
     } finally {
       cancellation.dispose();
     }

@@ -79,9 +79,14 @@ The context modal has `aria-modal`, an explicit label, a focus trap, and focus
 return. It closes from its close button, Escape, or the backdrop. Opening a new
 answer automatically opens the context drawer when the fixed panel is not
 available. Submitting a question immediately inserts an accessible assistant
-thinking card with three pulsing dots; success replaces it and failure removes
-it while marking the user message as unsaved. Reduced-motion mode keeps the
-indicator static. Restoring an older answer opens the drawer first, updates its
+thinking card with three pulsing dots. Adaptive requests add live, ordered Czech
+status rows for archive search and context reads. All tool arguments are written
+through `textContent`. Success replaces the live list with a collapsed
+**Archivní kroky (N)** disclosure stored with that assistant turn; restored
+sessions reconstruct it. Deterministic requests show no tool timeline. Failure
+removes the thinking card while marking the user message as unsaved.
+Reduced-motion mode keeps the indicator static. Restoring an older answer opens
+the drawer first, updates its
 sources, briefly highlights the context header, and announces the update to
 assistive technology.
 
@@ -94,7 +99,9 @@ and loads breakdowns and the first chunk page in parallel. Loading failures keep
 the previous snapshot visible. Manual refresh bypasses freshness windows.
 Settings opens over the current screen as an accessible modal and keeps its
 provider, model, embedding-index, indexing-history, workspace-target, and
-web-session behavior.
+web-session behavior. The workspace section also provides a searchable IANA
+timezone field shared by web, Electron Local, and Electron Remote. It controls
+calendar boundaries for future adaptive searches and defaults to `UTC`.
 
 Workspace reads use an in-memory stale-while-revalidate cache. Database status
 is fresh for five seconds, breakdowns and the first chunk page for 30 seconds,

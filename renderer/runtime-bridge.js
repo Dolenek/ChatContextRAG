@@ -51,6 +51,89 @@
     return payload;
   }
 
+  function chatRequest(question, history, scope, selection, sessionId) {
+    return {
+      question, history, scope,
+      chat_provider_id: selection.providerId,
+      chat_model: selection.model,
+      ...(selection.reasoningEffort
+        ? { reasoning_effort: selection.reasoningEffort } : {}),
+      retrieval_mode: selection.retrievalMode || "deterministic",
+      ...(selection.retrievalMode === "adaptive"
+        ? { evidence_character_limit: selection.evidenceCharacterLimit } : {}),
+      ...(sessionId ? { session_id: sessionId } : {}),
+    };
+  }
+
+  async function askDatabaseStreaming(
+    question, history, scope, selection, sessionId, onActivity,
+  ) {
+    const session = await ensureSession();
+    const cancellation = new AbortController();
+    const timer = window.setTimeout(() => cancellation.abort(), 130_000);
+    try {
+      const response = await fetch("/api/chat/stream", {
+        method: "POST", signal: cancellation.signal,
+        headers: {
+          "Content-Type": "application/json", "X-CSRF-Token": session.csrf_token,
+        },
+        body: JSON.stringify(chatRequest(question, history, scope, selection, sessionId)),
+      });
+      if (!response.ok) return readResponse(response);
+      return await consumeChatStream(response, onActivity);
+    } catch (error) {
+      if (cancellation.signal.aborted) {
+        throw new Error("Adaptivní odpověď překročila časový limit 130 sekund.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async function consumeChatStream(response, onActivity) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+    let finalResponse = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (line.trim()) finalResponse = consumeChatRecord(parseChatRecord(line), onActivity)
+          || finalResponse;
+      }
+      if (done) break;
+    }
+    if (pending.trim()) finalResponse = consumeChatRecord(parseChatRecord(pending), onActivity)
+      || finalResponse;
+    if (!finalResponse) throw new Error("Chat stream skončil bez finální odpovědi.");
+    return finalResponse;
+  }
+
+  function parseChatRecord(line) {
+    try {
+      return JSON.parse(line);
+    } catch {
+      throw Object.assign(new Error("Server vrátil neplatný chat stream."), {
+        code: "MALFORMED_NDJSON",
+      });
+    }
+  }
+
+  function consumeChatRecord(record, onActivity) {
+    if (record.type === "error") {
+      throw Object.assign(new Error(record.detail || "Adaptivní chat selhal."), {
+        code: record.code,
+      });
+    }
+    if (record.type === "final") return record.response;
+    onActivity(record);
+    return null;
+  }
+
   function subscribe(type, callback) {
     subscribers[type].add(callback);
     startEvents();
@@ -128,18 +211,9 @@
     hideDiscord: () => Promise.resolve(),
     askDatabase: (question, history, scope, selection = {}, sessionId = null) => api("/chat", {
       method: "POST",
-      body: {
-        question, history, scope,
-        chat_provider_id: selection.providerId,
-        chat_model: selection.model,
-        ...(selection.reasoningEffort
-          ? { reasoning_effort: selection.reasoningEffort } : {}),
-        retrieval_mode: selection.retrievalMode || "deterministic",
-        ...(selection.retrievalMode === "adaptive"
-          ? { evidence_character_limit: selection.evidenceCharacterLimit } : {}),
-        ...(sessionId ? { session_id: sessionId } : {}),
-      },
+      body: chatRequest(question, history, scope, selection, sessionId),
     }),
+    askDatabaseStreaming,
     getChatScopes: () => api("/chat/scopes"),
     listChatSessions: (limit = 10) => api(`/chat/sessions?limit=${limit}`),
     getChatSession: (id) => api(`/chat/sessions/${encodeURIComponent(id)}`),
@@ -176,6 +250,9 @@
     saveChatDefault: (providerId, model) => api("/settings/chat-default", { method: "PUT", body: { providerId, model } }),
     saveChatModel: (model) => api("/settings/chat-models", { method: "POST", body: model }),
     deleteChatModel: (providerId, model) => api("/settings/chat-models", { method: "DELETE", body: { providerId, model } }),
+    updateWorkspaceSettings: (timezoneName) => api("/settings/workspace", {
+      method: "PUT", body: { timezoneName },
+    }),
     createEmbeddingIndex: (input) => api("/settings/embedding-indexes", { method: "POST", body: input }),
     updateEmbeddingIndex: (id, update) => api(`/settings/embedding-indexes/${encodeURIComponent(id)}`, { method: "PATCH", body: update }),
     activateEmbeddingIndex: (id) => api("/settings/active-embedding-index", { method: "PUT", body: { indexId: id } }),

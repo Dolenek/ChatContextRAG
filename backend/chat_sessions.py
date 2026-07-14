@@ -6,9 +6,10 @@ from psycopg.types.json import Jsonb
 
 from backend.models import (
     ChatRequest, ChatResponse, ChatScope, ChatSessionDetail, ChatSessionMessage,
-    ChatSessionSummary, ChatSource,
+    ChatSessionSummary, ChatSource, ChatToolActivity,
 )
 from backend.openai_gateway import ExternalIntegrationError
+from backend.chat_session_hydration import build_session_detail
 
 
 class ChatSessionNotFoundError(LookupError):
@@ -28,6 +29,7 @@ class ChatSessionRepository(Protocol):
 
 
 class PostgresChatSessionRepository:
+    _detail = staticmethod(build_session_detail)
     def __init__(
         self, schema_initializer: Callable[[], None],
         connection_factory: Callable[[], object],
@@ -61,7 +63,8 @@ class PostgresChatSessionRepository:
                 if not session:
                     raise ChatSessionNotFoundError("Chat session was not found.")
                 messages = connection.execute(
-                    """SELECT role,content,sources,created_at FROM chat_session_messages
+                    """SELECT role,content,sources,created_at,tool_activity
+                       FROM chat_session_messages
                        WHERE session_id=%s ORDER BY position""", (session_id,),
                 ).fetchall()
         except psycopg.Error as error:
@@ -170,14 +173,19 @@ class PostgresChatSessionRepository:
     @staticmethod
     def _insert_messages(connection, session_id, position, request, response) -> None:
         serialized_sources = [source.model_dump(mode="json") for source in response.sources]
+        serialized_activity = [
+            activity.model_dump(mode="json") for activity in response.tool_activity
+        ]
         message_rows = [
-            (session_id, position, "user", request.question, Jsonb([])),
-            (session_id, position + 1, "assistant", response.answer, Jsonb(serialized_sources)),
+            (session_id, position, "user", request.question, Jsonb([]), Jsonb([])),
+            (session_id, position + 1, "assistant", response.answer,
+             Jsonb(serialized_sources), Jsonb(serialized_activity)),
         ]
         with connection.cursor() as cursor:
             cursor.executemany(
                 """INSERT INTO chat_session_messages
-                   (session_id,position,role,content,sources) VALUES (%s,%s,%s,%s,%s)""",
+                   (session_id,position,role,content,sources,tool_activity)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
                 message_rows,
             )
 
@@ -190,32 +198,6 @@ class PostgresChatSessionRepository:
     def _summary(row) -> ChatSessionSummary:
         return ChatSessionSummary(
             session_id=row[0], title=row[1], created_at=row[-2], updated_at=row[-1],
-        )
-
-    @classmethod
-    def _detail(cls, row, message_rows) -> ChatSessionDetail:
-        scope = ChatScope(source_type=row[2], conversation_id=row[3]) if row[2] else None
-        if len(row) == 9:
-            retrieval_mode, evidence_limit, created_at, updated_at = (
-                "deterministic", None, row[7], row[8],
-            )
-        else:
-            retrieval_mode, evidence_limit, created_at, updated_at = row[7:11]
-        messages = [
-            ChatSessionMessage(
-                role=message[0], content=message[1],
-                sources=[ChatSource.model_validate(source) for source in message[2]],
-                created_at=message[3],
-            )
-            for message in message_rows
-        ]
-        return ChatSessionDetail(
-            session_id=row[0], title=row[1], scope=scope,
-            chat_provider_id=row[4], chat_model=row[5],
-            reasoning_effort=row[6], retrieval_mode=retrieval_mode,
-            evidence_character_limit=evidence_limit,
-            created_at=created_at, updated_at=updated_at,
-            messages=messages,
         )
 
     @staticmethod

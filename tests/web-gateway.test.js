@@ -201,7 +201,7 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     "indexArchiveMigration", "forgetArchiveMigration", "onArchiveMigrationProgress",
     "openDiscord", "captureDiscord",
     "startDiscordScan", "resumeDiscordScan", "stopDiscordScan", "onDiscordScanProgress",
-    "onIndexingProgress", "hideDiscord", "askDatabase", "getChatScopes",
+    "onIndexingProgress", "hideDiscord", "askDatabase", "askDatabaseStreaming", "getChatScopes",
     "listChatSessions", "getChatSession", "renameChatSession", "deleteChatSession",
     "getDatabaseOverview", "getDatabaseStatus", "getDatabaseBreakdowns",
     "getDatabaseChunkPage", "clearDatabase", "retryIndexingJob", "cancelIndexingJob",
@@ -210,6 +210,7 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     "selectWhatsAppExport", "previewWhatsAppExport", "importWhatsAppExport",
     "getWhatsAppConversations", "getSettings", "saveProvider", "deleteProvider",
     "listProviderModels", "saveChatDefault", "saveChatModel", "deleteChatModel",
+    "updateWorkspaceSettings",
     "createEmbeddingIndex", "updateEmbeddingIndex", "activateEmbeddingIndex",
     "syncEmbeddingIndex", "rebuildEmbeddingIndex", "deleteEmbeddingIndex",
   ];

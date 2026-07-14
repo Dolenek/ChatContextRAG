@@ -19,20 +19,21 @@ window.conversationView = (() => {
     return entry;
   }
 
-  function appendAssistant(text, sources = []) {
+  function appendAssistant(text, sources = [], toolActivity = []) {
     removeEmptyState();
-    const entry = createAssistantEntry(text, sources);
+    const entry = createAssistantEntry(text, sources, toolActivity);
     conversation.append(entry);
     scrollToLatest();
     return entry;
   }
 
-  function createAssistantEntry(text, sources = []) {
+  function createAssistantEntry(text, sources = [], toolActivity = []) {
     const entry = document.createElement("article");
     const card = document.createElement("div");
     entry.className = "conversation-entry assistant";
     card.className = "assistant-card";
     card.append(createBubble(text));
+    if (toolActivity.length) card.append(window.toolActivityView.createSummary(toolActivity));
     if (sources.length) card.append(createSourceFooter(sources));
     entry.append(createAssistantAvatar(), card);
     return entry;
@@ -49,7 +50,7 @@ window.conversationView = (() => {
     card.setAttribute("aria-live", "polite");
     status.className = "sr-only";
     status.textContent = "Přemýšlím…";
-    card.append(status, createThinkingDots());
+    card.append(status, createThinkingDots(), window.toolActivityView.createLiveRegion());
     entry.append(createAssistantAvatar(), card);
     conversation.append(entry);
     scrollToLatest();
@@ -64,8 +65,8 @@ window.conversationView = (() => {
     return dots;
   }
 
-  function replaceThinking(entry, text, sources = []) {
-    const answerEntry = createAssistantEntry(text, sources);
+  function replaceThinking(entry, text, sources = [], toolActivity = []) {
+    const answerEntry = createAssistantEntry(text, sources, toolActivity);
     entry?.replaceWith(answerEntry);
     scrollToLatest();
     return answerEntry;
@@ -73,6 +74,11 @@ window.conversationView = (() => {
 
   function removeThinking(entry) {
     entry?.remove?.();
+  }
+
+  function updateThinking(entry, record) {
+    window.toolActivityView.updateLive(entry, record);
+    scrollToLatest();
   }
 
   function createBubble(text) {
@@ -164,7 +170,9 @@ window.conversationView = (() => {
     conversation.replaceChildren();
     messages.forEach((message) => {
       if (message.role === "user") appendUser(message.content, message.created_at, true);
-      else appendAssistant(message.content, message.sources || []);
+      else appendAssistant(
+        message.content, message.sources || [], message.tool_activity || [],
+      );
     });
   }
 
@@ -206,5 +214,6 @@ window.conversationView = (() => {
   return {
     appendAssistant, appendThinking, appendUser, bindComposer, markFailed,
     markPersisted, removeThinking, renderMessages, replaceThinking, reset, resetComposer,
+    updateThinking,
   };
 })();

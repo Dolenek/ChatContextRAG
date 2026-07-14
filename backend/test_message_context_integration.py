@@ -6,6 +6,7 @@ import psycopg
 import pytest
 
 from backend.models import ChatScope, IngestionSessionRequest
+from backend.archive_time import resolve_archive_time_range
 from backend.raw_message_writer import RawMessageWriter
 from backend.raw_repository import PostgresRawMessageRepository
 from backend.vector_models import NormalizedMessage
@@ -50,6 +51,48 @@ def test_message_context_reads_ten_neighbors_without_a_time_boundary() -> None:
         repository.delete_session(session.session_id)
         repository.delete_session(other_session.session_id)
         delete_context_messages(TEST_DSN, [*message_ids, other_id])
+
+
+@pytest.mark.skipif(not TEST_DSN, reason="POSTGRES_TEST_DSN is not configured")
+def test_message_context_inherits_search_date_range() -> None:
+    identity = uuid.uuid4().hex
+    conversation_id = f"bounded-{identity}"
+    repository = PostgresRawMessageRepository(TEST_DSN)
+    repository.ensure_schema()
+    session = repository.create_session(IngestionSessionRequest(
+        source_type="test", conversation_id=conversation_id,
+    ))
+    timestamps = [
+        datetime(2025, 6, 12, 10, tzinfo=timezone.utc),
+        datetime(2026, 6, 9, 21, 59, tzinfo=timezone.utc),
+        datetime(2026, 6, 10, 10, tzinfo=timezone.utc),
+        datetime(2026, 6, 13, 10, tzinfo=timezone.utc),
+        datetime(2026, 6, 17, 21, 59, tzinfo=timezone.utc),
+        datetime(2026, 6, 17, 22, tzinfo=timezone.utc),
+    ]
+    message_ids = [f"{identity}-{index}" for index in range(len(timestamps))]
+    messages = [
+        NormalizedMessage(
+            external_id=message_id, author="Ada", content=f"content {message_id}",
+            timestamp=timestamp, channel=conversation_id, channel_id=None,
+            guild_id=None, source_type="test", conversation_id=conversation_id,
+            message_order=index,
+        )
+        for index, (message_id, timestamp) in enumerate(zip(message_ids, timestamps))
+    ]
+    time_range = resolve_archive_time_range(
+        datetime(2026, 6, 10).date(), datetime(2026, 6, 17).date(),
+        "Europe/Prague",
+    )
+    try:
+        repository.store_messages(session.session_id, messages)
+        context = repository.load_message_context(
+            message_ids[3], 10, 10, time_range=time_range,
+        )
+        assert [message.external_id for message in context] == message_ids[2:5]
+    finally:
+        repository.delete_session(session.session_id)
+        delete_context_messages(TEST_DSN, message_ids)
 
 
 def context_message(message_id: str, conversation_id: str, order: int):

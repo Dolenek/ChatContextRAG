@@ -13,16 +13,17 @@ class SettingsCoordinator {
   }
 
   async getSettings() {
-    const [providers, embeddings] = await Promise.all([
+    const [providers, embeddings, workspace] = await Promise.all([
       this.backend.get("/settings/providers"),
       this.backend.get("/settings/embedding-indexes"),
+      this.backend.get("/settings/workspace"),
     ]);
     const environmentDefaults = defaultSelection(embeddings);
     const chatDefaults = this.providerStore.getDefaults(environmentDefaults);
     const chatModels = this.providerStore.listChatModels([
       selectionModel(environmentDefaults), selectionModel(chatDefaults),
     ]);
-    return { providers, embeddings, chatDefaults, chatModels };
+    return { providers, embeddings, workspace, chatDefaults, chatModels };
   }
 
   async saveProvider(profile) {
@@ -53,6 +54,14 @@ class SettingsCoordinator {
 
   saveChatDefault(providerId, model) {
     return this.providerStore.setDefaults(providerId, model);
+  }
+
+  updateWorkspaceSettings(timezoneName) {
+    return this.backend.put("/settings/workspace", { timezone_name: timezoneName });
+  }
+
+  getWorkspaceSettings() {
+    return this.backend.get("/settings/workspace");
   }
 
   async saveChatModel(model) {

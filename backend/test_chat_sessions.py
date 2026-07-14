@@ -7,6 +7,7 @@ from backend.chat_sessions import (
 )
 from backend.models import (
     ChatRequest, ChatResponse, ChatScope, ChatSource, ChatSourceChunk,
+    ChatToolActivity,
 )
 
 
@@ -32,6 +33,30 @@ def test_new_turn_is_created_with_two_ordered_messages_in_one_connection() -> No
     stored_source = connection.message_rows[1][4].obj[0]
     assert stored_source["chunk"]["chunk_id"] == "chunk-1"
     assert stored_source["match_score"] == 1.0
+
+
+def test_tool_activity_is_stored_only_with_assistant_and_restored() -> None:
+    connection = ScriptedConnection()
+    repository = PostgresChatSessionRepository(lambda: None, lambda: connection)
+    request = ChatRequest(question="Search", retrieval_mode="adaptive")
+    activity = ChatToolActivity(
+        sequence=1, tool_name="search_archive", status="completed",
+        query="release", timezone_name="Europe/Prague", result_message_count=3,
+    )
+    response = _response().model_copy(update={
+        "retrieval_mode": "adaptive", "evidence_character_limit": 24000,
+        "tool_activity": [activity],
+    })
+
+    repository.save_turn(request, response)
+
+    assert connection.message_rows[0][5].obj == []
+    assert connection.message_rows[1][5].obj[0]["query"] == "release"
+    detail = repository._detail(connection.session_row, [
+        ("assistant", "Done", [], connection.timestamp,
+         connection.message_rows[1][5].obj),
+    ])
+    assert detail.messages[0].tool_activity[0].timezone_name == "Europe/Prague"
 
 
 def test_continuation_rejects_a_different_scope_or_model() -> None:

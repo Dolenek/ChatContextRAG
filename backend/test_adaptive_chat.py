@@ -38,13 +38,16 @@ class FakeArchiveTools:
         self.search_results = search_results
         self.context_results = context_results or []
         self.actions = []
+        self.time_ranges = []
 
-    def search(self, query, _deadline):
+    def search(self, query, _deadline, time_range=None):
         self.actions.append(("search", query))
+        self.time_ranges.append(("search", time_range))
         return self.search_results.get(query, [])
 
-    def read_context(self, anchor, before_count, after_count):
+    def read_context(self, anchor, before_count, after_count, time_range=None):
         self.actions.append(("context", anchor.source_message_ids[0], before_count, after_count))
+        self.time_ranges.append(("context", time_range))
         return self.context_results
 
 
@@ -90,6 +93,8 @@ def test_first_search_is_forced_and_uses_bounded_history():
     assert len(provider.creation[1]) == 8
     assert provider.creation[1][0].content == "history 2"
     assert injection not in provider.creation[2]
+    assert "workspace timezone is UTC" in provider.creation[2]
+    assert "date_from/date_to" in provider.creation[2]
     first_tools, first_choice, _ = provider.session.requests[0]
     assert [tool.name for tool in first_tools] == ["search_archive"]
     assert first_choice == "search_archive"
@@ -126,6 +131,48 @@ def test_context_and_refined_search_run_in_received_order_then_tools_stop():
     third_tools, third_choice, outputs = provider.session.requests[2]
     assert third_tools == [] and third_choice is None and len(outputs) == 2
     assert [item.evidence_origin for item in sources] == ["search", "context", "search"]
+
+
+def test_context_inherits_search_dates_and_audit_records_normalized_range():
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_archive", {
+            "query": "release discussion",
+            "date_from": "2026-06-10", "date_to": "2026-06-17",
+        })]),
+        AgentTurn("", [
+            call("context", "read_message_context", {
+                "evidence_id": "E1", "before_count": 2, "after_count": 3,
+            }),
+            call("refined", "search_archive", {
+                "query": "release date discussion",
+                "date_from": "2026-06-10", "date_to": "2026-06-17",
+            }),
+        ]),
+        AgentTurn("Final [E1]", []),
+    ])
+    tools = FakeArchiveTools(
+        {
+            "release discussion": [source("m1", "Initial")],
+            "release date discussion": [],
+        },
+        [source("m2", "Neighbor", origin="context")],
+    )
+
+    _answer, _sources, activity = AdaptiveChatOrchestrator(
+        provider, tools, timezone_name="Europe/Prague",
+    ).answer_with_activity(adaptive_request())
+
+    search_range = tools.time_ranges[0][1]
+    context_range = tools.time_ranges[1][1]
+    assert context_range == search_range
+    assert tools.time_ranges[2][1] == search_range
+    assert search_range.start_at.isoformat() == "2026-06-09T22:00:00+00:00"
+    assert search_range.end_at.isoformat() == "2026-06-17T22:00:00+00:00"
+    assert [item.status for item in activity] == [
+        "completed", "completed", "completed",
+    ]
+    assert activity[1].date_from.isoformat() == "2026-06-10"
+    assert activity[1].timezone_name == "Europe/Prague"
 
 
 def test_only_two_additional_archive_actions_are_executed():

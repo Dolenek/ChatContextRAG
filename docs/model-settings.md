@@ -52,6 +52,11 @@ marked as supported that returns an invalid tool protocol fails explicitly; the
 backend never falls back to deterministic retrieval. The full behavior is in
 [Chat retrieval and archive tools](chat-retrieval.md).
 
+The model does not receive source scope or timezone as writable tool arguments.
+Scope always comes from the chat request. The workspace's validated IANA
+timezone is managed separately in **Settings > Workspace** and is supplied to
+the agent prompt and audit for each adaptive request.
+
 **Settings > Embedding indexes** can keep multiple indexes over the same canonical raw
 messages. Creating an index makes one small embedding request to validate its
 dimension, then queues all raw messages. Exactly one ready index is active for

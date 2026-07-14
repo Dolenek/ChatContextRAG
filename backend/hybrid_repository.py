@@ -11,9 +11,27 @@ from backend.openai_gateway import ExternalIntegrationError
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 from backend.models import ChatScope
 from backend.embedding_indexes import DEFAULT_INDEX_ID
+from backend.archive_time import ArchiveTimeRange
+
+
+def _metadata_indexes_sql() -> str:
+    return """CREATE INDEX IF NOT EXISTS rag_chunk_messages_message
+        ON rag_chunk_messages(message_id);
+        CREATE INDEX IF NOT EXISTS rag_chunk_messages_index_message
+        ON rag_chunk_messages(embedding_index_id,message_id);
+        CREATE INDEX IF NOT EXISTS rag_chunks_overview_recent
+        ON rag_chunks(embedding_index_id,updated_at DESC,id DESC);
+        CREATE INDEX IF NOT EXISTS rag_chunks_chat_scope
+        ON rag_chunks (
+          (COALESCE(metadata->>'source_type','discord')),
+          (COALESCE(metadata->>'conversation_id',metadata->>'channel_id'))
+        );
+        CREATE INDEX IF NOT EXISTS rag_chunks_time_range
+        ON rag_chunks(embedding_index_id,started_at,ended_at)"""
 
 
 class PostgresHybridRepository:
+    _create_metadata_indexes_sql = staticmethod(_metadata_indexes_sql)
     def __init__(self, database_dsn: str, dimensions: int) -> None:
         self.database_dsn = database_dsn
         self.dimensions = dimensions
@@ -45,10 +63,11 @@ class PostgresHybridRepository:
         self, query: str, query_embedding: Sequence[float], limit: int = 8,
         scope: Optional[ChatScope] = None, embedding_index_id: str = DEFAULT_INDEX_ID,
         dimensions: Optional[int] = None,
+        time_range: Optional[ArchiveTimeRange] = None,
     ) -> List[RetrievedChunk]:
         return self.retrieval.search(
             query, query_embedding, limit, scope, embedding_index_id,
-            dimensions or self.dimensions,
+            dimensions or self.dimensions, time_range,
         )
 
     def has_indexed_chunks(self) -> bool:
@@ -100,20 +119,6 @@ class PostgresHybridRepository:
             PRIMARY KEY(embedding_index_id,chunk_id,message_id),
             FOREIGN KEY(embedding_index_id,chunk_id)
               REFERENCES rag_chunks(embedding_index_id,id) ON DELETE CASCADE)"""
-
-    @staticmethod
-    def _create_metadata_indexes_sql() -> str:
-        return """CREATE INDEX IF NOT EXISTS rag_chunk_messages_message
-            ON rag_chunk_messages(message_id);
-            CREATE INDEX IF NOT EXISTS rag_chunk_messages_index_message
-            ON rag_chunk_messages(embedding_index_id,message_id);
-            CREATE INDEX IF NOT EXISTS rag_chunks_overview_recent
-            ON rag_chunks(embedding_index_id,updated_at DESC,id DESC);
-            CREATE INDEX IF NOT EXISTS rag_chunks_chat_scope
-            ON rag_chunks (
-              (COALESCE(metadata->>'source_type','discord')),
-              (COALESCE(metadata->>'conversation_id',metadata->>'channel_id'))
-            )"""
 
     @staticmethod
     def _migrate_legacy_schema(connection) -> None:

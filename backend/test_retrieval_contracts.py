@@ -5,6 +5,7 @@ import pytest
 from openai import OpenAIError
 
 from backend.hybrid_retrieval import PostgresHybridRetrieval
+from backend.archive_time import resolve_archive_time_range
 from backend.models import ChatHistoryTurn, ChatScope
 from backend.openai_gateway import (
     ExternalIntegrationError, OpenAIChatCompletionProvider, OpenAIEmbeddingProvider,
@@ -21,7 +22,48 @@ def test_hybrid_parameter_builders_apply_the_same_scope_to_both_searches() -> No
     assert text_parameters.count("whatsapp") == 6
     assert text_parameters.count("family") == 6
     assert text_parameters[0] == "release plan"
-    assert text_parameters[-1] == 30
+    assert text_parameters[-1] == 32
+
+
+def test_hybrid_parameter_builders_apply_prague_utc_interval() -> None:
+    scope = ChatScope(source_type="discord", conversation_id="cirkus")
+    time_range = resolve_archive_time_range(
+        datetime(2026, 6, 10).date(), datetime(2026, 6, 17).date(),
+        "Europe/Prague",
+    )
+
+    vector = PostgresHybridRetrieval._vector_parameters([0.1, 0.2], scope, time_range)
+    fulltext = PostgresHybridRetrieval._fulltext_parameters(
+        "release discussion", scope, time_range,
+    )
+
+    assert vector[5:9] == (
+        time_range.start_at, time_range.start_at, time_range.end_at, time_range.end_at,
+    )
+    assert fulltext.count(time_range.start_at) == 6
+    assert fulltext.count(time_range.end_at) == 6
+    assert "COALESCE(ended_at,started_at)>=" in PostgresHybridRetrieval._vector_search_sql()
+    assert "m.sent_at>=" in PostgresHybridRetrieval._fulltext_sql()
+
+
+def test_temporal_selection_covers_nonempty_buckets_before_global_fill() -> None:
+    time_range = resolve_archive_time_range(
+        datetime(2026, 6, 10).date(), datetime(2026, 6, 17).date(), "UTC",
+    )
+    candidates = [
+        (1.0 - index / 100, SimpleNamespace(
+            started_at=time_range.start_at + timedelta(days=day), label=label,
+        ))
+        for index, (day, label) in enumerate([
+            (0, "best-early"), (0, "second-early"), (3, "middle"), (6, "late"),
+        ])
+    ]
+
+    selected = PostgresHybridRetrieval._temporal_selection(candidates, 3, time_range)
+
+    assert {candidate[1].label for candidate in selected} == {
+        "best-early", "middle", "late",
+    }
 
 
 def test_hybrid_search_rejects_dimensions_outside_pgvector_limit() -> None:
