@@ -75,12 +75,22 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
 
 
+class ChatSourceChunk(BaseModel):
+    chunk_id: Optional[str] = None
+    content: str
+    source_message_ids: List[str] = Field(default_factory=list)
+    origin: Literal["retrieved", "reconstructed"] = "retrieved"
+
+
 class ChatSource(BaseModel):
     author: str
     content: str
     timestamp: Optional[datetime]
     channel: Optional[str]
     similarity_score: float
+    match_score: Optional[float] = Field(default=None, ge=0, le=1)
+    score_kind: Literal["rrf", "cosine", "unknown"] = "unknown"
+    chunk: Optional[ChatSourceChunk] = None
     source_message_ids: List[str] = Field(default_factory=list)
     channel_id: Optional[str] = None
     guild_id: Optional[str] = None

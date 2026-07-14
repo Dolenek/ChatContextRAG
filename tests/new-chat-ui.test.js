@@ -55,6 +55,24 @@ test("complete context is an accessible modal with full source rendering", () =>
   assert.match(modal, /focusReturnTarget\?\.focus\?\.\(\)/);
 });
 
+test("thinking and restored-context feedback have accessible lifecycles", () => {
+  const controller = read("renderer/chat-controller.js");
+  const view = read("renderer/conversation-view.js");
+  const panel = read("renderer/context-panel.js");
+  const chatStyles = read("renderer/chat.css");
+
+  assert.match(controller, /appendThinking\(\)/);
+  assert.match(controller, /replaceThinking/);
+  assert.match(controller, /removeThinking/);
+  assert.match(controller, /markFailed/);
+  assert.match(view, /Přemýšlím…/);
+  assert.match(view, /role", "status"/);
+  assert.match(chatStyles, /thinking-pulse/);
+  assert.match(chatStyles, /prefers-reduced-motion: reduce/);
+  assert.match(panel, /Použitý kontext aktualizován/);
+  assert.match(panel, /context-refreshed/);
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
 }

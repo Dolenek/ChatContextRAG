@@ -1,12 +1,13 @@
 import threading
 import uuid
-from typing import Iterator, List, Optional, Sequence
+from typing import Dict, Iterator, List, Optional, Sequence
 
 import psycopg
 
 from backend.indexing_job_repository import PostgresIndexingJobRepository
+from backend.chunk_context_repository import PostgresActiveChunkContextReader
 from backend.models import (
-    IndexingJobView, IngestionSessionRequest, IngestionSessionView,
+    ChatSourceChunk, IndexingJobView, IngestionSessionRequest, IngestionSessionView,
     IntegrationSyncState, SourceConversationView,
 )
 from backend.openai_gateway import ExternalIntegrationError
@@ -30,6 +31,9 @@ class PostgresRawMessageRepository:
         self.message_writer = RawMessageWriter()
         self.job_repository = PostgresIndexingJobRepository(self.ensure_schema, self._connect)
         self.pending_job_creator = PostgresPendingIndexingJobCreator(
+            self.ensure_schema, self._connect,
+        )
+        self.chunk_context_reader = PostgresActiveChunkContextReader(
             self.ensure_schema, self._connect,
         )
 
@@ -120,6 +124,11 @@ class PostgresRawMessageRepository:
             raise ExternalIntegrationError("PostgreSQL source message read failed.") from error
         messages = {row[0]: NormalizedMessage(*row) for row in rows}
         return [messages[message_id] for message_id in ordered_ids if message_id in messages]
+
+    def load_chunk_contexts_by_ids(
+        self, message_ids: Sequence[str],
+    ) -> Dict[str, ChatSourceChunk]:
+        return self.chunk_context_reader.load(message_ids)
 
     def iter_session_messages(
         self, session_id: str, page_size: int = 5000,

@@ -75,8 +75,6 @@ function postMultipart(endpoint, form) {
 function registerIpcHandlers() {
   ipcMain.handle("runtime:capabilities", () => runtimeCapabilities());
   ipcMain.handle("discord:open", async () => discordController.open());
-  ipcMain.handle("discord:source:open", (_event, source) =>
-    discordController.openMessage(source.guild_id, source.channel_id, source.message_id));
   ipcMain.handle("discord:hide", () => discordController.hide());
   ipcMain.handle("discord:capture", captureDiscordMessages);
   ipcMain.handle("discord:scan:start", () => runTrackedDiscordScan(false));

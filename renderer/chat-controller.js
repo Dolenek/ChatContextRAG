@@ -30,12 +30,15 @@ async function submitChatQuestion(event) {
   if (!question) return;
   const requestHistory = conversationHistory.slice(-8);
   const userEntry = window.conversationView.appendUser(question);
+  const thinkingEntry = window.conversationView.appendThinking();
   conversationHistory.push({ role: "user", content: question });
   window.conversationView.resetComposer();
   setSubmitting(true);
   try {
-    await requestAnswer(question, requestHistory, userEntry);
+    await requestAnswer(question, requestHistory, userEntry, thinkingEntry);
   } catch (error) {
+    window.conversationView.removeThinking(thinkingEntry);
+    window.conversationView.markFailed(userEntry);
     showChatToast(error.message, true);
   } finally {
     setSubmitting(false);
@@ -43,14 +46,16 @@ async function submitChatQuestion(event) {
   }
 }
 
-async function requestAnswer(question, requestHistory, userEntry) {
+async function requestAnswer(question, requestHistory, userEntry, thinkingEntry) {
   const scope = window.chatScopeSelector.getSelectedScope();
   const chatSelection = window.modelSelector.getChatSelection();
   const response = await window.chatContext.askDatabase(
     question, requestHistory, scope, chatSelection, activeSessionId,
   );
   window.conversationView.markPersisted(userEntry);
-  window.conversationView.appendAssistant(response.answer, response.sources);
+  window.conversationView.replaceThinking(
+    thinkingEntry, response.answer, response.sources || [],
+  );
   conversationHistory.push({ role: "assistant", content: response.answer });
   activeSessionId = response.chat_session_id || null;
   window.contextPanel.showSources(response.sources || []);

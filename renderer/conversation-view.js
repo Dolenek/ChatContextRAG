@@ -21,6 +21,13 @@ window.conversationView = (() => {
 
   function appendAssistant(text, sources = []) {
     removeEmptyState();
+    const entry = createAssistantEntry(text, sources);
+    conversation.append(entry);
+    scrollToLatest();
+    return entry;
+  }
+
+  function createAssistantEntry(text, sources = []) {
     const entry = document.createElement("article");
     const card = document.createElement("div");
     entry.className = "conversation-entry assistant";
@@ -28,9 +35,44 @@ window.conversationView = (() => {
     card.append(createBubble(text));
     if (sources.length) card.append(createSourceFooter(sources));
     entry.append(createAssistantAvatar(), card);
+    return entry;
+  }
+
+  function appendThinking() {
+    removeEmptyState();
+    const entry = document.createElement("article");
+    const card = document.createElement("div");
+    const status = document.createElement("span");
+    entry.className = "conversation-entry assistant thinking-entry";
+    card.className = "assistant-card thinking-card";
+    card.setAttribute("role", "status");
+    card.setAttribute("aria-live", "polite");
+    status.className = "sr-only";
+    status.textContent = "Přemýšlím…";
+    card.append(status, createThinkingDots());
+    entry.append(createAssistantAvatar(), card);
     conversation.append(entry);
     scrollToLatest();
     return entry;
+  }
+
+  function createThinkingDots() {
+    const dots = document.createElement("span");
+    dots.className = "thinking-dots";
+    dots.setAttribute("aria-hidden", "true");
+    dots.append(...[0, 1, 2].map(() => document.createElement("i")));
+    return dots;
+  }
+
+  function replaceThinking(entry, text, sources = []) {
+    const answerEntry = createAssistantEntry(text, sources);
+    entry?.replaceWith(answerEntry);
+    scrollToLatest();
+    return answerEntry;
+  }
+
+  function removeThinking(entry) {
+    entry?.remove?.();
   }
 
   function createBubble(text) {
@@ -61,6 +103,14 @@ window.conversationView = (() => {
     if (!mark) return;
     mark.textContent = "✓✓";
     mark.setAttribute("aria-label", "Uloženo");
+  }
+
+  function markFailed(entry) {
+    const mark = entry?.querySelector?.(".persisted-mark");
+    if (!mark) return;
+    entry.classList.add("message-failed");
+    mark.textContent = "!";
+    mark.setAttribute("aria-label", "Nepodařilo se uložit");
   }
 
   function createAssistantAvatar() {
@@ -105,8 +155,9 @@ window.conversationView = (() => {
   }
 
   function showSources(sources) {
-    window.contextPanel.showSources(sources);
     window.shellController.openContext();
+    window.contextPanel.showSources(sources);
+    window.contextPanel.flash();
   }
 
   function renderMessages(messages) {
@@ -153,7 +204,7 @@ window.conversationView = (() => {
   function scrollToLatest() { conversation.scrollTop = conversation.scrollHeight; }
 
   return {
-    appendAssistant, appendUser, bindComposer, markPersisted,
-    renderMessages, reset, resetComposer,
+    appendAssistant, appendThinking, appendUser, bindComposer, markFailed,
+    markPersisted, removeThinking, renderMessages, replaceThinking, reset, resetComposer,
   };
 })();

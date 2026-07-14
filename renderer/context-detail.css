@@ -4,6 +4,6 @@
 .context-detail-dialog h2 { margin: 0; font-size: 22px; }
 .context-detail-dialog h2 span { min-width: 28px; height: 28px; display: inline-grid; place-items: center; margin-left: 7px; border-radius: 999px; color: #d7d2ff; background: var(--violet-soft); font-size: 12px; vertical-align: middle; }
 .context-detail-list { min-height: 0; display: grid; align-content: start; gap: 12px; overflow-y: auto; padding: 24px; }
-.context-detail-list .chat-source-card { padding: 18px; }
+.context-detail-list .chat-source-card { padding: 15px; }
 .context-detail-list .chat-source-card p { display: block; overflow: visible; -webkit-line-clamp: unset; }
 @media (max-width: 620px) { .context-detail-overlay { padding: 0; } .context-detail-dialog { width: 100vw; height: 100vh; border: 0; border-radius: 0; } .context-detail-list { padding: 14px; } }

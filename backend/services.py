@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from backend.models import (
     ChannelResumePoint, ChatRequest, ChatResponse, ChatScope, ChatScopeList,
-    ChatSource, DatabaseOverview,
+    ChatSource, ChatSourceChunk, DatabaseOverview,
     FinishIngestionRequest, ImportRequest, ImportResponse, IndexingJobView,
     IngestionSessionRequest, IngestionSessionView,
 )
@@ -246,11 +246,17 @@ class DatabaseChatService:
 
     @staticmethod
     def _to_sources(chunks: List[RetrievedChunk]) -> List[ChatSource]:
-        return [
+        sources = [
             ChatSource(
                 author=", ".join(chunk.authors), content=chunk.content,
                 timestamp=chunk.started_at, channel=chunk.channel,
                 similarity_score=chunk.similarity_score,
+                score_kind=(chunk.score_kind if chunk.score_kind in {"rrf", "cosine"}
+                            else "unknown"),
+                chunk=ChatSourceChunk(
+                    chunk_id=chunk.chunk_id, content=chunk.content,
+                    source_message_ids=chunk.source_message_ids, origin="retrieved",
+                ),
                 source_message_ids=chunk.source_message_ids,
                 channel_id=chunk.channel_id, guild_id=chunk.guild_id,
                 source_type=chunk.source_type,
@@ -258,6 +264,7 @@ class DatabaseChatService:
             )
             for chunk in chunks
         ]
+        return SourceContextProjector.normalize_match_scores(sources)
 
 
 class DatabaseOverviewService:

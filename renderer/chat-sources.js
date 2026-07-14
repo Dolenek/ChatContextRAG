@@ -1,3 +1,5 @@
+let sourceChunkSequence = 0;
+
 function createChatSourceCard(source, options = {}) {
   const card = document.createElement("article");
   card.className = `chat-source-card ${options.mode === "detail" ? "source-detail-card" : ""}`;
@@ -11,8 +13,9 @@ function createChatSourceCard(source, options = {}) {
   content.textContent = source.content || "Zdroj neobsahuje textový náhled.";
   card.append(author, content);
 
-  const openButton = options.mode === "detail" ? createSourceOpenButton(source) : null;
-  if (openButton) card.append(createActions(openButton));
+  const chunk = source.chunk ? createChunk(source.chunk) : null;
+  card.append(createSourceFooter(source, chunk, options.onLayoutChange));
+  if (chunk) card.append(chunk.panel);
   return card;
 }
 
@@ -30,10 +33,78 @@ function createSourceHeading(source, index) {
   timestamp.className = "source-timestamp";
   rank.textContent = String(index);
   service.append(createBrandIcon(source.source_type));
-  copy.append(createStrong(presentation.label), createSmall("·"), createStrong(source.channel || "Neznámá konverzace"));
+  copy.append(createStrong(presentation.label), createSmall("·"),
+    createStrong(source.channel || "Neznámá konverzace"));
   timestamp.textContent = formatSourceTimestamp(source.timestamp);
   heading.append(rank, service, copy, timestamp);
   return heading;
+}
+
+function createSourceFooter(source, chunk, onLayoutChange) {
+  const footer = document.createElement("div");
+  footer.className = "source-card-footer";
+  footer.append(createMatchScore(source));
+  if (chunk) footer.append(createChunkToggle(chunk, onLayoutChange));
+  return footer;
+}
+
+function createMatchScore(source) {
+  const match = document.createElement("span");
+  const relative = formatMatchScore(source.match_score);
+  const explanation = `${relative}. ${formatRawScore(source)}`;
+  match.className = "source-match-score";
+  match.textContent = `Shoda ${relative}`;
+  match.tabIndex = 0;
+  match.title = `Relativní shoda ${explanation}`;
+  match.dataset.tooltip = match.title;
+  match.setAttribute("aria-label", match.title);
+  return match;
+}
+
+function createChunk(chunk) {
+  const panel = document.createElement("div");
+  const label = document.createElement("strong");
+  const content = document.createElement("pre");
+  panel.id = `source-chunk-${++sourceChunkSequence}`;
+  panel.className = "source-chunk";
+  panel.hidden = true;
+  label.textContent = chunk.origin === "reconstructed"
+    ? "Aktuální chunk – původní nebyl uložen" : "Použitý chunk";
+  content.textContent = chunk.content || "";
+  panel.append(label, content);
+  return { panel };
+}
+
+function createChunkToggle(chunk, onLayoutChange) {
+  const button = document.createElement("button");
+  button.className = "source-chunk-toggle";
+  button.type = "button";
+  button.textContent = "Zobrazit chunk";
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", chunk.panel.id);
+  button.addEventListener("click", () => {
+    const isOpen = button.getAttribute("aria-expanded") === "true";
+    button.setAttribute("aria-expanded", String(!isOpen));
+    button.textContent = isOpen ? "Zobrazit chunk" : "Skrýt chunk";
+    chunk.panel.hidden = isOpen;
+    onLayoutChange?.();
+  });
+  return button;
+}
+
+function formatMatchScore(value) {
+  const normalized = Math.min(1, Math.max(0, Number(value) || 0));
+  return normalized.toLocaleString("cs-CZ", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+}
+
+function formatRawScore(source) {
+  const labels = { rrf: "Raw RRF", cosine: "Raw cosine", unknown: "Raw skóre" };
+  const value = Number(source.similarity_score) || 0;
+  return `${labels[source.score_kind] || labels.unknown}: ${value.toLocaleString("cs-CZ", {
+    minimumFractionDigits: 5, maximumFractionDigits: 5,
+  })}`;
 }
 
 function createStrong(text) {
@@ -48,18 +119,10 @@ function createSmall(text) {
   return element;
 }
 
-function createActions(button) {
-  const actions = document.createElement("div");
-  actions.className = "source-card-actions";
-  actions.append(button);
-  return actions;
-}
-
 function presentSource(source) {
-  if (source.source_type === "whatsapp") {
-    return { label: "WhatsApp", logoClass: "whatsapp-logo" };
-  }
-  return { label: "Discord", logoClass: "discord-logo" };
+  return source.source_type === "whatsapp"
+    ? { label: "WhatsApp", logoClass: "whatsapp-logo" }
+    : { label: "Discord", logoClass: "discord-logo" };
 }
 
 function createBrandIcon(sourceType) {
@@ -87,27 +150,6 @@ function authorAccent(author = "") {
   return hash % 4;
 }
 
-function createSourceOpenButton(source) {
-  if (source.source_type && source.source_type !== "discord") return null;
-  const messageId = source.source_message_ids?.[0];
-  if (!messageId || !source.channel_id || !source.guild_id) return null;
-  const button = document.createElement("button");
-  button.className = "source-open-button";
-  button.type = "button";
-  button.textContent = "Otevřít v Discordu";
-  button.addEventListener("click", () => openDiscordSource(source, messageId));
-  return button;
-}
-
-async function openDiscordSource(source, messageId) {
-  try {
-    const result = await window.chatContext.openDiscordSource({
-      message_id: messageId, channel_id: source.channel_id, guild_id: source.guild_id,
-    });
-    if (result?.embedded !== false) window.shellController.setDiscordActive(true);
-  } catch (error) {
-    window.appUi?.showToast(error.message, true);
-  }
-}
-
-window.chatSources = { createBrandIcon, createChatSourceCard, formatSourceTimestamp };
+window.chatSources = {
+  createBrandIcon, createChatSourceCard, formatMatchScore, formatSourceTimestamp,
+};

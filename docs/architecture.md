@@ -90,8 +90,9 @@ configuration and persisted chat sessions are outside the migration contract.
 The original embedded Discord importer remains available under **Nahrát pomocí
 Discordu**. It uses an isolated, persistent Discord web partition and extracts
 only the currently selected channel. Manual capture, continuous upward scan,
-resume, cancellation, and Discord source deep links retain their existing
-behavior.
+resume, and cancellation retain their existing behavior. Renderer source cards
+do not navigate back to Discord; internal message navigation remains available
+only to the importer and resume workflow.
 
 In an Electron Local workspace, the optional Discord bot runs in the main
 process only while the desktop application is running. Its token is encrypted with Electron
@@ -140,7 +141,8 @@ relationships intact. Existing Discord external IDs remain unchanged.
 
 Every row has generic `source_type`, `conversation_id`, conversation label,
 optional container identity, and JSON source metadata. Legacy `channel_id`,
-`guild_id`, and channel fields remain for backward-compatible Discord deep links.
+`guild_id`, and channel fields remain for Discord connector identity and importer
+navigation.
 `message_contents` stores one normalized copy of each exact text, its occurrence
 count, and a generated PostgreSQL full-text vector.
 
@@ -233,11 +235,23 @@ recency multiplier. The best diverse contexts are sent through the chat provider
 selected for the current conversation. Both Responses and OpenAI-compatible Chat
 Completions preserve the same grounding instructions and source identity.
 
+Hybrid retrieval exposes its exact reciprocal-rank-fusion score as raw `rrf`
+evidence; production values are normally around `0.01` to `0.04`. The pure
+vector fallback exposes its cosine similarity as raw `cosine` evidence. For UI
+comparison, the projector also computes `match_score` as each non-negative raw
+score divided by the highest positive raw score in that answer. The strongest
+source is therefore `1.00`, non-positive scores become `0.00`, and the raw value
+remains unchanged in `similarity_score`. Legacy sources whose score type cannot
+be established use `unknown`.
+
 The model continues to receive ranked RAG chunks. After generation, the injected
 `SourceContextProjector` resolves each chunk's `source_message_ids` through the
 raw-message repository and produces the UI grounding contract. It preserves
 chunk relevance order and source order within each chunk, removes duplicate raw
 messages, and assigns a duplicate the highest similarity score it received.
+Each message also retains the complete retrieved chunk that supplied it. A
+duplicate takes the chunk with the highest raw score; equal scores preserve the
+earlier retrieval result.
 Each projected `ChatSource` represents one original message and contains exactly
 one source-message ID. If a referenced raw message is unavailable, the projector
 retains the chunk representation as a safe fallback instead of dropping the
@@ -246,7 +260,12 @@ grounding evidence.
 The same projection runs when a persisted session is restored. Legacy sessions
 that stored chunk-shaped sources therefore display original messages whenever
 the raw archive still contains them. New assistant entries persist every unique
-projected message, while retrieval and LLM prompting remain chunk-based.
+projected message and its exact retrieved chunk in the existing JSONB source
+payload. For an older one-message source without stored chunk context, the raw
+repository resolves all missing message chunks in one query against the active
+index and marks them `reconstructed`. Missing raw messages still fall back to
+their stored chunk representation; missing reconstructed chunks simply omit the
+chunk control. Retrieval and LLM prompting remain chunk-based.
 
 Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
 metadata live below Electron `userData`; only the main process decrypts them.
@@ -276,11 +295,12 @@ bootstrap likewise seeds the initial embedding index from
 preserve an existing active index and any saved user choice.
 
 `POST /chat` returns one source entry per original message with `source_type`,
-`conversation_id`, one source message ID, and legacy Discord deep-link fields.
-The renderer groups selectable scopes into
-Discord channels, WhatsApp conversations, and any future connector types. Only
-Discord sources with complete guild/channel/message identity render an **Open in
-Discord** action.
+`conversation_id`, one source message ID, raw `similarity_score`, normalized
+`match_score`, `score_kind`, and an optional chunk object. A chunk carries its
+ID, full text, source-message IDs, and `retrieved` or `reconstructed` origin.
+The renderer groups selectable scopes into Discord channels, WhatsApp
+conversations, and any future connector types. The public renderer, web bridge,
+preload boundary, and IPC surface expose no source-message Discord deep link.
 
 Successful chat turns are persisted through the injected `ChatSessionRepository`.
 `chat_sessions` owns the normalized first-question title, original source scope,

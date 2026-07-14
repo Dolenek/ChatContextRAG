@@ -179,7 +179,7 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   assert.match(html, /id="archive-migration-last-batch"/);
   assert.match(html, /id="archive-migration-diagnostic"/);
   assert.match(bridge, /mode: "web", hasToken: false/);
-  assert.match(bridge, /Promise\.resolve\(\{ embedded: false \}\)/);
+  assert.doesNotMatch(bridge, /openDiscordSource|discord\.com\/channels/);
   assert.match(styles, /\.web-runtime #open-discord-button/);
 });
 
@@ -193,7 +193,7 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     "saveConnectionTarget", "inspectArchiveMigration", "startArchiveMigration",
     "pauseArchiveMigration", "resumeArchiveMigration", "getArchiveMigrationStatus",
     "indexArchiveMigration", "forgetArchiveMigration", "onArchiveMigrationProgress",
-    "openDiscord", "openDiscordSource", "captureDiscord",
+    "openDiscord", "captureDiscord",
     "startDiscordScan", "resumeDiscordScan", "stopDiscordScan", "onDiscordScanProgress",
     "onIndexingProgress", "hideDiscord", "askDatabase", "getChatScopes",
     "listChatSessions", "getChatSession", "renameChatSession", "deleteChatSession",
@@ -211,6 +211,8 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     assert.match(preload, new RegExp(`\\b${method}:`), `Electron is missing ${method}`);
     assert.match(webBridge, new RegExp(`\\b${method}(?::|,)`), `Web is missing ${method}`);
   }
+  assert.doesNotMatch(preload, /openDiscordSource|discord:source:open/);
+  assert.doesNotMatch(webBridge, /openDiscordSource|discord\.com\/channels/);
 });
 
 test("trusted HTTPS proxy produces a Secure browser session cookie", () => {

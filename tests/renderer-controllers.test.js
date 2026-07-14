@@ -90,7 +90,9 @@ test("chat controller sends bounded history and delegates safe message rendering
           renderedUsers.push(text);
           return entry;
         },
-        appendAssistant: (text, sources) => renderedAssistants.push([text, sources]),
+        appendThinking: () => ({ thinking: true }),
+        replaceThinking: (_entry, text, sources) => renderedAssistants.push([text, sources]),
+        removeThinking: () => {}, markFailed: () => {},
         markPersisted: (entry) => persistedEntries.push(entry.text),
         resetComposer: () => { questionInput.value = ""; },
       },
@@ -162,9 +164,6 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
   eventSources[0].onmessage({
     data: JSON.stringify({ type: "indexing", payload: { status: "running" } }),
   });
-  await context.window.chatContext.openDiscordSource({
-    guild_id: "10", channel_id: "20", message_id: "30",
-  });
 
   assert.equal(fetchCalls.filter((call) => call[0] === "/api/auth/session").length, 1);
   assert.equal(fetchCalls[1][1].headers["X-CSRF-Token"], "csrf");
@@ -177,11 +176,49 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
   assert.equal(fetchCalls[2][1].method, "DELETE");
   assert.deepEqual(JSON.parse(JSON.stringify(indexingEvents)), [{ status: "running" }]);
   assert.equal(eventSources[0].url, "/api/events");
-  assert.deepEqual(opened[0], [
-    "https://discord.com/channels/10/20/30", "_blank", "noopener,noreferrer",
-  ]);
+  assert.equal(context.window.chatContext.openDiscordSource, undefined);
+  assert.deepEqual(opened, []);
   assert.deepEqual(redirects, []);
 });
+
+test("failed answers remove thinking and mark the user message unsaved", async () => {
+  const { context, events, questionInput } = createFailedChatFixture();
+  vm.runInNewContext(read("renderer/chat-controller.js"), context);
+  context.window.chatController.bind({ showToast: () => events.push("toast") });
+
+  await context.window.chatController.submitQuestion({ preventDefault: () => {} });
+
+  assert.deepEqual(events, ["user", "thinking", "remove", "failed", "toast"]);
+  assert.equal(questionInput.focused, true);
+});
+
+function createFailedChatFixture() {
+  const questionInput = new FakeElement("input");
+  questionInput.value = "question";
+  const submitButton = new FakeElement("button");
+  const events = [];
+  const elements = new Map([
+    ["#question-input", questionInput],
+    ["#chat-form button[type='submit']", submitButton],
+  ]);
+  const conversationView = {
+    appendUser: () => { events.push("user"); return { kind: "user" }; },
+    appendThinking: () => { events.push("thinking"); return { kind: "thinking" }; },
+    removeThinking: () => events.push("remove"),
+    markFailed: () => events.push("failed"),
+    resetComposer: () => { questionInput.value = ""; },
+  };
+  const window = {
+    chatContext: { askDatabase: async () => { throw new Error("failed"); } },
+    chatScopeSelector: { getSelectedScope: () => null },
+    modelSelector: { getChatSelection: () => ({}), updateAvailability: () => {} },
+    conversationView,
+  };
+  return {
+    context: { document: { querySelector: (selector) => elements.get(selector) }, window },
+    events, questionInput,
+  };
+}
 
 function response(status, body) {
   return {

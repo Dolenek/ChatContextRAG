@@ -206,6 +206,7 @@ class PostgresHybridRetrieval:
                 channel_id=context["channel_id"], guild_id=context["guild_id"],
                 source_type=context["source_type"],
                 conversation_id=context["conversation_id"],
+                score_kind="rrf",
             )))
         candidates.sort(key=lambda item: item[0], reverse=True)
         return [self._with_score(chunk, score) for score, chunk in candidates[:limit]]
@@ -217,6 +218,7 @@ class PostgresHybridRetrieval:
             similarity_score=float(row[5]), source_message_ids=row[6],
             channel_id=row[7], guild_id=row[8],
             source_type=row[9], conversation_id=row[10],
+            chunk_id=row[0], score_kind="rrf",
         )
 
     @staticmethod
@@ -227,6 +229,7 @@ class PostgresHybridRetrieval:
             source_message_ids=chunk.source_message_ids,
             channel_id=chunk.channel_id, guild_id=chunk.guild_id,
             source_type=chunk.source_type, conversation_id=chunk.conversation_id,
+            chunk_id=chunk.chunk_id, score_kind="rrf",
         )
 
     @staticmethod

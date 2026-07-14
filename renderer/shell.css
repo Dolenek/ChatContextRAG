@@ -118,12 +118,13 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
 .workspace-screen { height: 100%; overflow: auto; }
 .context-panel { grid-column: 3; grid-row: 2; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-left: 1px solid var(--border); background: rgba(6, 15, 27, 0.7); }
 .context-header { min-height: 108px; display: flex; align-items: flex-start; justify-content: space-between; padding: 30px 28px 18px; }
+.context-header.context-refreshed { animation: context-refreshed 700ms ease-out; }
 .context-title-row { display: flex; align-items: center; gap: 10px; }
 .context-header h2 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
 .context-title-row > span { min-width: 26px; height: 26px; display: grid; place-items: center; border-radius: 999px; color: #d7d2ff; background: var(--violet-soft); font-size: 12px; }
 .context-header p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .context-header .icon-button { display: none; }
-.context-scroll { min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: 0 24px 20px; }
+.context-scroll { min-height: 0; display: grid; grid-template-rows: minmax(0,1fr) auto; gap: 14px; overflow: hidden; padding: 0 24px 20px; }
 .discord-open .drawer-header .icon-button { visibility: hidden; }
 
 @media (max-width: 1199px) {
@@ -151,4 +152,5 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
   .archive-header-status { display: none; }
 }
 
-@media (prefers-reduced-motion: reduce) { .app-layout, .navigation-rail, .left-drawer, .context-panel { transition: none; } }
+@keyframes context-refreshed { 0% { background: rgba(116,103,255,.28); box-shadow: inset 0 0 0 1px rgba(151,141,255,.65); } 100% { background: transparent; box-shadow: inset 0 0 0 1px transparent; } }
+@media (prefers-reduced-motion: reduce) { .app-layout, .navigation-rail, .left-drawer, .context-panel { transition: none; } .context-header.context-refreshed { animation: none; background: rgba(116,103,255,.14); } }

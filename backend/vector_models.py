@@ -54,3 +54,5 @@ class RetrievedChunk:
     guild_id: Optional[str] = None
     source_type: str = "discord"
     conversation_id: Optional[str] = None
+    chunk_id: Optional[str] = None
+    score_kind: str = "cosine"

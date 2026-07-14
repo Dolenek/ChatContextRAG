@@ -5,7 +5,9 @@ import pytest
 from backend.chat_sessions import (
     ChatSessionNotFoundError, PostgresChatSessionRepository,
 )
-from backend.models import ChatRequest, ChatResponse, ChatScope, ChatSource
+from backend.models import (
+    ChatRequest, ChatResponse, ChatScope, ChatSource, ChatSourceChunk,
+)
 
 
 def test_new_turn_is_created_with_two_ordered_messages_in_one_connection() -> None:
@@ -27,6 +29,9 @@ def test_new_turn_is_created_with_two_ordered_messages_in_one_connection() -> No
     assert [row[1] for row in connection.message_rows] == [0, 1]
     assert connection.context_entries == 1
     assert connection.cursor_batches == 1
+    stored_source = connection.message_rows[1][4].obj[0]
+    assert stored_source["chunk"]["chunk_id"] == "chunk-1"
+    assert stored_source["match_score"] == 1.0
 
 
 def test_continuation_rejects_a_different_scope_or_model() -> None:
@@ -74,7 +79,11 @@ def _response(reasoning_effort="medium"):
         reasoning_effort=reasoning_effort,
         sources=[ChatSource(
             author="Ada", content="Termín je v pátek.", timestamp=None,
-            channel="general", similarity_score=0.9,
+            channel="general", similarity_score=0.02841, match_score=1.0,
+            score_kind="rrf", chunk=ChatSourceChunk(
+                chunk_id="chunk-1", content="Ada: Termín je v pátek.",
+                source_message_ids=["message-1"], origin="retrieved",
+            ),
         )],
     )
 

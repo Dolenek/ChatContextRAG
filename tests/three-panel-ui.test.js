@@ -59,7 +59,7 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.match(shellCss, /prefers-reduced-motion: reduce/);
   assert.match(shellCss, /var\(--rail-expanded-width\)/);
   assert.match(shellCss, /\.context-panel\.open/);
-  assert.match(shellCss, /\.context-scroll[\s\S]+display: flex[\s\S]+flex-direction: column/);
+  assert.match(shellCss, /\.context-scroll[\s\S]+display: grid[\s\S]+grid-template-rows: minmax\(0,1fr\) auto/);
   assert.match(panelCss, /\.index-panel \{ margin-top: auto/);
   assert.doesNotMatch(html, /Data zůstávají (?:lokálně|na serveru)/);
   assert.doesNotMatch(html, /class="(?:local-status|privacy-card)"/);
@@ -133,9 +133,11 @@ test("narrow navigation is transient and Discord restores the desktop preference
   assert.equal(desktop.elements.get("#navigation-toggle").disabled, false);
 });
 
-test("right panel previews four sources and archive status handles zero state", () => {
+test("right panel previews at most five sources and archive status handles zero state", () => {
   const elements = new Map([
     ["#context-list", new FakeElement()], ["#context-empty", new FakeElement()],
+    ["#context-section", new FakeElement()], [".context-header", new FakeElement()],
+    ["#context-update-status", new FakeElement()],
     ["#open-context-detail", new FakeElement()], ["#context-count", new FakeElement()],
     ["#context-toggle-count", new FakeElement()], ["#context-detail-label", new FakeElement()],
     ["#index-percent", new FakeElement()], ["#index-raw-count", new FakeElement()],
@@ -163,7 +165,7 @@ test("right panel previews four sources and archive status handles zero state", 
     database_size: "0 bytes", pending_message_count: 0, indexing_jobs: [],
   });
 
-  assert.equal(elements.get("#context-list").children.length, 4);
+  assert.equal(elements.get("#context-list").children.length, 5);
   assert.equal(elements.get("#context-empty").classList.contains("hidden"), true);
   assert.equal(elements.get("#context-count").textContent, "6");
   assert.equal(elements.get("#context-detail-label").textContent,
@@ -178,6 +180,25 @@ test("right panel previews four sources and archive status handles zero state", 
   });
   assert.equal(elements.get("#index-last-update").textContent,
     "Indexace probíhá · ve frontě: 1");
+});
+
+test("right panel fitting calculation adapts from three to five cards", () => {
+  const elements = new Map([
+    ["#context-list", new FakeElement()], ["#context-section", new FakeElement()],
+    [".context-header", new FakeElement()], ["#context-empty", new FakeElement()],
+    ["#open-context-detail", new FakeElement()], ["#context-update-status", new FakeElement()],
+  ]);
+  const context = {
+    document: { querySelector: (selector) => elements.get(selector) },
+    window: { addEventListener: () => {} },
+  };
+  vm.runInNewContext(read("renderer/context-panel.js"), context);
+  const count = context.window.contextPanel.calculateFittingCardCount;
+
+  assert.equal(count([100, 200, 300, 400, 500], 350), 3);
+  assert.equal(count([100, 200, 300, 400, 500], 600), 5);
+  assert.equal(count([900, 1000], 300), 1);
+  assert.match(read("renderer/context-panel.js"), /expandedCardCount/);
 });
 
 test("embedded Discord reserves the expanded import drawer", () => {

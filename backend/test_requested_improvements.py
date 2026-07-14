@@ -108,7 +108,7 @@ def test_indexer_uses_provider_resolved_for_embedding_index() -> None:
     assert embedded[0].embedding_model == provider.model_name
 
 
-def test_chat_sources_keep_discord_identity_for_ui_deep_links() -> None:
+def test_chat_sources_keep_connector_identity_and_grounding_details() -> None:
     chunk = RetrievedChunk(
         content="Grounded answer", authors=["Ada"], channel="guide",
         started_at=None, similarity_score=0.5, source_message_ids=["123"],
@@ -120,3 +120,6 @@ def test_chat_sources_keep_discord_identity_for_ui_deep_links() -> None:
     assert source.source_message_ids == ["123"]
     assert source.channel_id == "20"
     assert source.guild_id == "10"
+    assert source.match_score == 1.0
+    assert source.score_kind == "cosine"
+    assert source.chunk.content == "Grounded answer"

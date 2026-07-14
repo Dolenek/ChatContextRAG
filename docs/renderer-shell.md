@@ -40,18 +40,32 @@ sit inside the composer card. Provider and model selection behavior, optional
 reasoning effort, unavailable restored-model handling, and context-reset rules
 remain unchanged.
 
-The context panel shows the total number of source messages and at most four
-numbered preview cards. Each card includes the source type, conversation,
-timestamp, deterministically colored author, and shortened text. **Show complete
-context (N)** opens every source in an accessible modal with full text and
-metadata. Eligible Discord sources include a deep link. Source text is inserted
-with DOM text properties rather than interpreted as HTML. Discord and WhatsApp
+The context panel shows the total number of source messages and the largest
+leading set of preview cards that fits its measured height, with a maximum of
+five and a minimum of one when sources exist. A `ResizeObserver` recalculates the
+set after window or card-size changes. The card list scrolls independently from
+the fixed **Show complete context (N)** row, so the two never overlap. Each card
+includes the source type, conversation, timestamp, deterministically colored
+author, shortened text, and a relative match value from `0.00` to `1.00`. Its
+accessible tooltip exposes the exact raw RRF, cosine, or legacy score.
+
+Cards with retained chunk context expose an inline **Show chunk** control in
+both the preview and complete-context modal. Retrieved chunks show the exact
+context used for that answer; historical records reconstructed from the active
+index are explicitly labeled as current rather than original context. Message
+and chunk text is inserted with DOM text properties rather than interpreted as
+HTML. There is no source-message navigation action. Discord and WhatsApp
 surfaces use local SVG sprite symbols, so brand icons require no runtime request.
 
 The context modal has `aria-modal`, an explicit label, a focus trap, and focus
 return. It closes from its close button, Escape, or the backdrop. Opening a new
 answer automatically opens the context drawer when the fixed panel is not
-available.
+available. Submitting a question immediately inserts an accessible assistant
+thinking card with three pulsing dots; success replaces it and failure removes
+it while marking the user message as unsaved. Reduced-motion mode keeps the
+indicator static. Restoring an older answer opens the drawer first, updates its
+sources, briefly highlights the context header, and announces the update to
+assistive technology.
 
 ## Supporting surfaces
 
@@ -77,8 +91,7 @@ windows scroll the full sidebar, preserving access to recent chats, index status
 and settings.
 
 The web adapter uses browser file selection and multipart requests for WhatsApp
-exports. It hides embedded Discord controls and opens complete Discord source
-links in a new browser tab. `/api/events` supplies best-effort indexing and bot
+exports and hides embedded Discord controls. `/api/events` supplies best-effort indexing and bot
 progress over SSE. Adaptive polling of every queued and running job remains the
 authoritative fallback across reconnects; running jobs sort before queued jobs,
 and terminal records stay available in **Indexing history**.

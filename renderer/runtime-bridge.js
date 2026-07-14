@@ -94,12 +94,6 @@
     return api(path, { method: "POST", body: form });
   }
 
-  function openDiscordSource(source) {
-    const url = `https://discord.com/channels/${source.guild_id}/${source.channel_id}/${source.message_id}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    return Promise.resolve({ embedded: false });
-  }
-
   async function inviteDiscordBot() {
     const result = await api("/discord-bot/invite");
     window.open(result.invite_url, "_blank", "noopener,noreferrer");
@@ -120,7 +114,6 @@
     forgetArchiveMigration: () => Promise.resolve({ available: false, phase: "unavailable" }),
     onArchiveMigrationProgress: () => () => {},
     openDiscord: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
-    openDiscordSource,
     captureDiscord: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
     startDiscordScan: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
     resumeDiscordScan: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
