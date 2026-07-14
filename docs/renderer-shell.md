@@ -4,22 +4,30 @@ The framework-free renderer uses a four-region application shell: a left
 navigation rail, an 82 px header, a central workspace, and a grounding-context
 panel. The expanded rail is 310 px wide and its compact mode is 72 px. The
 desktop preference is stored in browser-local storage. The context panel uses
-`clamp(360px, 31vw, 508px)`, while chat content is capped at 784 px. The rail,
+`clamp(324px, 28vw, 457px)`, while chat content is capped at 784 px. The rail,
 workspace, context list, drawers, and modal bodies own their scrolling so the
-composer remains anchored when content grows.
+composer remains anchored when content grows. The shell fills the viewport
+without a decorative outer border; borders only separate internal regions and
+components.
 
-The rail starts with the Chat Context sparkle mark and its collapse control. It
-contains **New chat**, **Sources and imports**, **Database**, the six most recent
-persisted chats, the expandable remainder of the 20 loaded summaries, the index
-status card, and **Settings**. Compact mode retains the logo, collapse control,
-and navigation icons with accessible labels and hover/focus tooltips. Recent
+The rail starts with the Chat Context sparkle mark and its collapse control. Its
+44 px actions list **New chat**, **Sources and imports**, **Database**, and
+**Settings** before the six most recent persisted chats, the expandable
+remainder of the 20 loaded summaries, and the index status card. Compact mode
+retains the logo, collapse control, and navigation icons with accessible labels
+and hover/focus tooltips. Recent
 chat rows use `updated_at`: same-day rows show `HH:mm`, yesterday uses a localized
 label, and older rows use a short date. Rows restore their ordered messages,
 grounding sources, scope, provider, model, reasoning effort, retrieval mode, and
 fixed evidence limit. Rename and delete actions use dedicated dialogs.
 
 The header owns the native **Search in** scope selector and the archive-ready
-status. Scope options carry a source icon and conversation label. The same
+status. Native selection menus use dark surfaces, light option text, and violet
+group labels throughout the renderer. Scope options carry a source icon and
+conversation label. The selector shares the chat content's responsive gutter
+and 784 px maximum width, keeping its left edge aligned with the conversation
+and composer. The archive progress track spans from the status dot to the
+percentage label. The same
 selection is exposed in the sources drawer; both controls update one state and
 changing it starts a clean conversation. Startup requests the lightweight
 database status, scopes, settings, and recent chats concurrently. It does not
@@ -97,12 +105,12 @@ partition. Interactive header elements opt out of Electron drag regions.
 
 ## Responsive behavior
 
-At 1,199 px and below the grounding panel becomes a right drawer controlled by
-the header count button. At 760 px and below the rail defaults to its icon mode;
-expanding it produces a transient overlay and selecting a destination closes it.
-The grounding panel remains an independent right drawer. Low-height desktop
-windows scroll the full sidebar, preserving access to recent chats, index status,
-and settings.
+At 1,199 px and below the grounding panel becomes a right drawer capped at
+414 px and controlled by the header count button. At 760 px and below the rail
+defaults to its icon mode; expanding it produces a transient overlay and
+selecting a destination closes it. The grounding panel remains an independent
+right drawer. Low-height desktop windows scroll the full sidebar, preserving
+access to recent chats, index status, and settings.
 
 The web adapter uses browser file selection and multipart requests for WhatsApp
 exports and hides embedded Discord controls. Authenticated GET reads start in

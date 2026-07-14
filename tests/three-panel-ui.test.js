@@ -39,6 +39,7 @@ class FakeElement {
 
 test("renderer exposes the three-panel shell and responsive context drawer", () => {
   const html = read("renderer/index.html");
+  const baseCss = read("renderer/styles.css");
   const shellCss = read("renderer/shell.css");
   const panelCss = read("renderer/panels.css");
   assert.match(html, /id="primary-navigation" class="navigation-rail"/);
@@ -61,11 +62,38 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.match(shellCss, /\.context-panel\.open/);
   assert.match(shellCss, /\.context-scroll[\s\S]+display: grid[\s\S]+grid-template-rows: minmax\(0,1fr\) auto/);
   assert.match(panelCss, /\.index-panel \{ margin-top: auto/);
+  assert.doesNotMatch(baseCss, /body::after/);
   assert.doesNotMatch(html, /Data zůstávají (?:lokálně|na serveru)/);
   assert.doesNotMatch(html, /class="(?:local-status|privacy-card)"/);
   assert.doesNotMatch(read("renderer/runtime-bridge.js"), /localStatus/);
   assert.match(html, /id="settings-overlay"/);
   assert.doesNotMatch(html, /id="settings-screen"/);
+});
+
+test("shell keeps navigation compact and themes native selection menus", () => {
+  const html = read("renderer/index.html");
+  const baseCss = read("renderer/styles.css");
+  const shellCss = read("renderer/shell.css");
+  assert.match(html, /id="open-overview-button"[\s\S]*?<\/button>\s*<button id="open-settings-button"/);
+  assert.match(baseCss, /--context-width: clamp\(324px, 28vw, 457px\)/);
+  assert.match(baseCss, /select option \{ color: #edf0fa; background: #091321; \}/);
+  assert.match(baseCss, /select optgroup \{ color: #b9b6ff; background: #0d1828; \}/);
+  assert.match(shellCss, /\.rail-button \{[\s\S]*?min-height: 44px/);
+  assert.match(shellCss, /\.archive-header-status \{ width: max-content/);
+  assert.match(shellCss, /\.archive-header-progress \{ width: 100%;[\s\S]*?margin-left: 0/);
+  assert.match(shellCss, /width: min\(414px, calc\(100vw - var\(--rail-width\)\)\)/);
+});
+
+test("header scope picker aligns with the bounded chat content", () => {
+  const html = read("renderer/index.html");
+  const baseCss = read("renderer/styles.css");
+  const shellCss = read("renderer/shell.css");
+  const chatCss = read("renderer/chat.css");
+  assert.match(html, /class="app-header-content"[\s\S]*?class="scope-picker"/);
+  assert.match(baseCss, /--chat-content-max-width: 784px/);
+  assert.match(shellCss, /\.app-header-content \{[\s\S]*?var\(--chat-content-max-width\)/);
+  assert.match(chatCss, /padding: 0 var\(--chat-horizontal-gutter\) 38px/);
+  assert.match(chatCss, /\.chat-form \{[\s\S]*?var\(--chat-content-max-width\)/);
 });
 
 test("shell opens the source drawer and switches workspaces", () => {

@@ -1,7 +1,7 @@
 .chat-screen {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
-  padding: 0 clamp(24px, 4vw, 56px) 38px;
+  padding: 0 var(--chat-horizontal-gutter) 38px;
   background: radial-gradient(circle at 48% 36%, rgba(29, 59, 104, 0.12), transparent 44%);
 }
 
@@ -12,7 +12,7 @@
 .workspace-heading .secondary-button svg { width: 16px; height: 16px; }
 
 .conversation {
-  width: min(100%, 784px);
+  width: min(100%, var(--chat-content-max-width));
   min-height: 0;
   overflow-y: auto;
   margin: 0 auto;
@@ -50,10 +50,10 @@
 .source-recall-button .source-caret { margin-left: auto; color: #99a5bb; }
 .source-recall-button:hover { color: #d9d5ff; background: rgba(255,255,255,.025); }
 
-.chat-readonly-notice { width: min(100%, 784px); margin: 0 auto 9px; padding: 10px 13px; border: 1px solid rgba(239,108,128,.35); border-radius: 10px; color: #ffc5cf; background: rgba(86,29,44,.24); font-size: 11px; }
+.chat-readonly-notice { width: min(100%, var(--chat-content-max-width)); margin: 0 auto 9px; padding: 10px 13px; border: 1px solid rgba(239,108,128,.35); border-radius: 10px; color: #ffc5cf; background: rgba(86,29,44,.24); font-size: 11px; }
 .chat-form {
   position: relative;
-  width: min(100%, 784px);
+  width: min(100%, var(--chat-content-max-width));
   min-height: 132px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 54px;
@@ -89,7 +89,8 @@
 .model-menu-empty { padding: 10px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 
 @media (max-width: 760px) {
-  .chat-screen { padding: 0 14px 18px; }
+  :root { --chat-horizontal-gutter: 14px; }
+  .chat-screen { padding-bottom: 18px; }
   .conversation { padding-top: 25px; }
   .conversation-entry.user { max-width: 88%; }
   .conversation-entry.assistant { grid-template-columns: 34px minmax(0,1fr); gap: 8px; }

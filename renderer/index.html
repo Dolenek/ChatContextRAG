@@ -65,6 +65,9 @@
         <button id="open-overview-button" class="rail-button" type="button" aria-label="Databáze">
           <svg aria-hidden="true"><use href="#icon-database" /></svg><span class="rail-label">Databáze</span>
         </button>
+        <button id="open-settings-button" class="rail-button" type="button" aria-label="Otevřít nastavení" aria-haspopup="dialog" aria-expanded="false">
+          <svg aria-hidden="true"><use href="#icon-settings" /></svg><span class="rail-label">Nastavení</span>
+        </button>
         <section class="recent-chats" aria-labelledby="recent-chats-heading">
           <h2 id="recent-chats-heading">Nedávné chaty</h2>
           <div id="recent-chat-list" class="recent-chat-list"></div>
@@ -77,26 +80,25 @@
           <div id="indexing-jobs" class="count-list indexing-jobs"></div>
           <button id="index-pending-button" class="secondary-button full-width" type="button" disabled>Načítám stav indexu…</button>
         </section>
-        <button id="open-settings-button" class="rail-button" type="button" aria-label="Otevřít nastavení" aria-haspopup="dialog" aria-expanded="false">
-          <svg aria-hidden="true"><use href="#icon-settings" /></svg><span class="rail-label">Nastavení</span>
-        </button>
       </nav>
 
       <header class="app-header">
-        <div class="scope-picker">
-          <label for="chat-scope-select">Hledat v:</label>
-          <span id="active-scope-icon" class="scope-picker-icon" aria-hidden="true">✦</span>
-          <select id="chat-scope-select"><option value="">Všechny uložené zprávy</option></select>
-          <svg aria-hidden="true"><use href="#icon-chevron-down" /></svg>
-          <span id="active-scope-label" class="sr-only">všechny uložené zprávy</span>
+        <div class="app-header-content">
+          <div class="scope-picker">
+            <label for="chat-scope-select">Hledat v:</label>
+            <span id="active-scope-icon" class="scope-picker-icon" aria-hidden="true">✦</span>
+            <select id="chat-scope-select"><option value="">Všechny uložené zprávy</option></select>
+            <svg aria-hidden="true"><use href="#icon-chevron-down" /></svg>
+            <span id="active-scope-label" class="sr-only">všechny uložené zprávy</span>
+          </div>
+          <div id="archive-header-status" class="archive-header-status" role="status">
+            <span class="archive-status-line"><i aria-hidden="true"></i><span id="archive-status-label">Načítám stav archivu…</span></span>
+            <span class="archive-header-progress"><i id="archive-header-progress-bar"></i></span>
+          </div>
+          <button id="context-toggle" class="context-toggle" type="button" aria-label="Zobrazit použitý kontext">
+            <svg><use href="#icon-context" /></svg><span id="context-toggle-count">0</span>
+          </button>
         </div>
-        <div id="archive-header-status" class="archive-header-status" role="status">
-          <span class="archive-status-line"><i aria-hidden="true"></i><span id="archive-status-label">Načítám stav archivu…</span></span>
-          <span class="archive-header-progress"><i id="archive-header-progress-bar"></i></span>
-        </div>
-        <button id="context-toggle" class="context-toggle" type="button" aria-label="Zobrazit použitý kontext">
-          <svg><use href="#icon-context" /></svg><span id="context-toggle-count">0</span>
-        </button>
       </header>
 
       <aside id="left-drawer" class="left-drawer" aria-label="Navigace a zdroje" aria-hidden="true">
