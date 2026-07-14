@@ -125,6 +125,7 @@
 .settings-form { display: grid; gap: 8px; }
 .settings-form label { color: var(--muted-strong); font-size: 10px; font-weight: 700; }
 .settings-form input, .settings-form select { min-width: 0; padding: 9px 10px; font-size: 10px; }
+#chat-model-archive-tools { justify-self: start; width: 18px; height: 18px; padding: 0; }
 .provider-key-form, .separated-settings-form { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--border); }
 .provider-key-form .fine-print { margin: 2px 0; font-size: 9px; }
 .settings-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }

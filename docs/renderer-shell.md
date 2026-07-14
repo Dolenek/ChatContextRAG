@@ -15,8 +15,8 @@ status card, and **Settings**. Compact mode retains the logo, collapse control,
 and navigation icons with accessible labels and hover/focus tooltips. Recent
 chat rows use `updated_at`: same-day rows show `HH:mm`, yesterday uses a localized
 label, and older rows use a short date. Rows restore their ordered messages,
-grounding sources, scope, provider, model, and reasoning effort. Rename and
-delete actions use dedicated dialogs.
+grounding sources, scope, provider, model, reasoning effort, retrieval mode, and
+fixed evidence limit. Rename and delete actions use dedicated dialogs.
 
 The header owns the native **Search in** scope selector and the archive-ready
 status. Scope options carry a source icon and conversation label. The same
@@ -36,10 +36,12 @@ N messages** action restores that answer's grounding after the user has selected
 or generated a newer answer.
 
 The composer uses an automatically growing textarea. Enter submits and
-Shift+Enter inserts a line break. The send button and two-level model selector
-sit inside the composer card. Provider and model selection behavior, optional
-reasoning effort, unavailable restored-model handling, and context-reset rules
-remain unchanged.
+Shift+Enter inserts a line break. The send button, Adaptive/Deterministic
+retrieval selector, and two-level model selector sit inside the composer card.
+A new chat defaults to Adaptive only when the selected model enables archive
+tools. Changing model, mode, or relevant model configuration starts a new chat.
+A restored chat keeps its persisted mode and evidence limit instead of adopting
+later model-setting changes.
 
 The context panel shows the total number of source messages and the largest
 leading set of preview cards that fits its measured height, with a maximum of
@@ -49,6 +51,8 @@ the fixed **Show complete context (N)** row, so the two never overlap. Each card
 includes the source type, conversation, timestamp, deterministically colored
 author, shortened text, and a relative match value from `0.00` to `1.00`. Its
 accessible tooltip exposes the exact raw RRF, cosine, or legacy score.
+Messages loaded as neighboring adaptive context are labeled **Neighboring
+context** and do not display a synthetic match score.
 
 Cards with retained chunk context expose an inline **Show chunk** control in
 both the preview and complete-context modal. Retrieved chunks show the exact

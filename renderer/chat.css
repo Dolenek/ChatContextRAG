@@ -69,7 +69,9 @@
 .chat-form textarea:focus-visible { outline: 0; }
 .composer-send { grid-column: 2; grid-row: 1; align-self: start; width: 46px; height: 46px; display: grid; place-items: center; margin: 12px 13px 0 0; border: 0; border-radius: 12px; color: #fff; background: linear-gradient(135deg, #8075ff, #5946df); box-shadow: 0 8px 24px rgba(73,55,216,.35); }
 .composer-send svg { width: 23px; height: 23px; }
-.composer-footer { grid-column: 1 / 3; grid-row: 2; display: flex; align-items: center; justify-content: flex-end; padding: 2px 15px 10px; }
+.composer-footer { grid-column: 1 / 3; grid-row: 2; display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 2px 15px 10px; }
+.retrieval-mode-select { border: 0; border-radius: 8px; color: var(--muted); background: transparent; font: inherit; padding: 5px 7px; cursor: pointer; }
+.retrieval-mode-select:hover, .retrieval-mode-select:focus-visible { color: var(--text); background: var(--surface-hover); }
 .model-selector { position: relative; }
 .model-trigger { min-height: 38px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 11px; padding: 8px 12px; color: #e1e4ed; background: rgba(9,18,31,.6); font-size: 12px; }
 .model-trigger-prefix { color: #c4cad7; }

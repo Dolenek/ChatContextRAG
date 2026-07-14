@@ -7,10 +7,13 @@ from backend.database_models import (
     DatabaseBreakdowns, DatabaseChunkPage, DatabaseChunkView, DatabaseCount,
     DatabaseOverview, DatabaseStatus, IndexingJobView,
 )
-
-ReasoningEffort = Literal[
-    "none", "minimal", "low", "medium", "high", "xhigh", "max",
-]
+from backend.chat_models import (
+    ChatHistoryTurn, ChatRequest, ChatResponse, ChatScope, ChatScopeList,
+    ChatScopeOption, ChatSessionDetail, ChatSessionMessage, ChatSessionRename,
+    ChatSessionSummary, ChatSource, ChatSourceChunk,
+    DEFAULT_EVIDENCE_CHARACTER_LIMIT, MAX_EVIDENCE_CHARACTER_LIMIT,
+    MIN_EVIDENCE_CHARACTER_LIMIT, ReasoningEffort, RetrievalMode,
+)
 
 
 class SourceMessageInput(BaseModel):
@@ -46,98 +49,6 @@ class ImportResponse(BaseModel):
     messages: List[SourceMessageInput]
     raw_stored_count: int = 0
     unique_content_count: int = 0
-
-
-class ChatHistoryTurn(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=10000)
-
-
-class ChatScope(BaseModel):
-    source_type: str = Field(
-        min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_-]*$",
-    )
-    conversation_id: str = Field(min_length=1, max_length=256)
-
-
-class ChatScopeOption(ChatScope):
-    display_name: str = Field(min_length=1, max_length=300)
-    container_name: Optional[str] = Field(default=None, max_length=300)
-    message_count: int = Field(default=0, ge=0)
-
-
-class ChatScopeList(BaseModel):
-    scopes: List[ChatScopeOption] = Field(default_factory=list)
-
-
-class ChatRequest(BaseModel):
-    question: str = Field(min_length=2, max_length=2000)
-    history: List[ChatHistoryTurn] = Field(default_factory=list, max_length=12)
-    scope: Optional[ChatScope] = None
-    chat_provider_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    chat_model: Optional[str] = Field(default=None, min_length=1, max_length=200)
-    reasoning_effort: Optional[ReasoningEffort] = None
-    session_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
-
-
-class ChatSourceChunk(BaseModel):
-    chunk_id: Optional[str] = None
-    content: str
-    source_message_ids: List[str] = Field(default_factory=list)
-    origin: Literal["retrieved", "reconstructed"] = "retrieved"
-
-
-class ChatSource(BaseModel):
-    author: str
-    content: str
-    timestamp: Optional[datetime]
-    channel: Optional[str]
-    similarity_score: float
-    match_score: Optional[float] = Field(default=None, ge=0, le=1)
-    score_kind: Literal["rrf", "cosine", "unknown"] = "unknown"
-    chunk: Optional[ChatSourceChunk] = None
-    source_message_ids: List[str] = Field(default_factory=list)
-    channel_id: Optional[str] = None
-    guild_id: Optional[str] = None
-    source_type: str = "discord"
-    conversation_id: Optional[str] = None
-
-
-class ChatResponse(BaseModel):
-    answer: str
-    sources: List[ChatSource]
-    chat_provider_id: Optional[str] = None
-    chat_model: Optional[str] = None
-    reasoning_effort: Optional[ReasoningEffort] = None
-    embedding_index_id: Optional[str] = None
-    chat_session_id: Optional[str] = None
-    chat_session_title: Optional[str] = None
-
-
-class ChatSessionSummary(BaseModel):
-    session_id: str
-    title: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class ChatSessionMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str
-    sources: List[ChatSource] = Field(default_factory=list)
-    created_at: Optional[datetime] = None
-
-
-class ChatSessionDetail(ChatSessionSummary):
-    scope: Optional[ChatScope] = None
-    chat_provider_id: Optional[str] = None
-    chat_model: Optional[str] = None
-    reasoning_effort: Optional[ReasoningEffort] = None
-    messages: List[ChatSessionMessage] = Field(default_factory=list)
-
-
-class ChatSessionRename(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
 
 
 class HealthResponse(BaseModel):

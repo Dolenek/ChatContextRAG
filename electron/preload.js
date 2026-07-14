@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld("chatContext", {
       chat_model: chatSelection.model,
       ...(chatSelection.reasoningEffort
         ? { reasoning_effort: chatSelection.reasoningEffort } : {}),
+      retrieval_mode: chatSelection.retrievalMode || "deterministic",
+      ...(chatSelection.retrievalMode === "adaptive"
+        ? { evidence_character_limit: chatSelection.evidenceCharacterLimit } : {}),
       ...(sessionId ? { session_id: sessionId } : {}),
     }),
   getChatScopes: () => ipcRenderer.invoke("database:chat-scopes"),

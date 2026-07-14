@@ -1,9 +1,12 @@
+import time
 from typing import List, Literal, Optional, Protocol, Sequence
 
 from openai import OpenAI, OpenAIError
 
 from backend.models import ChatHistoryTurn, ReasoningEffort
 from backend.vector_models import RetrievedChunk
+from backend.agent_gateway import OpenAIAgentSessionFactory
+from backend.agent_protocol import AgentChatProvider
 
 
 class IntegrationConfigurationError(RuntimeError):
@@ -31,6 +34,10 @@ class ChatCompletionProvider(Protocol):
         ...
 
 
+class ChatProvider(ChatCompletionProvider, AgentChatProvider, Protocol):
+    """Provider contract supporting deterministic and adaptive chat flows."""
+
+
 class OpenAIEmbeddingProvider:
     def __init__(
         self, api_key: Optional[str], model_name: str, dimensions: Optional[int],
@@ -43,18 +50,34 @@ class OpenAIEmbeddingProvider:
         self.batch_size = batch_size
 
     def embed_texts(self, texts: Sequence[str]) -> List[List[float]]:
+        return self._embed_texts_with_client(texts, self.client)
+
+    def embed_texts_before(
+        self, texts: Sequence[str], deadline: float,
+    ) -> List[List[float]]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ExternalIntegrationError("Adaptive chat exceeded its 120 second deadline.")
+        client = self.client.with_options(
+            timeout=min(45.0, remaining), max_retries=0,
+        ) if self.client else None
+        return self._embed_texts_with_client(texts, client)
+
+    def _embed_texts_with_client(self, texts, client) -> List[List[float]]:
         if not self.client:
             raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
         embeddings: List[List[float]] = []
         try:
             for start in range(0, len(texts), self.batch_size):
-                embeddings.extend(self._embed_batch(texts[start : start + self.batch_size]))
+                embeddings.extend(self._embed_batch(
+                    client, texts[start : start + self.batch_size],
+                ))
         except OpenAIError as error:
             raise ExternalIntegrationError("OpenAI embeddings API request failed.") from error
         return embeddings
 
-    def _embed_batch(self, texts: Sequence[str]) -> List[List[float]]:
-        if not self.client:
+    def _embed_batch(self, client, texts: Sequence[str]) -> List[List[float]]:
+        if not client:
             raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
         parameters = {
             "model": self.model_name,
@@ -63,7 +86,7 @@ class OpenAIEmbeddingProvider:
         }
         if self.dimensions is not None:
             parameters["dimensions"] = self.dimensions
-        response = self.client.embeddings.create(**parameters)
+        response = client.embeddings.create(**parameters)
         ordered_items = sorted(response.data, key=lambda item: item.index)
         return [item.embedding for item in ordered_items]
 
@@ -73,11 +96,25 @@ class OpenAIChatCompletionProvider:
         self, api_key: Optional[str], model_name: str,
         base_url: Optional[str] = None,
         chat_api: Literal["responses", "chat_completions"] = "responses",
+        strict_tools: bool = True,
     ) -> None:
         client_key = api_key or ("local" if base_url else None)
         self.client = OpenAI(api_key=client_key, base_url=base_url) if client_key else None
         self.model_name = model_name
         self.chat_api = chat_api
+        self.strict_tools = strict_tools
+
+    def create_agent_session(
+        self, question, history, instructions, reasoning_effort, deadline,
+    ):
+        if not self.client:
+            raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
+        factory = OpenAIAgentSessionFactory(
+            self.client, self.model_name, self.chat_api, self.strict_tools,
+        )
+        return factory.create(
+            question, history, instructions, reasoning_effort, deadline,
+        )
 
     def answer(
         self, question: str, history: Sequence[ChatHistoryTurn],

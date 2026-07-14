@@ -85,7 +85,7 @@ class ProviderRegistry:
         configuration = self.get(provider_id)
         return OpenAIChatCompletionProvider(
             configuration.api_key, model, configuration.base_url,
-            configuration.chat_api,
+            configuration.chat_api, strict_tools=configuration.builtin,
         )
 
     def list_models(self, provider_id: str) -> List[str]:

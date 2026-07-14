@@ -53,7 +53,8 @@ class PostgresChatSessionRepository:
             with self.connection_factory() as connection:
                 session = connection.execute(
                     """SELECT id,title,source_type,conversation_id,chat_provider_id,
-                       chat_model,reasoning_effort,created_at,updated_at
+                       chat_model,reasoning_effort,retrieval_mode,
+                       evidence_character_limit,created_at,updated_at
                        FROM chat_sessions WHERE id=%s""",
                     (session_id,),
                 ).fetchone()
@@ -120,7 +121,8 @@ class PostgresChatSessionRepository:
     def _lock_or_create(self, connection, session_id, request, response):
         row = connection.execute(
             """SELECT id,title,source_type,conversation_id,chat_provider_id,
-               chat_model,reasoning_effort,created_at,updated_at FROM chat_sessions
+               chat_model,reasoning_effort,retrieval_mode,evidence_character_limit,
+               created_at,updated_at FROM chat_sessions
                WHERE id=%s FOR UPDATE""", (session_id,),
         ).fetchone()
         if row:
@@ -132,16 +134,18 @@ class PostgresChatSessionRepository:
         return connection.execute(
             """INSERT INTO chat_sessions
                (id,title,source_type,conversation_id,chat_provider_id,chat_model,
-                reasoning_effort)
-               VALUES (%s,%s,%s,%s,%s,%s,%s)
+                reasoning_effort,retrieval_mode,evidence_character_limit)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                RETURNING id,title,source_type,conversation_id,chat_provider_id,
-                         chat_model,reasoning_effort,created_at,updated_at""",
+                         chat_model,reasoning_effort,retrieval_mode,
+                         evidence_character_limit,created_at,updated_at""",
             (
                 session_id, self._automatic_title(request.question),
                 scope.source_type if scope else None,
                 scope.conversation_id if scope else None,
                 response.chat_provider_id, response.chat_model,
-                response.reasoning_effort,
+                response.reasoning_effort, response.retrieval_mode,
+                response.evidence_character_limit,
             ),
         ).fetchone()
 
@@ -154,10 +158,13 @@ class PostgresChatSessionRepository:
             response.chat_provider_id,
             response.chat_model,
             response.reasoning_effort,
+            response.retrieval_mode,
+            response.evidence_character_limit,
         )
-        if tuple(row[2:7]) != current_context:
+        if tuple(row[2:9]) != current_context:
             raise ValueError(
-                "Chat session context no longer matches its source, model, or reasoning effort."
+                "Chat session context no longer matches its source, model, reasoning effort, "
+                "or retrieval configuration."
             )
 
     @staticmethod
@@ -188,6 +195,12 @@ class PostgresChatSessionRepository:
     @classmethod
     def _detail(cls, row, message_rows) -> ChatSessionDetail:
         scope = ChatScope(source_type=row[2], conversation_id=row[3]) if row[2] else None
+        if len(row) == 9:
+            retrieval_mode, evidence_limit, created_at, updated_at = (
+                "deterministic", None, row[7], row[8],
+            )
+        else:
+            retrieval_mode, evidence_limit, created_at, updated_at = row[7:11]
         messages = [
             ChatSessionMessage(
                 role=message[0], content=message[1],
@@ -199,7 +212,9 @@ class PostgresChatSessionRepository:
         return ChatSessionDetail(
             session_id=row[0], title=row[1], scope=scope,
             chat_provider_id=row[4], chat_model=row[5],
-            reasoning_effort=row[6], created_at=row[7], updated_at=row[8],
+            reasoning_effort=row[6], retrieval_mode=retrieval_mode,
+            evidence_character_limit=evidence_limit,
+            created_at=created_at, updated_at=updated_at,
             messages=messages,
         )
 

@@ -180,6 +180,13 @@
             <textarea id="question-input" rows="1" minlength="2" placeholder="Zeptejte se na svou historii chatu…" autocomplete="off" required></textarea>
             <button class="composer-send" type="submit" aria-label="Odeslat"><svg><use href="#icon-send" /></svg></button>
             <footer class="composer-footer">
+              <label class="retrieval-mode-label" for="retrieval-mode-select">
+                <span class="sr-only">Režim vyhledávání</span>
+                <select id="retrieval-mode-select" class="retrieval-mode-select">
+                  <option value="adaptive">Adaptive</option>
+                  <option value="deterministic">Deterministic</option>
+                </select>
+              </label>
               <span id="active-embedding-index" class="sr-only">Načítám RAG index…</span>
               <div id="model-selector" class="model-selector">
                 <button id="chat-model-trigger" class="model-trigger" type="button" aria-haspopup="menu" aria-expanded="false"><span class="model-trigger-prefix">Model:</span><span id="selected-model-label">Načítám model…</span><svg aria-hidden="true"><use href="#icon-chevron-down" /></svg></button>
@@ -353,6 +360,7 @@
     <script src="context-panel.js"></script>
     <script src="workspace-state.js"></script>
     <script src="chat-scope-selector.js"></script>
+    <script src="retrieval-mode-selector.js"></script>
     <script src="indexing-controls.js"></script>
     <script src="overview-controller.js"></script>
     <script src="archive-migration-ui.js"></script>

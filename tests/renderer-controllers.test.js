@@ -82,6 +82,11 @@ test("chat controller sends bounded history and delegates safe message rendering
         }),
         updateAvailability: () => {},
       },
+      retrievalModeSelector: {
+        getSelection: () => ({
+          retrievalMode: "adaptive", evidenceCharacterLimit: 24000,
+        }),
+      },
       chatHistoryUi: { responseSaved: (response) => savedSessions.push(response.chat_session_id) },
       contextPanel: { showSources: (sources) => shownSources.push(sources), clear: () => {} },
       conversationView: {
@@ -109,6 +114,8 @@ test("chat controller sends bounded history and delegates safe message rendering
   assert.deepEqual(Array.from(requests[0][1]), []);
   assert.equal(requests[0][4], null);
   assert.equal(requests[0][3].reasoningEffort, "high");
+  assert.equal(requests[0][3].retrievalMode, "adaptive");
+  assert.equal(requests[0][3].evidenceCharacterLimit, 24000);
   assert.equal(requests[1][4], "session-1");
   assert.deepEqual(JSON.parse(JSON.stringify(requests[1][1])), [
     { role: "user", content: "<img src=x onerror=alert(1)>" },
@@ -172,6 +179,7 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
     scope: { source_type: "discord", conversation_id: "20" },
     chat_provider_id: "openai", chat_model: "chat",
     reasoning_effort: "high",
+    retrieval_mode: "deterministic",
   });
   assert.equal(fetchCalls[2][1].method, "DELETE");
   assert.deepEqual(JSON.parse(JSON.stringify(indexingEvents)), [{ status: "running" }]);

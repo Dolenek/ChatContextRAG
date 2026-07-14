@@ -222,11 +222,15 @@ rail and the chosen desktop mode is restored on the next start. Below 700 px the
 expanded rail overlays the workspace and begins compact without changing that
 saved preference. Embedded Discord also uses the compact rail temporarily.
 **New chat** always opens a blank conversation while retaining the currently
-selected source and model. In expanded mode, **Recent** lists the ten most
+selected source, model, and model-appropriate default retrieval mode. Adaptive
+chat requests have a 120-second backend deadline and a 130-second Electron/web
+gateway timeout; ordinary API requests keep the shared 30-second timeout. In
+expanded mode, **Recent** lists the ten most
 recently active backend-stored chats directly between **Database** and
 **Settings**. The list is hidden in icon-only mode. Selecting a row restores its
-messages, grounding sources, source scope, and model without changing the global
-model default. Its context menu supports rename and permanent deletion. Deleting
+messages, grounding sources, source scope, model, retrieval mode, and evidence
+limit without changing the global model default. Its context menu supports
+rename and permanent deletion. Deleting
 the currently open chat starts a new blank conversation.
 
 The rail switches between chat and database detail. **Settings** opens a modal over
@@ -332,11 +336,11 @@ The next successful response creates a persisted session named from the
 normalized first question (up to 80 characters). Later turns append to it.
 User-renamed titles accept up to 120 characters and are not regenerated.
 
-Changing the chat scope, provider, model, or its configured reasoning effort
-resets visible history. Chat is
+Changing the chat scope, provider, model, retrieval mode, reasoning effort,
+archive-tool support, or evidence limit resets visible history. Chat is
 disabled when the active embedding index or either required provider is
-unavailable. Restored chats keep their original source, model, and reasoning
-effort. If the source or model no
+unavailable. Restored chats keep their original source, model, reasoning effort,
+retrieval mode, and evidence limit. If the source or model no
 longer exists, the old messages and grounding remain readable, but the composer
 explains why it is read-only instead of silently switching context. Clearing the
 RAG database preserves chat history; chats whose source was cleared become

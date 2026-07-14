@@ -48,7 +48,10 @@ async function submitChatQuestion(event) {
 
 async function requestAnswer(question, requestHistory, userEntry, thinkingEntry) {
   const scope = window.chatScopeSelector.getSelectedScope();
-  const chatSelection = window.modelSelector.getChatSelection();
+  const chatSelection = {
+    ...window.modelSelector.getChatSelection(),
+    ...window.retrievalModeSelector.getSelection(),
+  };
   const response = await window.chatContext.askDatabase(
     question, requestHistory, scope, chatSelection, activeSessionId,
   );
@@ -79,6 +82,7 @@ function resetConversation(scopeLabel = currentScopeLabel()) {
 }
 
 function startNewChat() {
+  window.modelSelector.releaseSessionSelection();
   window.shellController.showScreen("chat");
   window.shellController.closeDrawer();
   resetConversation();
@@ -107,6 +111,9 @@ function applyRestoredSession(session) {
   const modelAvailable = window.modelSelector.restoreSelection(
     session.chat_provider_id, session.chat_model, session.reasoning_effort,
   );
+  const retrievalAvailable = window.retrievalModeSelector.restore(
+    session.retrieval_mode, session.evidence_character_limit,
+  );
   conversationHistory.splice(
     0, conversationHistory.length,
     ...session.messages.map(({ role, content }) => ({ role, content })),
@@ -114,7 +121,9 @@ function applyRestoredSession(session) {
   renderRestoredMessages(session.messages);
   activeSessionId = session.session_id;
   window.chatHistoryUi.setActiveSession(activeSessionId);
-  setReadOnly(restoredSessionBlockReason(sourceAvailable, modelAvailable));
+  setReadOnly(restoredSessionBlockReason(
+    sourceAvailable, modelAvailable, retrievalAvailable,
+  ));
 }
 
 function renderRestoredMessages(messages) {
@@ -122,10 +131,11 @@ function renderRestoredMessages(messages) {
   window.contextPanel.clear();
 }
 
-function restoredSessionBlockReason(sourceAvailable, modelAvailable) {
+function restoredSessionBlockReason(sourceAvailable, modelAvailable, retrievalAvailable) {
   const missing = [];
   if (!sourceAvailable) missing.push("původní zdroj");
   if (!modelAvailable) missing.push("původní model");
+  if (!retrievalAvailable) missing.push("původní adaptivní režim");
   if (!missing.length) return "";
   return `Původní kontext už není dostupný (${missing.join(" a ")}). `
     + "Chat zůstává jen pro čtení; "

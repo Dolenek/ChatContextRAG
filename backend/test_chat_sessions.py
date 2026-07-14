@@ -73,6 +73,23 @@ def test_continuation_with_unknown_id_returns_not_found() -> None:
         repository.save_turn(request, _response())
 
 
+def test_continuation_rejects_a_different_adaptive_evidence_limit() -> None:
+    connection = ScriptedConnection(existing=True, retrieval_mode="adaptive", limit=24000)
+    repository = PostgresChatSessionRepository(lambda: None, lambda: connection)
+    request = ChatRequest(
+        question="Continue", session_id="session-1",
+        scope=ChatScope(source_type="discord", conversation_id="general"),
+        reasoning_effort="medium", retrieval_mode="adaptive",
+        evidence_character_limit=48000,
+    )
+    response = _response().model_copy(update={
+        "retrieval_mode": "adaptive", "evidence_character_limit": 48000,
+    })
+
+    with pytest.raises(ValueError, match="retrieval configuration"):
+        repository.save_turn(request, response)
+
+
 def _response(reasoning_effort="medium"):
     return ChatResponse(
         answer="V pátek.", chat_provider_id="openai", chat_model="chat-model",
@@ -118,7 +135,7 @@ class ScriptedBatchCursor:
 
 
 class ScriptedConnection:
-    def __init__(self, existing=False):
+    def __init__(self, existing=False, retrieval_mode="deterministic", limit=None):
         self.existing = existing
         self.message_rows = []
         self.context_entries = 0
@@ -126,7 +143,8 @@ class ScriptedConnection:
         self.timestamp = datetime(2026, 7, 14, tzinfo=timezone.utc)
         self.session_row = (
             "session-1", "Původní název", "discord", "general",
-            "openai", "chat-model", "medium", self.timestamp, self.timestamp,
+            "openai", "chat-model", "medium", retrieval_mode, limit,
+            self.timestamp, self.timestamp,
         ) if existing else None
 
     def __enter__(self):
@@ -143,7 +161,7 @@ class ScriptedConnection:
         if normalized.startswith("INSERT INTO chat_sessions"):
             self.session_row = (
                 parameters[0], parameters[1], parameters[2], parameters[3],
-                parameters[4], parameters[5], parameters[6],
+                parameters[4], parameters[5], parameters[6], parameters[7], parameters[8],
                 self.timestamp, self.timestamp,
             )
             return ScriptedCursor(self.session_row)

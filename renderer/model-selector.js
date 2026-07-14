@@ -6,7 +6,10 @@ window.modelSelector = (() => {
   const modelList = document.querySelector("#model-list");
   let settingsState = null;
   let activeProviderId = null;
-  let selection = { providerId: "openai", model: "", reasoningEffort: null };
+  let selection = {
+    providerId: "openai", model: "", reasoningEffort: null,
+    supportsArchiveTools: false, evidenceCharacterLimit: 24000,
+  };
   let preserveSessionSelection = false;
   let showToast = () => {};
   let resetConversation = () => {};
@@ -55,8 +58,10 @@ window.modelSelector = (() => {
       : {
         providerId: defaults.chatProviderId || "openai",
         model: defaults.chatModel || "", reasoningEffort: null,
+        supportsArchiveTools: false, evidenceCharacterLimit: 24000,
       };
     activeProviderId = selection.providerId;
+    window.retrievalModeSelector.applyModel(selection);
     render();
   }
 
@@ -65,12 +70,16 @@ window.modelSelector = (() => {
   }
 
   function restoreSelection(providerId, model, reasoningEffort = null) {
-    selection = {
+    const configuredModel = findModel(providerId, model);
+    selection = configuredModel ? selectionFromModel(configuredModel) : {
       providerId: providerId || "", model: model || "",
       reasoningEffort: reasoningEffort || null,
+      supportsArchiveTools: false, evidenceCharacterLimit: 24000,
     };
+    selection.reasoningEffort = reasoningEffort || null;
     preserveSessionSelection = true;
     activeProviderId = selection.providerId;
+    window.retrievalModeSelector.applyModel(selection);
     render();
     return Boolean(findModel(selection.providerId, selection.model))
       && providerAvailable(selection.providerId);
@@ -78,6 +87,7 @@ window.modelSelector = (() => {
 
   function releaseSessionSelection() {
     preserveSessionSelection = false;
+    window.retrievalModeSelector.release();
   }
 
   function toggleMenu(event) {
@@ -190,6 +200,7 @@ window.modelSelector = (() => {
     const previousPreserveSessionSelection = preserveSessionSelection;
     selection = selectionFromModel(model);
     preserveSessionSelection = false;
+    window.retrievalModeSelector.applyModel(selection);
     render();
     closeMenu();
     try {
@@ -231,6 +242,8 @@ window.modelSelector = (() => {
     return {
       providerId: model.provider_id, model: model.model,
       reasoningEffort: model.reasoning_effort || null,
+      supportsArchiveTools: Boolean(model.supports_archive_tools),
+      evidenceCharacterLimit: model.evidence_character_limit || 24000,
     };
   }
 

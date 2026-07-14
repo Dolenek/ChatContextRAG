@@ -221,97 +221,12 @@ rebuilt and atomically replaces the old chunks.
 
 ## Retrieval and sources
 
-Chat accepts an optional scope containing `source_type` and `conversation_id`.
-With no scope, retrieval searches all indexed sources. Both HNSW vector
-candidates and PostgreSQL full-text candidates apply the same source-neutral
-filter.
-
-Full-text hits expand to neighboring raw messages only within the same source and
-conversation. Expansion is capped at 12 messages and stops at a 20-minute gap.
-Vector candidates are restricted to the globally active embedding index and use
-that index's exact provider, model, and dimension. Vector and full-text results
-are combined with reciprocal-rank fusion and a small
-recency multiplier. The best diverse contexts are sent through the chat provider
-selected for the current conversation. Both Responses and OpenAI-compatible Chat
-Completions preserve the same grounding instructions and source identity.
-
-Hybrid retrieval exposes its exact reciprocal-rank-fusion score as raw `rrf`
-evidence; production values are normally around `0.01` to `0.04`. The pure
-vector fallback exposes its cosine similarity as raw `cosine` evidence. For UI
-comparison, the projector also computes `match_score` as each non-negative raw
-score divided by the highest positive raw score in that answer. The strongest
-source is therefore `1.00`, non-positive scores become `0.00`, and the raw value
-remains unchanged in `similarity_score`. Legacy sources whose score type cannot
-be established use `unknown`.
-
-The model continues to receive ranked RAG chunks. After generation, the injected
-`SourceContextProjector` resolves each chunk's `source_message_ids` through the
-raw-message repository and produces the UI grounding contract. It preserves
-chunk relevance order and source order within each chunk, removes duplicate raw
-messages, and assigns a duplicate the highest similarity score it received.
-Each message also retains the complete retrieved chunk that supplied it. A
-duplicate takes the chunk with the highest raw score; equal scores preserve the
-earlier retrieval result.
-Each projected `ChatSource` represents one original message and contains exactly
-one source-message ID. If a referenced raw message is unavailable, the projector
-retains the chunk representation as a safe fallback instead of dropping the
-grounding evidence.
-
-The same projection runs when a persisted session is restored. Legacy sessions
-that stored chunk-shaped sources therefore display original messages whenever
-the raw archive still contains them. New assistant entries persist every unique
-projected message and its exact retrieved chunk in the existing JSONB source
-payload. For an older one-message source without stored chunk context, the raw
-repository resolves all missing message chunks in one query against the active
-index and marks them `reconstructed`. Missing raw messages still fall back to
-their stored chunk representation; missing reconstructed chunks simply omit the
-chunk control. Retrieval and LLM prompting remain chunk-based.
-
-Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
-metadata live below Electron `userData`; only the main process decrypts them.
-Electron synchronizes the runtime registry through a token-protected loopback
-endpoint. Backend and preload responses expose only redacted availability flags.
-The provider store may also hold a key-only override for the built-in OpenAI
-provider. Its fixed ID, URL, and Responses protocol cannot be replaced; the
-runtime registry applies only the decrypted key and otherwise falls back to the
-environment key. The same provider credential is used by chat and embedding
-clients selected for that provider.
-Custom OpenAI-compatible providers may omit the key for trusted local endpoints;
-the backend uses a non-secret SDK placeholder while sending requests only to the
-configured base URL. The Electron store also keeps the user-managed provider,
-model ID, and display label used to populate the composer selector. These model
-records contain no credentials.
-
-For a web workspace, the gateway owns the equivalent provider profiles, chat
-defaults, and managed model records. AES-256-GCM ciphertext is stored in the
-server-state volume and decrypted only long enough to synchronize the internal
-runtime registry. The browser, FastAPI responses, PostgreSQL, and logs receive
-only redacted provider views. Losing `CHAT_CONTEXT_SERVER_KEY` makes these
-encrypted credentials unrecoverable.
-Until Electron has persisted an explicit chat selection, the renderer uses the
-built-in provider and `OPENAI_CHAT_MODEL` reported by the backend. Database
-bootstrap likewise seeds the initial embedding index from
-`OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS`; conflict-safe inserts
-preserve an existing active index and any saved user choice.
-
-`POST /chat` returns one source entry per original message with `source_type`,
-`conversation_id`, one source message ID, raw `similarity_score`, normalized
-`match_score`, `score_kind`, and an optional chunk object. A chunk carries its
-ID, full text, source-message IDs, and `retrieved` or `reconstructed` origin.
-The renderer groups selectable scopes into Discord channels, WhatsApp
-conversations, and any future connector types. The public renderer, web bridge,
-preload boundary, and IPC surface expose no source-message Discord deep link.
-
-Successful chat turns are persisted through the injected `ChatSessionRepository`.
-`chat_sessions` owns the normalized first-question title, original source scope,
-provider/model/reasoning-effort identity, and activity timestamps. Ordered user and assistant
-entries live in `chat_session_messages`; assistant entries retain their grounding
-source payload, and session reads expose each entry's existing `created_at`
-timestamp. A new session and its first two messages, or both messages in a
-continuation, are inserted as one cursor batch and committed in one PostgreSQL
-transaction. Continuing with a different source, model, or reasoning effort is
-rejected. Renaming marks the title as user-managed,
-so it is never replaced by automatic title generation.
+Chat supports the backward-compatible deterministic RAG path and a bounded
+adaptive path that exposes scoped, read-only archive tools to capable models.
+Both paths resolve model-visible evidence to original messages and preserve it in
+the chat-session source payload. The complete retrieval flow, security boundary,
+provider protocols, evidence limits, API fields, and persistence contract are
+documented in [Chat retrieval and archive tools](chat-retrieval.md).
 
 ## Renderer shell
 
@@ -342,10 +257,11 @@ Electron Remote calls use its bearer token.
   progress UI identifies the imported channel or index-wide maintenance task.
 - `GET /chat/scopes` lists source conversations searchable through the active
   embedding index by joining normalized chunk links to canonical raw messages.
-- `POST /chat` performs source-scoped hybrid RAG with the active embedding index
-  and optional per-conversation chat provider/model/reasoning effort. An optional `session_id`
-  appends the completed turn to a matching persisted session; responses include
-  its ID and title.
+- `POST /chat` performs source-scoped deterministic or adaptive RAG with the
+  active embedding index and optional provider, model, reasoning effort, mode,
+  evidence limit, and `session_id`. Completed turns append only to a session
+  with the same fixed context; responses include its ID, title, effective mode,
+  and evidence limit.
 - `GET /chat/sessions?limit=N` lists recent session summaries; the renderer loads
   20 and initially shows six.
 - `GET /chat/sessions/{id}` returns original context, ordered messages, and

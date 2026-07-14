@@ -182,6 +182,8 @@ def chat_session_schema_statements() -> List[str]:
             id TEXT PRIMARY KEY,title TEXT NOT NULL,source_type TEXT,
             conversation_id TEXT,chat_provider_id TEXT,chat_model TEXT,
             reasoning_effort TEXT,
+            retrieval_mode TEXT NOT NULL DEFAULT 'deterministic',
+            evidence_character_limit INTEGER,
             title_manually_edited BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""",
@@ -192,6 +194,10 @@ def chat_session_schema_statements() -> List[str]:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY(session_id,position))""",
         """ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_effort TEXT""",
+        """ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS retrieval_mode TEXT
+            NOT NULL DEFAULT 'deterministic'""",
+        """ALTER TABLE chat_sessions
+            ADD COLUMN IF NOT EXISTS evidence_character_limit INTEGER""",
         """CREATE INDEX IF NOT EXISTS chat_sessions_recent
             ON chat_sessions(updated_at DESC,id)""",
     ]

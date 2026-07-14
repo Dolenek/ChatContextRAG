@@ -52,8 +52,8 @@ async function createWindow() {
   await mainWindow.loadFile(path.join(projectRoot, "renderer", "index.html"));
 }
 
-function postJson(endpoint, body) {
-  return backendClient.post(endpoint, body);
+function postJson(endpoint, body, options = {}) {
+  return backendClient.post(endpoint, body, options);
 }
 
 function getJson(endpoint) {
@@ -87,7 +87,9 @@ function registerIpcHandlers() {
 }
 
 function registerDatabaseHandlers() {
-  ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
+  ipcMain.handle("database:ask", (_event, request) => postJson(
+    "/chat", request, chatRequestOptions(request),
+  ));
   ipcMain.handle("database:chat-scopes", () => getJson("/chat/scopes"));
   ipcMain.handle("chat-sessions:list", (_event, limit) =>
     getJson(`/chat/sessions?limit=${encodeURIComponent(limit)}`));
@@ -121,6 +123,10 @@ function registerDatabaseHandlers() {
     monitorIndexingJob(job.job_id);
     return job;
   });
+}
+
+function chatRequestOptions(request) {
+  return request.retrieval_mode === "adaptive" ? { timeoutMs: 130_000 } : {};
 }
 
 async function captureDiscordMessages() {

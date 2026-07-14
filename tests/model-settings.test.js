@@ -61,10 +61,12 @@ test("managed chat models persist without exposing provider secrets", () => {
     {
       provider_id: "openai", model: "gpt-test", label: "Testovací model",
       reasoning_effort: "high", managed: true,
+      supports_archive_tools: true, evidence_character_limit: 24000,
     },
     {
       provider_id: "openai", model: "environment-model", label: "environment-model",
       reasoning_effort: null, managed: false,
+      supports_archive_tools: true, evidence_character_limit: 24000,
     },
   ]);
   store.deleteChatModel("openai", "gpt-test");
@@ -98,6 +100,7 @@ test("chat model edits replace their original identity and preserve an active de
   assert.deepEqual(store.listChatModels(), [{
     provider_id: "openai", model: "new-model", label: "Renamed",
     reasoning_effort: "medium", managed: true,
+    supports_archive_tools: true, evidence_character_limit: 24000,
   }]);
   assert.deepEqual(store.getDefaults(), {
     chatProviderId: "openai", chatModel: "new-model",
@@ -133,6 +136,7 @@ test("chat model edit action fills and submits the form with its original identi
   assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
     providerId: "openai", model: "gpt-new", label: "Old",
     reasoningEffort: "medium", originalProviderId: "openai", originalModel: "gpt-old",
+    supportsArchiveTools: true, evidenceCharacterLimit: 24000,
   });
   assert.equal(fixture.released(), true);
   assert.deepEqual(resets, ["upraveným modelem"]);
@@ -150,6 +154,7 @@ test("environment fallback model can be promoted while its identity stays locked
 
   assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
     providerId: "openai", model: "gpt-old", label: "Old", reasoningEffort: "medium",
+    supportsArchiveTools: true, evidenceCharacterLimit: 24000,
   });
   assert.equal(elements.provider.disabled, false);
   assert.equal(elements.modelId.disabled, false);
@@ -316,7 +321,8 @@ function createChatModelEditFixture(managed = true) {
     providers: [{ provider_id: "openai", name: "OpenAI" }],
     chatModels: [{
       provider_id: "openai", model: "gpt-old", label: "Old",
-      reasoning_effort: "high", managed,
+      reasoning_effort: "high", managed, supports_archive_tools: true,
+      evidence_character_limit: 24000,
     }],
   });
   return { context, elements, saved, resets, released: () => released };
@@ -327,12 +333,17 @@ function chatModelEditElements() {
     form: fakeUiElement("form"), provider: fakeUiElement("select"),
     modelId: fakeUiElement("input"), label: fakeUiElement("input"),
     effort: fakeUiElement("select"), saveButton: fakeUiElement("button"),
+    archiveTools: fakeUiElement("input"), evidenceLimit: fakeUiElement("input"),
     cancelButton: fakeUiElement("button"), modelList: fakeUiElement("div"),
   };
+  elements.archiveTools.checked = true;
+  elements.evidenceLimit.value = "24000";
   elements.bySelector = new Map([
     ["#chat-model-form", elements.form], ["#chat-model-provider-select", elements.provider],
     ["#chat-model-input", elements.modelId], ["#chat-model-label", elements.label],
     ["#chat-model-reasoning-effort", elements.effort],
+    ["#chat-model-archive-tools", elements.archiveTools],
+    ["#chat-model-evidence-limit", elements.evidenceLimit],
     ["#save-chat-model-button", elements.saveButton],
     ["#cancel-chat-model-edit", elements.cancelButton],
     ["#chat-model-list", elements.modelList],
@@ -354,6 +365,7 @@ function chatModelEditContext(elements, saved, releaseSelection) {
       modelSelector: {
         getChatSelection: () => ({
           providerId: "openai", model: "gpt-old", reasoningEffort: "high",
+          supportsArchiveTools: true, evidenceCharacterLimit: 24000,
         }),
         releaseSessionSelection: releaseSelection,
       },

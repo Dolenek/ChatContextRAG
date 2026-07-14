@@ -43,9 +43,18 @@ function createSourceHeading(source, index) {
 function createSourceFooter(source, chunk, onLayoutChange) {
   const footer = document.createElement("div");
   footer.className = "source-card-footer";
-  footer.append(createMatchScore(source));
+  footer.append(source.evidence_origin === "context"
+    ? createContextOrigin() : createMatchScore(source));
   if (chunk) footer.append(createChunkToggle(chunk, onLayoutChange));
   return footer;
+}
+
+function createContextOrigin() {
+  const origin = document.createElement("span");
+  origin.className = "source-match-score";
+  origin.textContent = "Okolní kontext";
+  origin.title = "Zpráva načtená jako okolí nalezeného výsledku; nemá vlastní skóre shody.";
+  return origin;
 }
 
 function createMatchScore(source) {

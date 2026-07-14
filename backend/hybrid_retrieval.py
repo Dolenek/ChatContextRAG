@@ -26,6 +26,7 @@ class PostgresHybridRetrieval:
             raise ValueError("HNSW halfvec dimensions must be between 1 and 4000.")
         try:
             with self._connect() as connection:
+                connection.execute("SET LOCAL statement_timeout='10s'")
                 vector_rows = connection.execute(
                     self._vector_search_sql(embedding_index_id, dimensions),
                     self._vector_parameters(query_embedding, scope),

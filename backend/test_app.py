@@ -72,6 +72,9 @@ class FakeIngestionService:
 
 
 class FakeChatService:
+    def __init__(self):
+        self.last_request = None
+
     def list_scopes(self):
         return ChatScopeList(scopes=[ChatScopeOption(
             source_type="discord", conversation_id="20", display_name="projekt",
@@ -79,6 +82,7 @@ class FakeChatService:
         )])
 
     def answer(self, request):
+        self.last_request = request
         return ChatResponse(
             answer="Termín je v pátek [1].",
             sources=[
@@ -86,7 +90,8 @@ class FakeChatService:
                     author="Ada", content="Termín je v pátek.", timestamp=None,
                     channel="projekt", similarity_score=0.92,
                 )
-            ],
+            ], retrieval_mode=request.retrieval_mode,
+            evidence_character_limit=request.evidence_character_limit,
         )
 
     def list_sessions(self, limit):
@@ -177,6 +182,23 @@ def test_chat_validates_reasoning_effort_values() -> None:
 
     assert valid.status_code == 200
     assert invalid.status_code == 422
+
+
+def test_chat_defaults_to_deterministic_and_resolves_adaptive_evidence_limit() -> None:
+    chat_service = FakeChatService()
+    client = TestClient(create_app(
+        FakeIngestionService(), chat_service, FakeOverviewService(),
+    ))
+
+    legacy = client.post("/chat", json={"question": "old request"})
+    adaptive = client.post("/chat", json={
+        "question": "new request", "retrieval_mode": "adaptive",
+    })
+
+    assert legacy.json()["retrieval_mode"] == "deterministic"
+    assert legacy.json()["evidence_character_limit"] is None
+    assert adaptive.json()["retrieval_mode"] == "adaptive"
+    assert adaptive.json()["evidence_character_limit"] == 24000
 
 
 def test_health_and_source_conversation_routes() -> None:

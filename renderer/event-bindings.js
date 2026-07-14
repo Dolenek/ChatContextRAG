@@ -64,6 +64,9 @@ window.modelSelector.bind({
   resetConversation: window.chatController.resetConversation,
   showToast: window.appUi.showToast,
 });
+window.retrievalModeSelector.bind({
+  resetConversation: window.chatController.resetConversation,
+});
 window.settingsUi.bind({
   prepareOpen: async () => {
     await window.appUi.closeDiscordView(false);

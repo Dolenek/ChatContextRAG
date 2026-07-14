@@ -10,6 +10,7 @@ window.chatModelSettingsUi = (() => {
     loadSuggestions = dependencies.loadSuggestions;
     resetConversation = dependencies.resetConversation || (() => {});
     showToast = dependencies.showToast;
+    ensureArchiveSettingsFields();
     document.querySelector("#chat-model-form").addEventListener("submit", saveModel);
     document.querySelector("#cancel-chat-model-edit").addEventListener("click", reset);
   }
@@ -27,7 +28,10 @@ window.chatModelSettingsUi = (() => {
     const reasoning = model.reasoning_effort || "výchozí dle modelu";
     const detail = `${providers.get(model.provider_id) || model.provider_id} · `
       + `${model.model} · reasoning ${reasoning}`;
-    const row = createSettingsRow(model.label || model.model, detail);
+    const retrieval = model.supports_archive_tools
+      ? `adaptive · ${model.evidence_character_limit || 24000} znaků`
+      : "deterministic";
+    const row = createSettingsRow(model.label || model.model, `${detail} · ${retrieval}`);
     row.append(actionButton("Upravit", () => edit(model)));
     if (model.managed) {
       row.append(actionButton("Smazat", () => remove(model), "danger-link"));
@@ -56,6 +60,10 @@ window.chatModelSettingsUi = (() => {
       model: document.querySelector("#chat-model-input").value,
       label: document.querySelector("#chat-model-label").value,
       reasoningEffort: document.querySelector("#chat-model-reasoning-effort").value,
+      supportsArchiveTools: document.querySelector("#chat-model-archive-tools").checked,
+      evidenceCharacterLimit: Number(
+        document.querySelector("#chat-model-evidence-limit").value,
+      ),
       ...(editingModel?.managed ? {
         originalProviderId: editingModel.provider_id,
         originalModel: editingModel.model,
@@ -70,7 +78,9 @@ window.chatModelSettingsUi = (() => {
       && active.model === editingModel.model;
     return editsActive && (active.providerId !== input.providerId
       || active.model !== input.model
-      || (active.reasoningEffort || "") !== input.reasoningEffort);
+      || (active.reasoningEffort || "") !== input.reasoningEffort
+      || active.supportsArchiveTools !== input.supportsArchiveTools
+      || active.evidenceCharacterLimit !== input.evidenceCharacterLimit);
   }
 
   async function edit(model) {
@@ -80,6 +90,10 @@ window.chatModelSettingsUi = (() => {
     document.querySelector("#chat-model-label").value = model.label || "";
     document.querySelector("#chat-model-reasoning-effort").value =
       model.reasoning_effort || "";
+    document.querySelector("#chat-model-archive-tools").checked =
+      Boolean(model.supports_archive_tools);
+    document.querySelector("#chat-model-evidence-limit").value =
+      model.evidence_character_limit || 24000;
     setIdentityFieldsLocked(!model.managed);
     updateFormMode();
     document.querySelector("#chat-model-input").focus();
@@ -97,6 +111,43 @@ window.chatModelSettingsUi = (() => {
   function setIdentityFieldsLocked(locked) {
     document.querySelector("#chat-model-provider-select").disabled = locked;
     document.querySelector("#chat-model-input").disabled = locked;
+  }
+
+  function ensureArchiveSettingsFields() {
+    if (document.querySelector("#chat-model-archive-tools")) return;
+    const actions = document.querySelector("#chat-model-form .settings-form-actions");
+    actions.before(
+      createFieldLabel("chat-model-archive-tools", "Archivní tools"),
+      createArchiveToolsCheckbox(),
+      createFieldLabel("chat-model-evidence-limit", "Limit evidence (znaky)"),
+      createEvidenceLimitInput(),
+    );
+  }
+
+  function createFieldLabel(controlId, text) {
+    const label = document.createElement("label");
+    label.htmlFor = controlId;
+    label.textContent = text;
+    return label;
+  }
+
+  function createArchiveToolsCheckbox() {
+    const input = document.createElement("input");
+    input.id = "chat-model-archive-tools";
+    input.type = "checkbox";
+    return input;
+  }
+
+  function createEvidenceLimitInput() {
+    const input = document.createElement("input");
+    input.id = "chat-model-evidence-limit";
+    input.type = "number";
+    input.min = "4000";
+    input.max = "48000";
+    input.step = "1000";
+    input.value = "24000";
+    input.required = true;
+    return input;
   }
 
   function updateFormMode() {

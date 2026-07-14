@@ -5,7 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from backend.chunking import ConversationAwareChunker
-from backend.models import ChatRequest, ChatScope, SourceMessageInput
+from backend.agent_protocol import AgentToolCall, AgentTurn
+from backend.models import ChatRequest, ChatScope, ChatSource, SourceMessageInput
 from backend.normalization import SourceMessageNormalizer
 from backend.services import DatabaseChatService, DatabaseOverviewService
 from backend.vector_models import NormalizedMessage, RetrievedChunk
@@ -129,6 +130,29 @@ def test_chat_service_resolves_the_active_index_and_selected_chat_model() -> Non
     assert response.reasoning_effort == "high"
 
 
+def test_chat_service_runs_adaptive_search_and_returns_effective_configuration() -> None:
+    hybrid = CapturingHybridRepository([_retrieved_chunk()])
+    embedding = FakeEmbeddingProvider()
+    chat = FakeAdaptiveChatProvider()
+    service = DatabaseChatService(
+        CapturingVectorRepository([]), embedding, chat, hybrid,
+        source_context_projector=FakeSourceProjector(),
+        archive_context_reader=object(),
+    )
+
+    response = service.answer(ChatRequest(
+        question="And when?", retrieval_mode="adaptive",
+        evidence_character_limit=4000,
+    ))
+
+    assert embedding.inputs == [["Ada release plan date"]]
+    assert hybrid.calls[0][0] == "Ada release plan date"
+    assert response.answer == "Friday [E1]"
+    assert response.retrieval_mode == "adaptive"
+    assert response.evidence_character_limit == 4000
+    assert response.sources[0].source_message_ids == ["123"]
+
+
 @pytest.mark.parametrize("active_index", [None, SimpleNamespace(status="building")])
 def test_chat_service_requires_a_ready_active_index(active_index) -> None:
     service = DatabaseChatService(
@@ -200,6 +224,36 @@ class FakeChatProvider:
         if reasoning_effort is not None:
             assert reasoning_effort == "high"
         return "grounded answer"
+
+
+class FakeAdaptiveChatProvider:
+    def create_agent_session(self, *_arguments):
+        return FakeAdaptiveSession()
+
+
+class FakeAdaptiveSession:
+    def __init__(self):
+        self.turn = 0
+
+    def next_turn(self, _tools, _choice, _outputs=()):
+        self.turn += 1
+        if self.turn == 1:
+            return AgentTurn("", [AgentToolCall(
+                "call-1", "search_archive", '{"query":"Ada release plan date"}',
+            )])
+        return AgentTurn("Friday [E1]", [])
+
+
+class FakeSourceProjector:
+    def project_chunks(self, chunks):
+        return [ChatSource(
+            author=chunk.authors[0], content=chunk.content,
+            timestamp=chunk.started_at, channel=chunk.channel,
+            similarity_score=chunk.similarity_score,
+            source_message_ids=chunk.source_message_ids,
+            channel_id=chunk.channel_id, guild_id=chunk.guild_id,
+            source_type=chunk.source_type, conversation_id=chunk.conversation_id,
+        ) for chunk in chunks]
 
 
 class CapturingVectorRepository:

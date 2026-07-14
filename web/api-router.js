@@ -75,7 +75,9 @@ class ApiRouter {
     const path = `${route}${url.search}`;
     const body = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
       ? await readJson(request) : undefined;
-    const result = await this.backend.request(request.method, path, body);
+    const options = route === "/chat" && body?.retrieval_mode === "adaptive"
+      ? { timeoutMs: 130_000 } : {};
+    const result = await this.backend.request(request.method, path, body, {}, options);
     this.monitorResult(request.method, route, result);
     return this.json(response, result);
   }

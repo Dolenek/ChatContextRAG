@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 from backend.openai_gateway import (
@@ -50,6 +51,25 @@ def test_embedding_dimensions_are_optional_for_compatible_providers() -> None:
     provider.embed_texts(["hello"])
 
     assert "dimensions" not in endpoint.calls[0]
+
+
+def test_adaptive_embedding_disables_retries_and_uses_remaining_deadline() -> None:
+    provider = OpenAIEmbeddingProvider("test-key", "native-model", None)
+    endpoint = FakeEmbeddingsEndpoint()
+    options = []
+    client = SimpleNamespace(embeddings=endpoint)
+
+    def with_options(**parameters):
+        options.append(parameters)
+        return client
+
+    client.with_options = with_options
+    provider.client = client
+
+    provider.embed_texts_before(["hello"], time.monotonic() + 10)
+
+    assert options[0]["max_retries"] == 0
+    assert 0 < options[0]["timeout"] <= 10
 
 
 def test_chat_completions_adapter_uses_system_context() -> None:

@@ -5,6 +5,9 @@ const path = require("node:path");
 const REASONING_EFFORTS = new Set([
   "none", "minimal", "low", "medium", "high", "xhigh", "max",
 ]);
+const DEFAULT_EVIDENCE_CHARACTER_LIMIT = 24000;
+const MIN_EVIDENCE_CHARACTER_LIMIT = 4000;
+const MAX_EVIDENCE_CHARACTER_LIMIT = 48000;
 
 class ProviderStore {
   constructor(userDataPath, safeStorage) {
@@ -77,6 +80,10 @@ class ProviderStore {
       provider_id: model.providerId, model: model.model,
       label: model.label || model.model,
       reasoning_effort: normalizeReasoningEffort(model.reasoningEffort), managed: true,
+      supports_archive_tools: normalizeArchiveTools(
+        model.supportsArchiveTools, model.providerId,
+      ),
+      evidence_character_limit: normalizeEvidenceLimit(model.evidenceCharacterLimit),
     }));
     const knownKeys = new Set(managedModels.map(modelKey));
     const fallbackEntries = fallbackModels
@@ -91,6 +98,10 @@ class ProviderStore {
         provider_id: model.providerId, model: model.model,
         label: model.label || model.model,
         reasoning_effort: normalizeReasoningEffort(model.reasoningEffort), managed: false,
+        supports_archive_tools: normalizeArchiveTools(
+          model.supportsArchiveTools, model.providerId,
+        ),
+        evidence_character_limit: normalizeEvidenceLimit(model.evidenceCharacterLimit),
       }));
     return [...managedModels, ...fallbackEntries];
   }
@@ -101,6 +112,10 @@ class ProviderStore {
     const model = requiredText(input.model, "Model", 200);
     const label = optionalText(input.label, 100) || model;
     const reasoningEffort = normalizeReasoningEffort(input.reasoningEffort);
+    const supportsArchiveTools = normalizeArchiveTools(
+      input.supportsArchiveTools, providerId,
+    );
+    const evidenceCharacterLimit = normalizeEvidenceLimit(input.evidenceCharacterLimit);
     const original = originalModelIdentity(input, providerId, model);
     const originalIndex = state.chatModels.findIndex(
       (entry) => entry.providerId === original.providerId && entry.model === original.model,
@@ -108,7 +123,10 @@ class ProviderStore {
     const targetIndex = state.chatModels.findIndex(
       (entry) => entry.providerId === providerId && entry.model === model,
     );
-    const savedModel = { providerId, model, label, reasoningEffort };
+    const savedModel = {
+      providerId, model, label, reasoningEffort,
+      supportsArchiveTools, evidenceCharacterLimit,
+    };
     if (original.edited && originalIndex < 0) {
       throw new Error("Původní chat model už neexistuje.");
     }
@@ -123,6 +141,8 @@ class ProviderStore {
     return {
       provider_id: providerId, model, label,
       reasoning_effort: reasoningEffort, managed: true,
+      supports_archive_tools: supportsArchiveTools,
+      evidence_character_limit: evidenceCharacterLimit,
     };
   }
 
@@ -218,6 +238,27 @@ function normalizeReasoningEffort(value) {
     throw new Error("Neplatná úroveň reasoning effort.");
   }
   return normalized || null;
+}
+
+function normalizeArchiveTools(value, providerId) {
+  if (value === undefined || value === null) return providerId === "openai";
+  if (typeof value !== "boolean") {
+    throw new Error("Podpora archivních tools musí být ano/ne.");
+  }
+  return value;
+}
+
+function normalizeEvidenceLimit(value) {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_EVIDENCE_CHARACTER_LIMIT;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)
+    || parsed < MIN_EVIDENCE_CHARACTER_LIMIT
+    || parsed > MAX_EVIDENCE_CHARACTER_LIMIT) {
+    throw new Error("Limit evidence musí být celé číslo od 4000 do 48000.");
+  }
+  return parsed;
 }
 
 function assertBuiltinIdentity(providerId, baseUrl, chatApi) {

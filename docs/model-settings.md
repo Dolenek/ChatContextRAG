@@ -25,7 +25,8 @@ are never overwritten during startup.
 
 Add the chat model IDs that should be selectable to the **Chat models** section.
 Managed rows can be reopened with **Edit** to change their provider, model ID,
-display name, or reasoning effort. Saving replaces the original row atomically;
+display name, reasoning effort, archive-tool support, or evidence character
+limit. Saving replaces the original row atomically;
 an edited active model remains the active default under its new identity.
 The environment fallback also exposes **Edit**. Its provider and model ID stay
 locked, while saving a display name or reasoning effort promotes it to a managed
@@ -41,6 +42,15 @@ list models. The selector at the bottom-right of the chat composer groups saved
 models by provider. The chat screen remembers the last selection, and changing
 it starts a fresh visible chat history. `OPENAI_CHAT_MODEL` remains available as
 an unmanaged fallback even when it has not been added manually.
+
+**Archive tools** declares that the model follows the adaptive function-calling
+contract. Existing built-in OpenAI model records default to enabled; existing
+custom-provider records default to disabled. New and migrated records use a
+24,000-character evidence limit, which may be set from 4,000 through 48,000.
+Models without archive-tool support expose deterministic retrieval only. A model
+marked as supported that returns an invalid tool protocol fails explicitly; the
+backend never falls back to deterministic retrieval. The full behavior is in
+[Chat retrieval and archive tools](chat-retrieval.md).
 
 **Settings > Embedding indexes** can keep multiple indexes over the same canonical raw
 messages. Creating an index makes one small embedding request to validate its

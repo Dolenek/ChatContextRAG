@@ -334,6 +334,7 @@ def _build_default_services() -> tuple:
             raw_repository.ensure_schema, raw_repository.open_connection,
         ),
         source_context_projector=SourceContextProjector(raw_repository),
+        archive_context_reader=raw_repository,
     )
     overview = DatabaseOverviewService(repository, raw_repository)
     settings_service = ApplicationSettingsService(

@@ -134,6 +134,9 @@
         chat_model: selection.model,
         ...(selection.reasoningEffort
           ? { reasoning_effort: selection.reasoningEffort } : {}),
+        retrieval_mode: selection.retrievalMode || "deterministic",
+        ...(selection.retrievalMode === "adaptive"
+          ? { evidence_character_limit: selection.evidenceCharacterLimit } : {}),
         ...(sessionId ? { session_id: sessionId } : {}),
       },
     }),
