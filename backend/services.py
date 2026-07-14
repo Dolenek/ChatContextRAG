@@ -2,7 +2,8 @@ from typing import List, Optional
 
 from backend.models import (
     ChannelResumePoint, ChatRequest, ChatResponse, ChatScope, ChatScopeList,
-    ChatSource, ChatSourceChunk, DatabaseOverview,
+    ChatSource, ChatSourceChunk, DatabaseBreakdowns, DatabaseChunkPage,
+    DatabaseOverview, DatabaseStatus,
     FinishIngestionRequest, ImportRequest, ImportResponse, IndexingJobView,
     IngestionSessionRequest, IngestionSessionView,
 )
@@ -277,6 +278,17 @@ class DatabaseOverviewService:
 
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
         return self.repository.get_overview(limit, offset)
+
+    def get_status(self) -> DatabaseStatus:
+        return self.repository.get_database_status()
+
+    def get_breakdowns(self) -> DatabaseBreakdowns:
+        return self.repository.get_database_breakdowns()
+
+    def get_chunk_page(
+        self, limit: int, cursor: Optional[str],
+    ) -> DatabaseChunkPage:
+        return self.repository.get_database_chunk_page(limit, cursor)
 
     def clear_database(self) -> tuple:
         deleted_chunks = self.repository.delete_all()

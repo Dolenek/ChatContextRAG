@@ -181,6 +181,35 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
   assert.deepEqual(redirects, []);
 });
 
+test("web runtime starts authenticated GET data while the CSRF session is loading", async () => {
+  const fetchCalls = [];
+  let resolveSession;
+  const sessionResponse = new Promise((resolve) => { resolveSession = resolve; });
+  const context = {
+    FormData,
+    EventSource: class {},
+    fetch: async (url) => {
+      fetchCalls.push(url);
+      if (url === "/api/auth/session") return sessionResponse;
+      return response(200, { total_chunks: 7 });
+    },
+    document: {
+      body: { classList: { add: () => {} } },
+      querySelector: () => null,
+    },
+    window: { location: { replace: () => {} } },
+  };
+  context.window.window = context.window;
+  vm.runInNewContext(read("renderer/runtime-bridge.js"), context);
+
+  const status = await context.window.chatContext.getDatabaseStatus();
+
+  assert.equal(status.total_chunks, 7);
+  assert.deepEqual(fetchCalls, ["/api/auth/session", "/api/database/status"]);
+  resolveSession(response(200, { csrf_token: "csrf" }));
+  await Promise.resolve();
+});
+
 test("failed answers remove thinking and mark the user message unsaved", async () => {
   const { context, events, questionInput } = createFailedChatFixture();
   vm.runInNewContext(read("renderer/chat-controller.js"), context);

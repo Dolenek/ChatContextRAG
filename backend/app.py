@@ -1,13 +1,14 @@
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, Query, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.chunking import ConversationAwareChunker
 from backend.models import (
     ChannelResumePoint, ChatRequest, ChatResponse, ChatScopeList, ClearDatabaseRequest,
-    ClearDatabaseResponse, DatabaseOverview, FinishIngestionRequest, HealthResponse,
+    ClearDatabaseResponse, DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview,
+    DatabaseStatus, FinishIngestionRequest, HealthResponse,
     ImportRequest, ImportResponse, IndexingJobView, IngestionSessionRequest,
     IngestionSessionView, IntegrationSyncState, SourceConversationView, WhatsAppImportPreview,
     WhatsAppImportResponse, ChatSessionDetail, ChatSessionRename, ChatSessionSummary,
@@ -250,6 +251,24 @@ def _register_database_routes(
         offset: int = Query(default=0, ge=0),
     ) -> DatabaseOverview:
         return overview_service.get_overview(limit, offset)
+
+    @application.get("/database/status", response_model=DatabaseStatus)
+    def database_status() -> DatabaseStatus:
+        return overview_service.get_status()
+
+    @application.get("/database/breakdowns", response_model=DatabaseBreakdowns)
+    def database_breakdowns() -> DatabaseBreakdowns:
+        return overview_service.get_breakdowns()
+
+    @application.get("/database/chunks", response_model=DatabaseChunkPage)
+    def database_chunks(
+        limit: int = Query(default=50, ge=1, le=200),
+        cursor: Optional[str] = Query(default=None, min_length=1, max_length=2000),
+    ) -> DatabaseChunkPage:
+        try:
+            return overview_service.get_chunk_page(limit, cursor)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @application.get("/database/resume-point", response_model=ChannelResumePoint)
     def database_resume_point(

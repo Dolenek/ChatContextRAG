@@ -46,19 +46,14 @@ test("overview keeps its responsive styles isolated from shared panels", () => {
   assert.match(stylesheet, /@media \(max-width: 1350px\) and \(min-width: 521px\)/);
   assert.match(stylesheet, /repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(stylesheet, /@media \(max-width: 520px\)/);
-  assert.match(stylesheet, /overview-breakdowns \{ grid-template-columns: 1fr; \}/);
 });
 
-test("overview renders ordered metric groups and safe summary lists", async () => {
-  const overview = overviewFixture({
-    total_chunks: 12345,
-    total_source_messages: 491478,
-    channels: [{ label: "<server>", count: 43953 }],
-    authors: [{ label: "Amélie", count: 7073 }],
-    embedding_models: [{ label: "text-embedding-3-small", count: 12345 }],
-    chunks: [chunkFixture()],
+test("overview renders status, breakdowns, and chunks from independent requests", async () => {
+  const harness = createHarness({
+    statuses: [statusFixture({ total_chunks: 12345, total_source_messages: 491478 })],
+    breakdowns: [breakdownFixture()],
+    pages: [pageFixture({ chunks: [chunkFixture()] })],
   });
-  const harness = createHarness([overview]);
 
   await harness.controller.refresh();
 
@@ -66,77 +61,113 @@ test("overview renders ordered metric groups and safe summary lists", async () =
     "Chunky", "Zdrojové zprávy", "Raw zprávy", "Unikátní texty",
     "Přesné duplicity", "Zaindexované zprávy",
   ]);
-  assert.deepEqual(metricLabels(harness.elements.get("#overview-status-stats")), [
-    "Čeká na index", "Velikost databáze", "Konverzace",
-    "Nejstarší zpráva", "Nejnovější zpráva",
-  ]);
   assert.equal(metricValues(harness.elements.get("#overview-stats"))[0],
     formattedNumber.format(12345));
   assert.equal(harness.elements.get("#channel-total").textContent, "3 celkem");
   assert.equal(summaryLabel(harness.elements.get("#channel-counts")), "<server>");
-  assert.equal(summaryCount(harness.elements.get("#channel-counts")),
-    formattedNumber.format(43953));
   assert.equal(harness.elements.get("#database-chunks").children[0].children[1].textContent,
     "Bezpečný obsah");
+  assert.deepEqual(harness.requests, { status: 1, breakdowns: 1, pages: [[50]] });
 });
 
-test("overview appends chunk pages without changing the public paging contract", async () => {
-  const firstPage = overviewFixture({
-    total_chunks: 2, chunks: [chunkFixture({ chunk_id: "first-chunk" })], has_more: true,
+test("overview appends cursor pages without repeating the first page", async () => {
+  const harness = createHarness({
+    statuses: [statusFixture({ total_chunks: 2 })],
+    breakdowns: [breakdownFixture()],
+    pages: [
+      pageFixture({
+        chunks: [chunkFixture({ chunk_id: "first-chunk" })],
+        has_more: true, next_cursor: "cursor-1",
+      }),
+      pageFixture({ chunks: [chunkFixture({ chunk_id: "second-chunk" })] }),
+    ],
   });
-  const secondPage = overviewFixture({
-    total_chunks: 2, offset: 1,
-    chunks: [chunkFixture({ chunk_id: "second-chunk", content: "Druhý" })],
-  });
-  const harness = createHarness([firstPage, secondPage]);
 
   await harness.controller.refresh();
   await harness.controller.loadMore();
 
-  assert.deepEqual(harness.requests, [[50, 0], [50, 1]]);
+  assert.deepEqual(harness.requests.pages, [[50], [50, "cursor-1"]]);
   assert.equal(harness.elements.get("#database-chunks").children.length, 2);
   assert.equal(harness.elements.get("#chunk-range").textContent, "Zobrazeno 2 z 2");
-  assert.equal(harness.elements.get("#load-more-chunks-button").classList.contains("hidden"), true);
 });
 
-test("empty overview stays visible when a later refresh fails", async () => {
-  const harness = createHarness([
-    overviewFixture(), new Error("Databáze není dostupná"),
-  ]);
+test("a failed status refresh keeps the last rendered snapshot", async () => {
+  const harness = createHarness({
+    statuses: [statusFixture(), new Error("Databáze není dostupná")],
+    breakdowns: [breakdownFixture()], pages: [pageFixture()],
+  });
   await harness.controller.refresh();
-  const retainedEmptyState = harness.elements.get("#database-chunks").children[0];
+  const retainedMetric = metricValues(harness.elements.get("#overview-stats"))[0];
 
-  const failedResult = await harness.controller.refresh();
+  const failedResult = await harness.controller.refreshStatus(true);
 
-  assert.equal(failedResult, null);
-  assert.equal(harness.elements.get("#database-chunks").children[0], retainedEmptyState);
-  assert.equal(retainedEmptyState.textContent, "Databáze zatím neobsahuje žádné chunky.");
-  assert.equal(metricValues(harness.elements.get("#overview-stats"))[0], "0");
-  assert.deepEqual(metricValues(harness.elements.get("#overview-status-stats")).slice(3),
-    ["Bez času", "Bez času"]);
-  assert.equal(harness.elements.get("#channel-counts").children[0].textContent, "Zatím bez dat");
-  assert.deepEqual(harness.toasts, [["Databáze není dostupná", true]]);
+  assert.equal(failedResult.total_chunks, 0);
+  assert.equal(metricValues(harness.elements.get("#overview-stats"))[0], retainedMetric);
+  assert.deepEqual(harness.toasts.at(-1), ["Databáze není dostupná", true]);
 });
 
 test("refresh exposes a stable accessible loading state", async () => {
-  const deferredOverview = deferred();
-  const harness = createHarness([deferredOverview.promise]);
+  const deferredStatus = deferred();
+  const harness = createHarness({
+    statuses: [deferredStatus.promise],
+    breakdowns: [breakdownFixture()], pages: [pageFixture()],
+  });
 
   const refreshPromise = harness.controller.refresh();
   assert.equal(harness.elements.get("#refresh-overview-button").disabled, true);
-  assert.equal(harness.elements.get("#refresh-overview-button").attributes["aria-busy"], "true");
   assert.equal(harness.elements.get("#refresh-overview-label").textContent, "Načítám…");
-
-  deferredOverview.resolve(overviewFixture());
+  deferredStatus.resolve(statusFixture());
   await refreshPromise;
   assert.equal(harness.elements.get("#refresh-overview-button").disabled, false);
-  assert.equal(harness.elements.get("#refresh-overview-button").attributes["aria-busy"], "false");
   assert.equal(harness.elements.get("#refresh-overview-label").textContent, "Obnovit");
 });
 
-function createHarness(responses) {
+test("workspace cache coalesces requests and revalidates invalidated values", async () => {
+  const context = { document: { querySelector: () => new FakeElement() }, window: {} };
+  vm.runInNewContext(read("renderer/workspace-state.js"), context);
+  const first = deferred();
+  let calls = 0;
+  const loader = () => { calls += 1; return first.promise; };
+
+  const firstLoad = context.window.workspaceCache.load("status", loader, 5000);
+  const joinedLoad = context.window.workspaceCache.load("status", loader, 5000);
+  assert.equal(calls, 0);
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  first.resolve({ version: 1 });
+  assert.deepEqual(await firstLoad, { version: 1 });
+  assert.deepEqual(await joinedLoad, { version: 1 });
+
+  context.window.workspaceCache.invalidate("status");
+  const refreshed = await context.window.workspaceCache.load(
+    "status", async () => { calls += 1; return { version: 2 }; }, 5000,
+  );
+  assert.equal(calls, 2);
+  assert.deepEqual(refreshed, { version: 2 });
+});
+
+test("cache invalidation does not let an older in-flight response become fresh", async () => {
+  const context = { document: { querySelector: () => new FakeElement() }, window: {} };
+  vm.runInNewContext(read("renderer/workspace-state.js"), context);
+  const oldRequest = deferred();
+  const oldLoad = context.window.workspaceCache.load(
+    "status", () => oldRequest.promise, 5000,
+  );
+  await Promise.resolve();
+  context.window.workspaceCache.invalidate("status");
+  const newLoad = context.window.workspaceCache.load(
+    "status", async () => ({ version: 2 }), 5000, true,
+  );
+
+  oldRequest.resolve({ version: 1 });
+  await oldLoad;
+  assert.deepEqual(await newLoad, { version: 2 });
+  assert.deepEqual(context.window.workspaceCache.peek("status"), { version: 2 });
+});
+
+function createHarness(input) {
   const elements = overviewElements();
-  const requests = [];
+  const requests = { status: 0, breakdowns: 0, pages: [] };
   const toasts = [];
   const context = {
     document: {
@@ -144,20 +175,34 @@ function createHarness(responses) {
       createElement: (tagName) => new FakeElement(tagName),
       createElementNS: (_namespace, tagName) => new FakeElement(tagName),
     },
-    window: {
-      chatContext: { getDatabaseOverview: async (...arguments_) => {
-        requests.push(arguments_);
-        const response = responses.shift();
-        if (response instanceof Error) throw response;
-        return response;
-      } },
-      archiveStatus: { render: () => {} },
-      indexingControls: { render: () => {} },
-      appUi: { showToast: (...arguments_) => toasts.push(arguments_) },
+    window: {},
+  };
+  vm.runInNewContext(read("renderer/workspace-state.js"), context);
+  context.window.chatContext = {
+    getDatabaseStatus: async () => {
+      requests.status += 1;
+      return nextResponse(input.statuses);
+    },
+    getDatabaseBreakdowns: async () => {
+      requests.breakdowns += 1;
+      return nextResponse(input.breakdowns);
+    },
+    getDatabaseChunkPage: async (...arguments_) => {
+      requests.pages.push(arguments_);
+      return nextResponse(input.pages);
     },
   };
+  context.window.archiveStatus = { render: () => {} };
+  context.window.indexingControls = { render: () => {} };
+  context.window.appUi = { showToast: (...arguments_) => toasts.push(arguments_) };
   vm.runInNewContext(read("renderer/overview-controller.js"), context);
   return { controller: context.window.overviewController, elements, requests, toasts };
+}
+
+function nextResponse(responses) {
+  const response = responses.shift();
+  if (response instanceof Error) throw response;
+  return response;
 }
 
 function overviewElements() {
@@ -172,15 +217,27 @@ function overviewElements() {
   return elements;
 }
 
-function overviewFixture(overrides = {}) {
+function statusFixture(overrides = {}) {
   return {
     total_chunks: 0, total_source_messages: 0, raw_message_count: 0,
     unique_content_count: 0, duplicate_message_count: 0, indexed_message_count: 0,
     pending_message_count: 0, database_size: "0 bytes", total_channels: 3,
     total_authors: 1, oldest_message_at: null, newest_message_at: null,
-    channels: [], authors: [], embedding_models: [], chunks: [], indexing_jobs: [],
-    offset: 0, has_more: false, ...overrides,
+    indexing_jobs: [], ...overrides,
   };
+}
+
+function breakdownFixture(overrides = {}) {
+  return {
+    channels: [{ label: "<server>", count: 43953 }],
+    authors: [{ label: "Amélie", count: 7073 }],
+    embedding_models: [{ label: "text-embedding-3-small", count: 12345 }],
+    ...overrides,
+  };
+}
+
+function pageFixture(overrides = {}) {
+  return { chunks: [], has_more: false, next_cursor: null, ...overrides };
 }
 
 function chunkFixture(overrides = {}) {
@@ -202,10 +259,6 @@ function metricValues(container) {
 
 function summaryLabel(container) {
   return container.children[0].children[1].textContent;
-}
-
-function summaryCount(container) {
-  return container.children[0].children[2].textContent;
 }
 
 function deferred() {

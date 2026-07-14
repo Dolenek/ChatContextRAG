@@ -21,8 +21,26 @@ window.modelSelector = (() => {
     });
   }
 
-  async function prepare(providedSettings = null) {
-    settingsState = providedSettings || await window.chatContext.getSettings();
+  async function prepare(providedSettings = null, force = false) {
+    if (providedSettings) {
+      window.workspaceCache.store("settings", providedSettings);
+      applySettings(providedSettings);
+      return;
+    }
+    const cached = window.workspaceCache.peek("settings");
+    if (cached) applySettings(cached);
+    const request = window.workspaceCache.load(
+      "settings", window.chatContext.getSettings, 60000, force,
+    );
+    if (cached && !force) {
+      void request.then(applySettings).catch((error) => showToast(error.message, true));
+      return;
+    }
+    applySettings(await request);
+  }
+
+  function applySettings(nextSettings) {
+    settingsState = nextSettings;
     if (preserveSessionSelection) {
       render();
       return;

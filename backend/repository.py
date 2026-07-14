@@ -1,6 +1,8 @@
 from typing import Iterable, List, Optional, Protocol, Sequence, Set
 
-from backend.models import ChatScope, DatabaseOverview
+from backend.models import (
+    ChatScope, DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
+)
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
 
@@ -15,6 +17,17 @@ class VectorRepository(Protocol):
         ...
 
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
+        ...
+
+    def get_database_status(self) -> DatabaseStatus:
+        ...
+
+    def get_database_breakdowns(self) -> DatabaseBreakdowns:
+        ...
+
+    def get_database_chunk_page(
+        self, limit: int, cursor: Optional[str],
+    ) -> DatabaseChunkPage:
         ...
 
     def delete_all(self) -> int:

@@ -24,9 +24,24 @@ window.chatHistoryUi = (() => {
     document.addEventListener("keydown", handleEscape);
   }
 
-  async function refresh() {
+  async function refresh(force = false) {
+    const cached = window.workspaceCache.peek("chat-sessions");
+    if (cached) {
+      summaries = cached;
+      render();
+    }
+    const request = window.workspaceCache.load(
+      "chat-sessions", () => window.chatContext.listChatSessions(20), 60000, force,
+    );
+    if (cached && !force) {
+      void request.then((sessions) => {
+        summaries = sessions;
+        render();
+      }).catch((error) => dependencies.showToast?.(error.message, true));
+      return;
+    }
     try {
-      summaries = await window.chatContext.listChatSessions(20);
+      summaries = await request;
       render();
     } catch (error) {
       dependencies.showToast?.(error.message, true);
@@ -151,7 +166,8 @@ window.chatHistoryUi = (() => {
     try {
       await window.chatContext.renameChatSession(pendingSession.session_id, title);
       closeDialogs();
-      await refresh();
+      window.workspaceCache.invalidate("chat-sessions");
+      await refresh(true);
     } catch (error) {
       dependencies.showToast?.(error.message, true);
     }
@@ -164,7 +180,8 @@ window.chatHistoryUi = (() => {
       await window.chatContext.deleteChatSession(deletedId);
       closeDialogs();
       if (deletedId === activeSessionId) dependencies.startNewChat();
-      await refresh();
+      window.workspaceCache.invalidate("chat-sessions");
+      await refresh(true);
     } catch (error) {
       dependencies.showToast?.(error.message, true);
     }
@@ -183,7 +200,8 @@ window.chatHistoryUi = (() => {
 
   async function responseSaved(response) {
     setActiveSession(response.chat_session_id || null);
-    await refresh();
+    window.workspaceCache.invalidate("chat-sessions");
+    await refresh(true);
   }
 
   function closeDialogs() {

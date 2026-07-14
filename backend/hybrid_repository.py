@@ -107,6 +107,8 @@ class PostgresHybridRepository:
             ON rag_chunk_messages(message_id);
             CREATE INDEX IF NOT EXISTS rag_chunk_messages_index_message
             ON rag_chunk_messages(embedding_index_id,message_id);
+            CREATE INDEX IF NOT EXISTS rag_chunks_overview_recent
+            ON rag_chunks(embedding_index_id,updated_at DESC,id DESC);
             CREATE INDEX IF NOT EXISTS rag_chunks_chat_scope
             ON rag_chunks (
               (COALESCE(metadata->>'source_type','discord')),

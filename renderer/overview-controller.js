@@ -1,5 +1,7 @@
 window.overviewController = (() => {
   const pageSize = 50;
+  const statusMaximumAgeMs = 5000;
+  const detailMaximumAgeMs = 30000;
   const numberFormatter = new Intl.NumberFormat("cs-CZ");
   const primaryMetrics = [
     metric("Chunky", "total_chunks", "icon-layers", "blue"),
@@ -16,53 +18,136 @@ window.overviewController = (() => {
     metric("Nejstarší zpráva", "oldest_message_at", "icon-calendar", "green", "date"),
     metric("Nejnovější zpráva", "newest_message_at", "icon-calendar", "teal", "date"),
   ];
-  let offset = 0;
-  let latestOverview = null;
+  let latestStatus = null;
+  let latestBreakdowns = null;
+  let nextCursor = null;
+  let displayedChunkCount = 0;
 
   function metric(label, key, icon, tone, format = "number") {
     return { label, key, icon, tone, format };
   }
 
-  function refresh() {
-    return load(false, 0);
-  }
-
-  function loadMore() {
-    return load(true, offset);
-  }
-
-  async function load(append, requestOffset) {
+  async function open() {
+    renderCachedDatabase();
     setBusy(true);
     try {
-      const overview = await window.chatContext.getDatabaseOverview(pageSize, requestOffset);
-      latestOverview = overview;
-      renderOverview(overview, append);
-      offset = requestOffset + overview.chunks.length;
-      return overview;
-    } catch (error) {
-      window.appUi?.showToast(error.message, true);
-      return null;
+      await Promise.all([refreshStatus(), loadBreakdowns(), loadFirstChunkPage()]);
     } finally {
       setBusy(false);
     }
   }
 
-  function renderOverview(overview, append) {
-    window.archiveStatus.render(overview);
-    window.indexingControls.render(
-      overview.indexing_jobs || [], overview.pending_message_count || 0,
-    );
-    renderMetricGroup("#overview-stats", primaryMetrics, overview, "primary");
-    renderMetricGroup("#overview-status-stats", statusMetrics, overview, "status");
-    renderSummaryPanels(overview);
-    renderChunks(overview, append);
+  async function refresh() {
+    setBusy(true);
+    try {
+      await Promise.all([
+        refreshStatus(true), loadBreakdowns(true), loadFirstChunkPage(true),
+      ]);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function renderMetricGroup(selector, definitions, overview, variant) {
-    const cards = definitions.map((definition) => {
-      const value = formatMetricValue(definition, overview[definition.key]);
-      return createMetricCard(definition, value, variant);
-    });
+  async function refreshStatus(force = false) {
+    const cached = window.workspaceCache.peek("database-status");
+    if (cached) renderStatus(cached);
+    try {
+      const status = await window.workspaceCache.load(
+        "database-status", window.chatContext.getDatabaseStatus,
+        statusMaximumAgeMs, force,
+      );
+      renderStatus(status);
+      return status;
+    } catch (error) {
+      showLoadError(error);
+      return cached || null;
+    }
+  }
+
+  async function loadBreakdowns(force = false) {
+    const cached = window.workspaceCache.peek("database-breakdowns");
+    if (cached) renderBreakdowns(cached);
+    try {
+      const breakdowns = await window.workspaceCache.load(
+        "database-breakdowns", window.chatContext.getDatabaseBreakdowns,
+        detailMaximumAgeMs, force,
+      );
+      renderBreakdowns(breakdowns);
+      return breakdowns;
+    } catch (error) {
+      showLoadError(error);
+      if (!cached) renderBreakdownError();
+      return cached || null;
+    }
+  }
+
+  async function loadFirstChunkPage(force = false) {
+    const cached = window.workspaceCache.peek("database-chunks:first");
+    if (cached) renderChunkPage(cached, false);
+    try {
+      const page = await window.workspaceCache.load(
+        "database-chunks:first",
+        () => window.chatContext.getDatabaseChunkPage(pageSize),
+        detailMaximumAgeMs, force,
+      );
+      renderChunkPage(page, false);
+      return page;
+    } catch (error) {
+      showLoadError(error);
+      if (!cached) renderChunkError();
+      return cached || null;
+    }
+  }
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setBusy(true);
+    try {
+      const page = await window.chatContext.getDatabaseChunkPage(pageSize, nextCursor);
+      renderChunkPage(page, true);
+    } catch (error) {
+      showLoadError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function renderCachedDatabase() {
+    const status = window.workspaceCache.peek("database-status");
+    const breakdowns = window.workspaceCache.peek("database-breakdowns");
+    const chunks = window.workspaceCache.peek("database-chunks:first");
+    if (status) renderStatus(status);
+    if (breakdowns) renderBreakdowns(breakdowns);
+    else renderBreakdownLoading();
+    if (chunks) renderChunkPage(chunks, false);
+    else renderChunkLoading();
+  }
+
+  function renderStatus(status) {
+    latestStatus = status;
+    window.archiveStatus.render(status);
+    window.indexingControls.render(
+      status.indexing_jobs || [], status.pending_message_count || 0,
+    );
+    renderMetricGroup("#overview-stats", primaryMetrics, status, "primary");
+    renderMetricGroup("#overview-status-stats", statusMetrics, status, "status");
+    renderTotal("#channel-total", status.total_channels);
+    renderTotal("#author-total", status.total_authors);
+    updateChunkRange();
+  }
+
+  function renderBreakdowns(breakdowns) {
+    latestBreakdowns = breakdowns;
+    renderCountList("#channel-counts", breakdowns.channels);
+    renderCountList("#author-counts", breakdowns.authors);
+    renderCountList("#model-counts", breakdowns.embedding_models);
+    renderTotal("#model-total", (breakdowns.embedding_models || []).length);
+  }
+
+  function renderMetricGroup(selector, definitions, status, variant) {
+    const cards = definitions.map((definition) => createMetricCard(
+      definition, formatMetricValue(definition, status[definition.key]), variant,
+    ));
     document.querySelector(selector).replaceChildren(...cards);
   }
 
@@ -93,15 +178,6 @@ window.overviewController = (() => {
     return wrapper;
   }
 
-  function renderSummaryPanels(overview) {
-    renderTotal("#channel-total", overview.total_channels);
-    renderTotal("#author-total", overview.total_authors);
-    renderTotal("#model-total", (overview.embedding_models || []).length);
-    renderCountList("#channel-counts", overview.channels);
-    renderCountList("#author-counts", overview.authors);
-    renderCountList("#model-counts", overview.embedding_models);
-  }
-
   function renderTotal(selector, value) {
     document.querySelector(selector).textContent = `${formatNumber(value)} celkem`;
   }
@@ -128,18 +204,19 @@ window.overviewController = (() => {
     return row;
   }
 
-  function renderChunks(overview, append) {
-    const chunkCards = (overview.chunks || []).map(createDatabaseChunkCard);
-    if (!append && !chunkCards.length) {
-      chunkCards.push(createEmptyState("Databáze zatím neobsahuje žádné chunky."));
+  function renderChunkPage(page, append) {
+    const cards = (page.chunks || []).map(createDatabaseChunkCard);
+    if (!append && !cards.length) {
+      cards.push(createEmptyState("Databáze zatím neobsahuje žádné chunky."));
     }
     const chunkList = document.querySelector("#database-chunks");
-    append ? chunkList.append(...chunkCards) : chunkList.replaceChildren(...chunkCards);
-    const displayed = Number(overview.offset || 0) + (overview.chunks || []).length;
-    document.querySelector("#chunk-range").textContent =
-      `Zobrazeno ${formatNumber(displayed)} z ${formatNumber(overview.total_chunks)}`;
+    append ? chunkList.append(...cards) : chunkList.replaceChildren(...cards);
+    displayedChunkCount = append
+      ? displayedChunkCount + (page.chunks || []).length : (page.chunks || []).length;
+    nextCursor = page.next_cursor || null;
     document.querySelector("#load-more-chunks-button")
-      .classList.toggle("hidden", !overview.has_more);
+      .classList.toggle("hidden", !page.has_more);
+    updateChunkRange();
   }
 
   function createDatabaseChunkCard(chunk) {
@@ -156,6 +233,37 @@ window.overviewController = (() => {
     footer.textContent = `${chunk.embedding_model} · ${formatNumber(sourceCount)} zdrojových zpráv · ID ${chunk.chunk_id.slice(0, 12)}`;
     card.append(header, content, footer);
     return card;
+  }
+
+  function updateChunkRange() {
+    document.querySelector("#chunk-range").textContent =
+      `Zobrazeno ${formatNumber(displayedChunkCount)} z ${formatNumber(latestStatus?.total_chunks)}`;
+  }
+
+  function renderBreakdownLoading() {
+    ["#channel-counts", "#author-counts", "#model-counts"].forEach((selector) => {
+      document.querySelector(selector).replaceChildren(createEmptyState("Načítám…", "empty-label"));
+    });
+  }
+
+  function renderBreakdownError() {
+    ["#channel-counts", "#author-counts", "#model-counts"].forEach((selector) => {
+      document.querySelector(selector).replaceChildren(
+        createEmptyState("Data se nepodařilo načíst", "empty-label"),
+      );
+    });
+  }
+
+  function renderChunkLoading() {
+    document.querySelector("#database-chunks").replaceChildren(
+      createEmptyState("Načítám chunky…"),
+    );
+  }
+
+  function renderChunkError() {
+    document.querySelector("#database-chunks").replaceChildren(
+      createEmptyState("Chunky se nepodařilo načíst."),
+    );
   }
 
   function createEmptyState(text, className = "overview-empty-state") {
@@ -193,5 +301,18 @@ window.overviewController = (() => {
     document.querySelector("#load-more-chunks-button").disabled = isBusy;
   }
 
-  return { getLatest: () => latestOverview, loadMore, refresh };
+  function markDatabaseChanged() {
+    window.workspaceCache.invalidate(
+      "database-status", "database-breakdowns", "database-chunks:first", "chat-scopes",
+    );
+  }
+
+  function showLoadError(error) {
+    window.appUi?.showToast(error.message, true);
+  }
+
+  return {
+    getLatest: () => latestStatus, loadMore, markDatabaseChanged,
+    open, refresh, refreshStatus,
+  };
 })();

@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld("chatContext", {
   deleteChatSession: (sessionId) => ipcRenderer.invoke("chat-sessions:delete", sessionId),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
+  getDatabaseStatus: () => ipcRenderer.invoke("database:status"),
+  getDatabaseBreakdowns: () => ipcRenderer.invoke("database:breakdowns"),
+  getDatabaseChunkPage: (limit, cursor = null) =>
+    ipcRenderer.invoke("database:chunks", { limit, cursor }),
   clearDatabase: (confirmation) =>
     ipcRenderer.invoke("database:clear", { confirmation }),
   retryIndexingJob: (jobId) => ipcRenderer.invoke("indexing:retry", jobId),

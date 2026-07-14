@@ -48,16 +48,16 @@ def test_hybrid_queries_filter_vector_and_fulltext_candidates() -> None:
     assert "source_messages" in fulltext_query
 
 
-def test_scope_catalog_merges_new_and_legacy_chunk_counts() -> None:
-    rows = [
+def test_scope_catalog_reads_normalized_messages_from_only_the_active_index() -> None:
+    query = PostgresChatScopeCatalog._scope_sql()
+    scope = PostgresChatScopeCatalog._to_scope(
         ("discord", "20", "general", "10", 12),
-        ("discord", "20", "general", "10", 8),
-        ("whatsapp", "family", "Family", None, 30),
-    ]
+    )
 
-    scopes = PostgresChatScopeCatalog._merge_rows(rows)
-
-    assert [(scope.source_type, scope.conversation_id) for scope in scopes] == [
-        ("discord", "20"), ("whatsapp", "family"),
-    ]
-    assert scopes[0].message_count == 12
+    assert "rag_chunk_messages" in query
+    assert "active_embedding_index_id=link.embedding_index_id" in query
+    assert "source_messages" in query
+    assert "conversation_chunks" not in query
+    assert "UNNEST" not in query
+    assert scope.conversation_id == "20"
+    assert scope.message_count == 12

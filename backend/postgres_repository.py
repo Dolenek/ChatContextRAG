@@ -6,7 +6,9 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
-from backend.models import ChatScope, DatabaseOverview
+from backend.models import (
+    ChatScope, DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
+)
 from backend.openai_gateway import ExternalIntegrationError
 from backend.postgres_overview_reader import PostgresOverviewReader
 from backend.repository import VectorRepository
@@ -54,6 +56,20 @@ class PostgresVectorRepository(VectorRepository):
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
         self._ensure_schema()
         return self.overview_reader.get_overview(limit, offset)
+
+    def get_database_status(self) -> DatabaseStatus:
+        self._ensure_schema()
+        return self.overview_reader.get_status()
+
+    def get_database_breakdowns(self) -> DatabaseBreakdowns:
+        self._ensure_schema()
+        return self.overview_reader.get_breakdowns()
+
+    def get_database_chunk_page(
+        self, limit: int, cursor: Optional[str],
+    ) -> DatabaseChunkPage:
+        self._ensure_schema()
+        return self.overview_reader.get_chunk_page(limit, cursor)
 
     def delete_all(self) -> int:
         self._ensure_schema()

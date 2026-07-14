@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 from backend.app import _read_import_file, create_app
 from backend.models import (
     ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
-    DatabaseOverview, ImportResponse, IndexingJobView, IngestionSessionView,
+    DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
+    ImportResponse, IndexingJobView, IngestionSessionView,
     IntegrationSyncState, SourceConversationView,
     ChatScope, ChatSessionDetail, ChatSessionMessage, ChatSessionSummary,
 )
@@ -129,6 +130,20 @@ class FakeOverviewService:
             embedding_models=[], chunks=[], limit=limit, offset=offset, has_more=False,
         )
 
+    def get_status(self):
+        return DatabaseStatus(
+            total_chunks=0, total_source_messages=0, total_channels=0,
+            total_authors=0, oldest_message_at=None, newest_message_at=None,
+        )
+
+    def get_breakdowns(self):
+        return DatabaseBreakdowns()
+
+    def get_chunk_page(self, _limit, cursor):
+        if cursor == "invalid":
+            raise ValueError("Invalid database chunk cursor.")
+        return DatabaseChunkPage()
+
     def clear_database(self):
         return self.deleted_chunks
 
@@ -180,8 +195,16 @@ def test_health_and_source_conversation_routes() -> None:
 def test_overview_and_ingestion_job_routes() -> None:
     client = _client()
     overview_response = client.get("/database/overview?limit=25&offset=0")
+    status_response = client.get("/database/status")
+    breakdown_response = client.get("/database/breakdowns")
+    chunks_response = client.get("/database/chunks?limit=25")
+    invalid_cursor = client.get("/database/chunks?cursor=invalid")
     assert overview_response.status_code == 200
     assert overview_response.json()["total_chunks"] == 0
+    assert status_response.json()["total_chunks"] == 0
+    assert breakdown_response.json()["channels"] == []
+    assert chunks_response.json()["has_more"] is False
+    assert invalid_cursor.status_code == 400
     session_response = client.post("/ingestion/sessions", json={
         "guild_id": "10", "channel_id": "20", "channel": "projekt",
     })

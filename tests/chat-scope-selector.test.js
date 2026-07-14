@@ -32,6 +32,20 @@ test("changing scope starts a fresh conversation history", () => {
   assert.match(chatController, /conversationHistory\.length = 0/);
 });
 
+test("startup loads lightweight status and database navigation paints before waiting", () => {
+  const app = read("renderer/app.js");
+  const bindings = read("renderer/event-bindings.js");
+
+  assert.match(app, /overviewController\.refreshStatus\(true\)/);
+  assert.doesNotMatch(app, /overviewController\.refresh\(\)/);
+  assert.ok(
+    bindings.indexOf('showScreen("overview")') < bindings.indexOf("overviewController.open()"),
+  );
+  assert.ok(
+    bindings.indexOf("overviewController.open()") < bindings.indexOf("closeDiscordView(false)"),
+  );
+});
+
 function read(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
 }

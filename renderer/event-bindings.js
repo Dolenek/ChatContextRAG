@@ -3,10 +3,11 @@ async function showChatWorkspace() {
 }
 
 async function showDatabaseOverview() {
-  await window.appUi.closeDiscordView(false);
   window.shellController.showScreen("overview");
   window.shellController.closeDrawer();
-  await window.overviewController.refresh();
+  const databaseLoad = window.overviewController.open();
+  await window.appUi.closeDiscordView(false);
+  await databaseLoad;
 }
 
 document.querySelector("#open-discord-button")
@@ -45,7 +46,10 @@ document.querySelector("#confirm-clear-button")
   .addEventListener("click", window.appUi.clearDatabase);
 
 window.indexingControls.bind({
-  refreshOverview: window.overviewController.refresh,
+  refreshOverview: async () => {
+    window.overviewController.markDatabaseChanged();
+    await window.overviewController.refreshStatus(true);
+  },
   showToast: window.appUi.showToast,
 });
 window.chatController.bind({ showToast: window.appUi.showToast });

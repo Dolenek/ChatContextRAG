@@ -21,10 +21,11 @@ delete actions use dedicated dialogs.
 The header owns the native **Search in** scope selector and the archive-ready
 status. Scope options carry a source icon and conversation label. The same
 selection is exposed in the sources drawer; both controls update one state and
-changing it starts a clean conversation. Archive percentage, index metrics,
-active jobs, pending-message indexing, and the database dashboard all render
-from one shared database-overview snapshot. At widths where context is a drawer,
-the header also exposes its message count and open control.
+changing it starts a clean conversation. Startup requests the lightweight
+database status, scopes, settings, and recent chats concurrently. It does not
+load database breakdowns or chunk content until the database workspace opens.
+At widths where context is a drawer, the header also exposes its message count
+and open control.
 
 ## Conversation and grounding
 
@@ -70,11 +71,20 @@ assistive technology.
 ## Supporting surfaces
 
 **Sources and imports** opens a 320 px overlay drawer for scope selection and
-connector workflows. Database remains a central workspace dashboard. Settings
-opens over the current screen as an accessible modal and keeps its provider,
-model, embedding-index, indexing-history, workspace-target, and web-session
-behavior. Import drawers, confirmation dialogs, indexing controls, and the web
-runtime reuse the shell's color, type, radius, button, card, and focus tokens.
+connector workflows. Database remains a central workspace dashboard. Selecting
+it switches the workspace immediately, renders cached status when available,
+and loads breakdowns and the first chunk page in parallel. Loading failures keep
+the previous snapshot visible. Manual refresh bypasses freshness windows.
+Settings opens over the current screen as an accessible modal and keeps its
+provider, model, embedding-index, indexing-history, workspace-target, and
+web-session behavior.
+
+Workspace reads use an in-memory stale-while-revalidate cache. Database status
+is fresh for five seconds, breakdowns and the first chunk page for 30 seconds,
+and scopes, settings, and recent chats for 60 seconds. Imports, database clear,
+index completion, active-index changes, and chat mutations invalidate their
+affected resources. Cached labels and titles are never persisted to browser
+storage. Concurrent requests for the same resource share one in-flight promise.
 
 Embedded Discord forces the 72 px rail, locks open the 320 px import drawer, and
 starts its `BrowserView` 82 px below the top edge and 392 px from the left. This
@@ -91,7 +101,9 @@ windows scroll the full sidebar, preserving access to recent chats, index status
 and settings.
 
 The web adapter uses browser file selection and multipart requests for WhatsApp
-exports and hides embedded Discord controls. `/api/events` supplies best-effort indexing and bot
-progress over SSE. Adaptive polling of every queued and running job remains the
-authoritative fallback across reconnects; running jobs sort before queued jobs,
-and terminal records stay available in **Indexing history**.
+exports and hides embedded Discord controls. Authenticated GET reads start in
+parallel with the session request; mutations wait for that request to obtain the
+CSRF token. `/api/events` supplies best-effort indexing and bot progress over
+SSE. Adaptive polling of every queued and running job remains the authoritative
+fallback across reconnects; running jobs sort before queued jobs, and terminal
+records stay available in **Indexing history**.

@@ -121,12 +121,13 @@ async function refreshIndexState() {
 }
 
 async function loadSettingsState() {
-  const [nextSettings, overview] = await Promise.all([
+  const [nextSettings, status] = await Promise.all([
     window.chatContext.getSettings(),
-    window.chatContext.getDatabaseOverview(1, 0),
+    window.chatContext.getDatabaseStatus(),
   ]);
   settingsState = nextSettings;
-  return overview.indexing_jobs || [];
+  window.workspaceCache.store("settings", nextSettings);
+  return status.indexing_jobs || [];
 }
 
 function renderProviders() {
@@ -216,6 +217,7 @@ async function createIndex(submitEvent) {
       auto_sync: document.querySelector("#embedding-auto-sync").checked,
     });
     submitEvent.target.reset();
+    window.overviewController.markDatabaseChanged();
     await refreshSettings();
     showSettingsToast(`Index ${created.name} byl vytvořen.`);
   } catch (error) { showSettingsToast(error.message, true); }
@@ -254,7 +256,13 @@ async function removeIndex(index) { if (confirm(`Smazat index ${index.name}? Raw
 async function updateAutoSync(index, enabled) { await runAndRefresh(() => window.chatContext.updateEmbeddingIndex(index.embedding_index_id, { auto_sync: enabled }), "Auto-sync byl změněn."); }
 
 async function runAndRefresh(operation, message) {
-  try { await operation(); await refreshSettings(); showSettingsToast(message); }
+  try {
+    await operation();
+    window.overviewController.markDatabaseChanged();
+    window.workspaceCache.invalidate("settings");
+    await refreshSettings();
+    showSettingsToast(message);
+  }
   catch (error) { showSettingsToast(error.message, true); }
 }
 

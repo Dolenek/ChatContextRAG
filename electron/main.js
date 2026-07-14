@@ -103,6 +103,13 @@ function registerDatabaseHandlers() {
     const parameters = new URLSearchParams(pagination);
     return getJson(`/database/overview?${parameters}`);
   });
+  ipcMain.handle("database:status", () => getJson("/database/status"));
+  ipcMain.handle("database:breakdowns", () => getJson("/database/breakdowns"));
+  ipcMain.handle("database:chunks", (_event, pagination) => {
+    const parameters = new URLSearchParams({ limit: pagination.limit });
+    if (pagination.cursor) parameters.set("cursor", pagination.cursor);
+    return getJson(`/database/chunks?${parameters}`);
+  });
   ipcMain.handle("database:clear", (_event, request) => deleteJson("/database", request));
   ipcMain.handle("indexing:retry", (_event, jobId) =>
     postJson(`/indexing/jobs/${jobId}/retry`, {}));

@@ -340,7 +340,8 @@ Electron Remote calls use its bearer token.
 - `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints manage jobs.
   Job views include source type plus conversation and container labels so the
   progress UI identifies the imported channel or index-wide maintenance task.
-- `GET /chat/scopes` lists searchable source conversations.
+- `GET /chat/scopes` lists source conversations searchable through the active
+  embedding index by joining normalized chunk links to canonical raw messages.
 - `POST /chat` performs source-scoped hybrid RAG with the active embedding index
   and optional per-conversation chat provider/model/reasoning effort. An optional `session_id`
   appends the completed turn to a matching persisted session; responses include
@@ -354,7 +355,14 @@ Electron Remote calls use its bearer token.
 - `/settings/embedding-indexes` manages independent vector indexes, activation,
   sync, rebuild, and deletion.
 - `GET /database/resume-point` remains the embedded Discord resume endpoint.
-- `GET /database/overview` reports raw, index, source, and job statistics.
+- `GET /database/status` reports exact raw, active-index, source, size, and
+  recent-job metrics without loading breakdowns or chunk content.
+- `GET /database/breakdowns` reports active-index counts by conversation,
+  author, and embedding model.
+- `GET /database/chunks?limit=N&cursor=...` returns active-index chunks ordered
+  by `(updated_at, id)` with an opaque keyset cursor for the next page.
+- `GET /database/overview` retains the combined offset-paginated status,
+  breakdown, and chunk response for compatibility.
 - `DELETE /database` requires `VYMAZAT` and clears imported/indexed source data.
   Persisted chat history is retained and becomes read-only if its source is gone.
 

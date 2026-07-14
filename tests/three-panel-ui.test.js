@@ -156,7 +156,7 @@ test("right panel previews at most five sources and archive status handles zero 
     },
   };
   vm.runInNewContext(read("renderer/context-panel.js"), context);
-  vm.runInNewContext(read("renderer/archive-status.js"), context);
+  vm.runInNewContext(read("renderer/workspace-state.js"), context);
   context.window.contextPanel.showSources(
     Array.from({ length: 6 }, () => ({ content: "grounded" })),
   );

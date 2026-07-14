@@ -134,6 +134,11 @@ test("settings router decodes identifiers and forwards JSON lifecycle requests",
 test("API route allowlist normalizes identifiers and rejects unsupported methods", () => {
   assert.equal(matchBackendRoute("GET", "/api/chat/scopes"), "/chat/scopes");
   assert.equal(matchBackendRoute("GET", "/api/chat/sessions"), "/chat/sessions");
+  assert.equal(matchBackendRoute("GET", "/api/database/status"), "/database/status");
+  assert.equal(
+    matchBackendRoute("GET", "/api/database/breakdowns"), "/database/breakdowns",
+  );
+  assert.equal(matchBackendRoute("GET", "/api/database/chunks"), "/database/chunks");
   assert.equal(
     matchBackendRoute("PATCH", "/api/chat/sessions/chat%20one"),
     "/chat/sessions/chat%20one",

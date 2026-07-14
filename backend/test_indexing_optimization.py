@@ -59,6 +59,7 @@ def test_schema_supports_ordered_job_streams_and_index_message_lookups() -> None
     assert "source_messages_global_order" in schema
     assert "source_messages(message_order,external_id)" in schema
     assert "rag_chunk_messages(embedding_index_id,message_id)" in metadata_indexes
+    assert "rag_chunks(embedding_index_id,updated_at DESC,id DESC)" in metadata_indexes
 
 
 def test_staging_replaces_links_for_a_whole_batch() -> None:

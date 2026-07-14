@@ -18,10 +18,12 @@
   }
 
   async function api(path, options = {}) {
-    const session = await ensureSession();
     const method = options.method || "GET";
     const headers = { ...(options.headers || {}) };
-    if (!["GET", "HEAD"].includes(method)) headers["X-CSRF-Token"] = session.csrf_token;
+    if (!["GET", "HEAD"].includes(method)) {
+      const session = await ensureSession();
+      headers["X-CSRF-Token"] = session.csrf_token;
+    }
     const request = { method, headers };
     if (options.body instanceof FormData) request.body = options.body;
     else if (options.body !== undefined) {
@@ -101,7 +103,10 @@
   }
 
   window.chatContext = {
-    getRuntimeCapabilities: () => api("/runtime"),
+    getRuntimeCapabilities: async () => {
+      const session = await ensureSession();
+      return session.capabilities || api("/runtime");
+    },
     getConnectionTarget: () => Promise.resolve({ mode: "web", hasToken: false }),
     testConnectionTarget: () => Promise.reject(new Error("Webový server nemění svůj vlastní cíl.")),
     saveConnectionTarget: () => Promise.reject(new Error("Webový server nemění svůj vlastní cíl.")),
@@ -142,6 +147,11 @@
       method: "DELETE", body: {},
     }),
     getDatabaseOverview: (limit, offset) => api(`/database/overview?limit=${limit}&offset=${offset}`),
+    getDatabaseStatus: () => api("/database/status"),
+    getDatabaseBreakdowns: () => api("/database/breakdowns"),
+    getDatabaseChunkPage: (limit, cursor = null) => api(
+      `/database/chunks?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
     clearDatabase: (confirmation) => api("/database", { method: "DELETE", body: { confirmation } }),
     retryIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
     cancelIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: {} }),
@@ -170,6 +180,8 @@
     rebuildEmbeddingIndex: (id) => api(`/settings/embedding-indexes/${encodeURIComponent(id)}/rebuild`, { method: "POST", body: {} }),
     deleteEmbeddingIndex: (id) => api(`/settings/embedding-indexes/${encodeURIComponent(id)}`, { method: "DELETE" }),
   };
+
+  void ensureSession().catch(() => {});
 
   document.body.classList.add("web-runtime");
   const logoutButton = document.querySelector("#settings-logout-button");

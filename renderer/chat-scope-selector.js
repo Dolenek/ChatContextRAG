@@ -5,12 +5,24 @@ const availableChatScopes = new Map();
 let unavailableRestoredScope = null;
 let scopeChangeListener = () => {};
 
-async function refreshChatScopes() {
+async function refreshChatScopes(force = false) {
   const previousKey = chatScopeSelect.value;
+  const cached = window.workspaceCache.peek("chat-scopes");
+  if (cached) renderChatScopes(cached.scopes || [], previousKey);
+  const request = window.workspaceCache.load(
+    "chat-scopes", window.chatContext.getChatScopes, 60000, force,
+  );
+  if (cached && !force) {
+    void request.then((response) => {
+      renderChatScopes(response.scopes || [], chatScopeSelect.value);
+    }).catch((error) => window.appUi?.showToast(error.message, true));
+    return cached;
+  }
   setScopeLoading(true);
   try {
-    const response = await window.chatContext.getChatScopes();
+    const response = await request;
     renderChatScopes(response.scopes || [], previousKey);
+    return response;
   } finally {
     setScopeLoading(false);
   }
