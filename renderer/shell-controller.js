@@ -4,6 +4,7 @@ window.shellController = (() => {
   const COLLAPSED_MODE = "collapsed";
   const drawer = document.querySelector("#left-drawer");
   const contextPanel = document.querySelector("#context-panel");
+  const navigationRail = document.querySelector("#primary-navigation");
   const navigationToggle = document.querySelector("#navigation-toggle");
   const navigationToggleLabel = document.querySelector("#navigation-toggle-label");
   const sourcesButton = document.querySelector("#open-sources-button");
@@ -61,6 +62,7 @@ window.shellController = (() => {
     navigationToggle.setAttribute("aria-label", accessibleLabel);
     navigationToggleLabel.textContent = accessibleLabel;
     navigationToggle.disabled = discordActive;
+    if (isExpanded) navigationRail.classList.remove("navigation-rollout-visible");
   }
 
   function toggleNavigation() {
@@ -84,6 +86,20 @@ window.shellController = (() => {
   function handleViewportChange() {
     responsiveNavigationOpen = false;
     applyNavigationState();
+  }
+
+  function updateNavigationRollout(event) {
+    const interactiveTarget = event.target.closest?.(
+      "button, input, select, textarea, a, [role='button']",
+    );
+    const canReveal = !interactiveTarget || interactiveTarget === navigationToggle;
+    navigationRail.classList.toggle(
+      "navigation-rollout-visible", !discordActive && !isNavigationExpanded() && canReveal,
+    );
+  }
+
+  function hideNavigationRollout() {
+    navigationRail.classList.remove("navigation-rollout-visible");
   }
 
   function openDrawerPanel(panelName = "sources") {
@@ -157,6 +173,8 @@ window.shellController = (() => {
 
   applyNavigationState();
   navigationToggle.addEventListener("click", toggleNavigation);
+  navigationRail.addEventListener("pointermove", updateNavigationRollout);
+  navigationRail.addEventListener("pointerleave", hideNavigationRollout);
   document.querySelector("#drawer-close").addEventListener("click", closeDrawer);
   document.querySelector("#context-toggle").addEventListener("click", toggleContext);
   document.querySelector("#context-close").addEventListener("click", closeContext);

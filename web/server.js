@@ -78,6 +78,10 @@ class WebApplication {
     if (request.method === "GET" && ["/login.js", "/login.css"].includes(url.pathname)) {
       return sendStatic(response, __dirname, url.pathname);
     }
+    if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
+      const assetRoot = path.join(this.config.projectRoot, "renderer", "assets");
+      return sendStatic(response, assetRoot, url.pathname.slice("/assets".length));
+    }
     return false;
   }
 

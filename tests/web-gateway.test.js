@@ -118,6 +118,12 @@ test("gateway protects APIs with session CSRF or desktop bearer authentication",
   const address = application.server.address();
   const origin = `http://127.0.0.1:${address.port}`;
 
+  const loginPage = await fetch(`${origin}/login`);
+  const publicLogo = await fetch(`${origin}/assets/chat-context-wordmark.png`);
+  assert.equal(loginPage.status, 200);
+  assert.match(await loginPage.text(), /chat-context-wordmark\.png/);
+  assert.equal(publicLogo.status, 200);
+  assert.equal(publicLogo.headers.get("content-type"), "image/png");
   const unauthorized = await fetch(`${origin}/api/runtime`);
   assert.equal(unauthorized.status, 401);
   const login = await fetch(`${origin}/api/auth/login`, {

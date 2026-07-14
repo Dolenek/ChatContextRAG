@@ -10,12 +10,15 @@ composer remains anchored when content grows. The shell fills the viewport
 without a decorative outer border; borders only separate internal regions and
 components.
 
-The rail starts with the Chat Context sparkle mark and its collapse control. Its
+The rail starts with the transparent Chat Context brand mark and its collapse
+control. The same mark is the Electron and browser favicon. Its
 44 px actions list **New chat**, **Sources and imports**, **Database**, and
 **Settings** before the six most recent persisted chats, the expandable
 remainder of the 20 loaded summaries, and the index status card. Compact mode
-retains the logo, collapse control, and navigation icons with accessible labels
-and hover/focus tooltips. Recent
+shows the logo by default. Hovering the logo or non-action rail space replaces it
+with the expand control; hovering navigation actions keeps the control hidden.
+Keyboard focus also reveals the control. Navigation icons retain accessible
+labels and hover/focus tooltips. Recent
 chat rows use `updated_at`: same-day rows show `HH:mm`, yesterday uses a localized
 label, and older rows use a short date. Rows restore their ordered messages,
 grounding sources, scope, provider, model, reasoning effort, retrieval mode, and
@@ -23,8 +26,9 @@ fixed evidence limit. Rename and delete actions use dedicated dialogs.
 
 The header owns the native **Search in** scope selector and the archive-ready
 status. Native selection menus use dark surfaces, light option text, and violet
-group labels throughout the renderer. Scope options carry a source icon and
-conversation label. The selector shares the chat content's responsive gutter
+group labels throughout the renderer. Focusing the scope selector outlines the
+complete **Search in** control rather than only the native select. Scope options
+carry a source icon and conversation label. The selector shares the chat content's responsive gutter
 and 784 px maximum width, keeping its left edge aligned with the conversation
 and composer. The archive progress track spans from the status dot to the
 percentage label. The same
@@ -112,8 +116,12 @@ selecting a destination closes it. The grounding panel remains an independent
 right drawer. Low-height desktop windows scroll the full sidebar, preserving
 access to recent chats, index status, and settings.
 
-The web adapter uses browser file selection and multipart requests for WhatsApp
-exports and hides embedded Discord controls. Authenticated GET reads start in
+The web login presents the full transparent Chat Context lockup, with white
+**Chat** and violet **Context**, over its existing dark card background. Brand
+assets are available before authentication so the login page can load them;
+other renderer files remain protected. The web adapter
+uses browser file selection and multipart requests for WhatsApp exports and hides
+embedded Discord controls. Authenticated GET reads start in
 parallel with the session request; mutations wait for that request to obtain the
 CSRF token. `/api/events` supplies best-effort indexing and bot progress over
 SSE. Adaptive polling of every queued and running job remains the authoritative

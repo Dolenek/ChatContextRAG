@@ -24,17 +24,9 @@ body {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
-.brand-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 10px;
-  background: #282b4a;
-  font-weight: 800;
-}
+.brand-lockup { display: block; width: min(300px, 100%); height: auto; }
 
-.eyebrow { margin: 26px 0 8px; color: #9c91ff; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; }
+.eyebrow { margin: 20px 0 8px; color: #9c91ff; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; }
 h1 { margin: 0; font-size: 34px; }
 .description { margin: 10px 0 28px; color: #9ca7c0; }
 form { display: grid; gap: 9px; }
