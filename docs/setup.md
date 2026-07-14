@@ -215,15 +215,19 @@ endpoint and the last `/health` result.
 
 ## Desktop workspace
 
-The application opens directly in the chat workspace. The narrow rail on the
-left switches between chat and database detail. **Settings** opens a modal over
+The application opens directly in the chat workspace. The left navigation starts
+expanded with icons and labels; its top button switches to a compact icon-only
+rail and the chosen desktop mode is restored on the next start. Below 700 px the
+expanded rail overlays the workspace and begins compact without changing that
+saved preference. Embedded Discord also uses the compact rail temporarily. The
+rail switches between chat and database detail. **Settings** opens a modal over
 the current screen with separate sections for **Providers and API keys**, **Chat
 models**, **Embedding indexes**, **Indexing history**, and the Electron-only
 **Workspace** target. Closing the modal discards unfinished form values. **Sources
-and imports** opens an overlay drawer containing the searchable conversation
-scope and all Discord and WhatsApp ingestion controls. The drawer is collapsed
-again when the user returns to chat; its open state is not persisted between
-starts.
+and imports** independently opens an overlay drawer containing the searchable
+conversation scope and all Discord and WhatsApp ingestion controls. The drawer is
+collapsed again when the user returns to chat; its open state is not persisted
+between starts.
 
 Grounding sources for the selected assistant answer appear in the right panel.
 The same panel reports raw and indexed message counts, chunks, database size,
@@ -343,6 +347,8 @@ compression ratios are rejected.
 Every completed connector session creates a durable job for each ready embedding
 index with auto-sync enabled. The database
 overview shows raw, duplicate, indexed, and pending counts plus recent job state.
+Its full dashboard also groups conversation, author, and embedding-model counts
+and keeps the paginated stored-chunk detail below the summary cards.
 Failed jobs can be retried; active jobs can be cancelled. **Zaindexovat čekající**
 recovers raw messages not currently covered by an index or active job.
 

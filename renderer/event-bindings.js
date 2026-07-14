@@ -59,6 +59,7 @@ window.modelSelector.bind({
 window.settingsUi.bind({
   prepareOpen: async () => {
     await window.appUi.closeDiscordView(false);
+    window.shellController.closeResponsiveNavigation();
     window.shellController.closeDrawer();
     window.shellController.closeContext();
   },

@@ -98,26 +98,10 @@
 .privacy-card h3 { margin: 0; font-size: 11px; }
 .privacy-card p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 
-.overview-screen { padding: 0 clamp(18px, 3vw, 42px) 40px; }
-.overview-actions { display: flex; gap: 8px; }
-.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 4px 0 18px; }
-.stat-card { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
-.stat-card strong, .stat-card span { display: block; }
-.stat-card strong { margin-bottom: 5px; font-size: 18px; }
-.stat-card span { color: var(--muted); font-size: 9px; }
-.overview-breakdowns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
-.overview-breakdowns section { min-width: 0; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
-.overview-breakdowns h3, .chunks-heading h3 { margin: 0 0 10px; font-size: 12px; }
 .count-list { display: grid; gap: 6px; max-height: 170px; overflow: auto; }
 .count-list > div { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 10px; }
 .count-list strong { color: #d7dbe7; }
 .empty-label { color: var(--muted); font-size: 10px; }
-.chunks-heading { margin: 24px 0 10px; }
-.chunks-heading p { margin: 0; color: var(--muted); font-size: 10px; }
-.database-chunks { display: grid; gap: 8px; margin-bottom: 12px; }
-.database-chunk-card { padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
-.database-chunk-card p { margin: 9px 0; color: #cbd1df; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
-.database-chunk-card small, .chunk-meta { color: var(--muted); font-size: 9px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(2, 4, 10, 0.84); backdrop-filter: blur(8px); }
 .danger-dialog { width: min(100%, 450px); padding: 25px; border: 1px solid #713042; border-radius: 17px; background: #15101a; box-shadow: var(--shadow); }
@@ -126,9 +110,3 @@
 .danger-dialog label { display: block; margin: 20px 0 7px; }
 .danger-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: #ffdce3; background: #6b2133; font-weight: 900; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
-
-@media (max-width: 850px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .overview-breakdowns { grid-template-columns: 1fr; }
-  .overview-heading { align-items: stretch; flex-direction: column; }
-}

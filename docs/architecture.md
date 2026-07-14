@@ -268,20 +268,32 @@ Discord** action.
 
 ## Renderer shell
 
-The renderer is a framework-free three-panel workspace. A narrow navigation rail
-opens an overlay drawer for source scope and connector workflows, the center
-switches between chat and database detail, and the right panel renders grounding
-sources plus a compact index snapshot. Settings opens as an accessible modal over
-the current center screen. Its navigation separates providers and API keys, chat
-models, embedding indexes, indexing history, and the Electron-only workspace
-target. The context panel becomes a drawer below 1,100 px. Each area owns its
-scrolling so long source lists and database results do not move the chat composer.
+The renderer is a framework-free three-panel workspace. Its left navigation rail
+switches directly between a 58 px icon mode and a 220 px icon-and-label mode,
+defaults to expanded, and keeps the desktop preference in browser-local storage.
+The source item independently opens an overlay drawer for scope and connector
+workflows, the center switches between chat and database detail, and the right
+panel renders grounding sources plus a compact index snapshot. Below 700 px the
+expanded rail is a transient overlay; embedded Discord temporarily forces the
+compact rail and restores the preference when it closes. Settings opens as an
+accessible modal over the current center screen. Its navigation separates
+providers and API keys, chat models, embedding indexes, indexing history, and the
+Electron-only workspace target. The context panel becomes a drawer below 1,100 px.
+Each area owns its scrolling so long source lists and database results do not move
+the chat composer.
 
 Controllers share one database-overview snapshot between the right status panel,
 the full database view, and indexing controls. Chat response sources are handed
 to the context panel and retained on each assistant entry so an older response's
 grounding can be selected again. All source content is inserted through DOM text
 properties rather than interpreted as HTML.
+
+The full database view presents the snapshot as a responsive two-tier dashboard.
+Primary cards report chunk, source, raw, uniqueness, duplicate, and indexing
+counts; compact cards report pending work, storage size, conversation count, and
+message boundaries. Conversation, author, and embedding-model distributions stay
+available as scrollable count lists, followed by the paginated chunk detail. The
+dashboard uses only current overview values and does not infer historical trends.
 
 The chat composer owns a two-level model popover: the first level selects a
 configured provider and the second selects one of its persisted chat models.

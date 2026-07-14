@@ -1,0 +1,152 @@
+.overview-screen {
+  padding: 0 clamp(18px, 3vw, 42px) 44px;
+  background: radial-gradient(circle at 45% -10%, rgba(108, 103, 245, 0.08), transparent 36%);
+}
+
+.overview-heading { padding-bottom: 22px; }
+.overview-actions { display: flex; gap: 9px; }
+.overview-actions svg { width: 16px; height: 16px; }
+.overview-actions .danger-button { display: inline-flex; align-items: center; gap: 7px; }
+.overview-actions .loading svg { animation: overview-spin 900ms linear infinite; }
+
+.overview-primary-stats,
+.overview-status-stats,
+.overview-breakdowns {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-primary-stats { grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)); }
+.overview-status-stats {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin-top: 12px;
+}
+
+.overview-metric-card,
+.overview-summary-card,
+.overview-chunks-section {
+  border: 1px solid var(--border);
+  background: linear-gradient(145deg, rgba(22, 29, 46, 0.94), rgba(13, 19, 33, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 12px 34px rgba(0, 0, 0, 0.12);
+}
+
+.overview-metric-card { min-width: 0; border-radius: 14px; }
+.overview-primary-card {
+  min-height: 154px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  padding: 18px 13px;
+  text-align: center;
+}
+
+.overview-status-card {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+}
+
+.overview-metric-icon,
+.overview-heading-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--metric-accent);
+  background: var(--metric-soft);
+}
+
+.overview-primary-card .overview-metric-icon { width: 45px; height: 45px; border-radius: 13px; }
+.overview-status-card .overview-metric-icon { width: 42px; height: 42px; border-radius: 12px; }
+.overview-metric-icon svg { width: 24px; height: 24px; }
+.overview-status-card .overview-metric-icon svg { width: 21px; height: 21px; }
+.overview-metric-copy { min-width: 0; }
+.overview-metric-copy strong,
+.overview-metric-copy span { display: block; }
+.overview-primary-card strong { font-size: clamp(18px, 1.65vw, 23px); letter-spacing: -0.025em; }
+.overview-status-card strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.overview-metric-copy span { margin-top: 5px; color: var(--muted); font-size: 10px; }
+
+.tone-blue { --metric-accent: #6d9bff; --metric-soft: rgba(88, 137, 255, 0.14); }
+.tone-violet { --metric-accent: #a579ff; --metric-soft: rgba(155, 108, 255, 0.14); }
+.tone-sky { --metric-accent: #4da6ff; --metric-soft: rgba(77, 166, 255, 0.14); }
+.tone-green { --metric-accent: #55d994; --metric-soft: rgba(66, 207, 137, 0.13); }
+.tone-amber { --metric-accent: #f0a53a; --metric-soft: rgba(240, 165, 58, 0.13); }
+.tone-teal { --metric-accent: #36c7c4; --metric-soft: rgba(54, 199, 196, 0.13); }
+.tone-rose { --metric-accent: #f06f91; --metric-soft: rgba(240, 111, 145, 0.13); }
+
+.overview-breakdowns {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin-top: 18px;
+}
+
+.overview-summary-card { min-width: 0; min-height: 264px; border-radius: 15px; padding: 17px; }
+.overview-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.overview-card-heading > div { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.overview-card-heading h2 { margin: 0; font-size: 13px; }
+.overview-heading-icon { width: 31px; height: 31px; border-radius: 9px; }
+.overview-heading-icon svg { width: 17px; height: 17px; }
+.overview-badge { flex: 0 0 auto; border-radius: 999px; padding: 5px 8px; color: #b9b6ff; background: var(--violet-soft); font-size: 9px; font-weight: 750; }
+
+.overview-count-list { max-height: 226px; gap: 0; padding-top: 5px; }
+.count-list > .overview-count-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border-bottom: 1px solid rgba(151, 164, 201, 0.09);
+  color: var(--muted-strong);
+  font-size: 10px;
+}
+.overview-count-row:last-child { border-bottom: 0; }
+.overview-count-rank { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: #a9a5ff; background: rgba(108, 103, 245, 0.11); font-size: 8px; font-weight: 800; }
+.overview-count-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-count-row strong { font-size: 10px; }
+.overview-count-list > .empty-label { padding: 28px 4px; text-align: center; }
+
+.overview-chunks-section { margin-top: 18px; border-radius: 15px; padding: 18px; }
+.chunks-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.chunks-heading .eyebrow { margin-bottom: 5px; }
+.chunks-heading h2 { margin: 0; font-size: 14px; }
+.chunks-heading > p { margin: 0; color: var(--muted); font-size: 10px; }
+.database-chunks { display: grid; gap: 9px; margin-bottom: 12px; }
+.database-chunk-card { padding: 14px; border: 1px solid var(--border); border-radius: 11px; background: rgba(9, 14, 25, 0.52); }
+.database-chunk-card p { margin: 9px 0; color: #cbd1df; font-size: 11px; line-height: 1.58; white-space: pre-wrap; }
+.database-chunk-card small,
+.chunk-meta { color: var(--muted); font-size: 9px; }
+.overview-empty-state { display: block; padding: 28px 18px; border: 1px dashed var(--border-strong); border-radius: 11px; color: var(--muted); text-align: center; font-size: 11px; }
+
+@keyframes overview-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1350px) and (min-width: 521px) {
+  .overview-primary-stats,
+  .overview-status-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 850px) {
+  .overview-heading { align-items: stretch; flex-direction: column; }
+  .overview-actions { width: 100%; }
+  .overview-actions button { flex: 1; }
+  .overview-heading .secondary-button { min-width: 0; padding-inline: 13px; font-size: inherit; }
+}
+
+@media (max-width: 520px) {
+  .overview-primary-stats,
+  .overview-status-stats,
+  .overview-breakdowns { grid-template-columns: 1fr; }
+  .overview-actions { align-items: stretch; flex-direction: column; }
+  .chunks-heading { align-items: flex-start; flex-direction: column; }
+  .overview-summary-card { min-height: 0; }
+}

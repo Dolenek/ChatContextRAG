@@ -170,6 +170,8 @@
   document.body.classList.add("web-runtime");
   const localStatus = document.querySelector(".local-status");
   if (localStatus) localStatus.title = "Data zůstávají na vašem serveru";
+  const localStatusLabel = document.querySelector("#local-status-label");
+  if (localStatusLabel) localStatusLabel.textContent = "Data zůstávají na serveru";
   const logoutButton = document.querySelector("#web-logout-button");
   logoutButton?.classList.remove("hidden");
   logoutButton?.addEventListener("click", async () => {

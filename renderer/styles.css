@@ -4,7 +4,9 @@
   color: #f4f6ff;
   background: #070b15;
   --titlebar-height: 30px;
-  --rail-width: 58px;
+  --rail-collapsed-width: 58px;
+  --rail-expanded-width: 220px;
+  --rail-width: var(--rail-collapsed-width);
   --drawer-width: 302px;
   --context-width: 330px;
   --surface: #111827;
@@ -32,6 +34,8 @@ body {
     radial-gradient(circle at 58% 8%, rgba(68, 65, 168, 0.12), transparent 28%),
     #070b15;
 }
+
+body.navigation-expanded { --rail-width: var(--rail-expanded-width); }
 
 button, input, select { font: inherit; }
 button { color: inherit; }
