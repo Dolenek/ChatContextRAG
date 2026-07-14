@@ -88,10 +88,12 @@ window.shellController = (() => {
     applyNavigationState();
   }
 
+  function findInteractiveNavigationTarget(target) {
+    return target.closest?.("button, input, select, textarea, a, [role='button']");
+  }
+
   function updateNavigationRollout(event) {
-    const interactiveTarget = event.target.closest?.(
-      "button, input, select, textarea, a, [role='button']",
-    );
+    const interactiveTarget = findInteractiveNavigationTarget(event.target);
     const canReveal = !interactiveTarget || interactiveTarget === navigationToggle;
     navigationRail.classList.toggle(
       "navigation-rollout-visible", !discordActive && !isNavigationExpanded() && canReveal,
@@ -100,6 +102,11 @@ window.shellController = (() => {
 
   function hideNavigationRollout() {
     navigationRail.classList.remove("navigation-rollout-visible");
+  }
+
+  function handleNavigationRailClick(event) {
+    if (isNavigationExpanded() || findInteractiveNavigationTarget(event.target)) return;
+    toggleNavigation();
   }
 
   function openDrawerPanel(panelName = "sources") {
@@ -173,6 +180,7 @@ window.shellController = (() => {
 
   applyNavigationState();
   navigationToggle.addEventListener("click", toggleNavigation);
+  navigationRail.addEventListener("click", handleNavigationRailClick);
   navigationRail.addEventListener("pointermove", updateNavigationRollout);
   navigationRail.addEventListener("pointerleave", hideNavigationRollout);
   document.querySelector("#drawer-close").addEventListener("click", closeDrawer);

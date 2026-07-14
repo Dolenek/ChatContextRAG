@@ -45,6 +45,7 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.match(html, /id="primary-navigation" class="navigation-rail"/);
   assert.match(html, /class="sidebar-brand"/);
   assert.match(html, /src="assets\/chat-context-mark\.png"/);
+  assert.doesNotMatch(html, /sidebar-brand-name/);
   assert.match(html, /class="app-header"/);
   assert.match(html, /id="archive-header-status"/);
   assert.match(html, /id="chat-scope-select"/);
@@ -81,21 +82,23 @@ test("shell keeps navigation compact and themes native selection menus", () => {
   assert.match(baseCss, /select optgroup \{ color: #b9b6ff; background: #0d1828; \}/);
   assert.match(shellCss, /\.rail-button \{[\s\S]*?min-height: 44px/);
   assert.match(shellCss, /\.navigation-rail\.navigation-rollout-visible \.navigation-toggle/);
-  assert.match(shellCss, /\.archive-header-status \{ width: max-content/);
+  assert.match(shellCss, /grid-template-columns: minmax\(34px, 1fr\) 42px minmax\(34px, 1fr\)/);
+  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: center; width: max-content/);
   assert.match(shellCss, /\.archive-header-progress \{ width: 100%;[\s\S]*?margin-left: 0/);
   assert.match(shellCss, /width: min\(414px, calc\(100vw - var\(--rail-width\)\)\)/);
 });
 
-test("header scope picker aligns with the bounded chat content", () => {
+test("header centers archive status beside the gutter-aligned scope picker", () => {
   const html = read("renderer/index.html");
   const baseCss = read("renderer/styles.css");
   const shellCss = read("renderer/shell.css");
   const chatCss = read("renderer/chat.css");
   assert.match(html, /class="app-header-content"[\s\S]*?class="scope-picker"/);
   assert.match(baseCss, /--chat-content-max-width: 784px/);
-  assert.match(shellCss, /\.app-header-content \{[\s\S]*?var\(--chat-content-max-width\)/);
+  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
   assert.match(shellCss, /\.scope-picker:focus-within/);
   assert.match(shellCss, /\.scope-picker select:focus-visible \{ outline: 0; \}/);
+  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: center/);
   assert.match(chatCss, /padding: 0 var\(--chat-horizontal-gutter\) 38px/);
   assert.match(chatCss, /\.chat-form \{[\s\S]*?var\(--chat-content-max-width\)/);
 });
@@ -135,8 +138,8 @@ test("navigation defaults to expanded and persists direct desktop toggles", () =
   assert.deepEqual(storageWrites.at(-1), ["chat-context.navigation-mode", "expanded"]);
 });
 
-test("collapsed navigation reveals its toggle only over non-action space", () => {
-  const { elements } = createShellFixture({ storedMode: "collapsed" });
+test("collapsed navigation reveals and opens only from non-action space", () => {
+  const { document, elements } = createShellFixture({ storedMode: "collapsed" });
   const rail = elements.get("#primary-navigation");
   const toggle = elements.get("#navigation-toggle");
   const sourcesButton = elements.get("#open-sources-button");
@@ -149,6 +152,10 @@ test("collapsed navigation reveals its toggle only over non-action space", () =>
   assert.equal(rail.classList.contains("navigation-rollout-visible"), true);
   rail.listeners.pointerleave();
   assert.equal(rail.classList.contains("navigation-rollout-visible"), false);
+  rail.listeners.click({ target: { closest: () => sourcesButton } });
+  assert.equal(document.body.classList.contains("navigation-expanded"), false);
+  rail.listeners.click({ target: { closest: () => null } });
+  assert.equal(document.body.classList.contains("navigation-expanded"), true);
 });
 
 test("navigation restores valid preferences and tolerates unavailable storage", () => {

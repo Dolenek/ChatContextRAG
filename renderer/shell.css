@@ -24,11 +24,10 @@
   transition: width 180ms ease, box-shadow 180ms ease;
 }
 
-.sidebar-brand { position: relative; height: 54px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 34px; align-items: center; margin-bottom: 10px; -webkit-app-region: drag; }
-.brand-mark { width: 42px; height: 42px; display: grid; place-items: center; opacity: 1; transition: opacity 130ms ease; }
+.sidebar-brand { height: 54px; display: grid; grid-template-columns: minmax(34px, 1fr) 42px minmax(34px, 1fr); align-items: center; margin-bottom: 10px; -webkit-app-region: drag; }
+.brand-mark { position: absolute; top: 24px; left: var(--rail-brand-center-x); width: 42px; height: 42px; display: grid; place-items: center; opacity: 1; transform: translateX(-50%); transition: opacity 130ms ease; }
 .brand-mark img { width: 42px; height: 42px; display: block; object-fit: contain; }
-.sidebar-brand-name { min-width: 0; overflow: hidden; color: #f5f5fb; font-size: 20px; letter-spacing: -0.03em; white-space: nowrap; }
-.navigation-toggle { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 9px; color: #9fabc0; background: transparent; opacity: 1; transition: opacity 130ms ease; -webkit-app-region: no-drag; }
+.navigation-toggle { grid-column: 3; justify-self: end; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 9px; color: #9fabc0; background: transparent; opacity: 1; transition: opacity 130ms ease; -webkit-app-region: no-drag; }
 .navigation-toggle:hover { color: #fff; border-color: var(--border); background: rgba(255,255,255,.04); }
 
 .rail-button {
@@ -54,8 +53,7 @@ body:not(.navigation-expanded) .navigation-rail { padding-inline: 10px; }
 body:not(.navigation-expanded) .sidebar-brand { grid-template-columns: 34px; justify-content: center; }
 body:not(.navigation-expanded) .brand-mark { width: 34px; }
 body:not(.navigation-expanded) .brand-mark img { width: 34px; height: 34px; }
-body:not(.navigation-expanded) .sidebar-brand-name { display: none; }
-body:not(.navigation-expanded) .navigation-toggle { position: absolute; top: 50%; left: 50%; width: 34px; padding: 0; opacity: 0; pointer-events: none; transform: translate(-50%, -50%); }
+body:not(.navigation-expanded) .navigation-toggle { position: absolute; top: 24px; left: var(--rail-brand-center-x); width: 34px; padding: 0; opacity: 0; pointer-events: none; transform: translateX(-50%); }
 body:not(.navigation-expanded) .navigation-toggle svg { width: 18px; }
 body:not(.navigation-expanded) .navigation-rail.navigation-rollout-visible .brand-mark,
 body:not(.navigation-expanded) .sidebar-brand:focus-within .brand-mark { opacity: 0; }
@@ -95,25 +93,26 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
 }
 .app-header-content {
   grid-column: 1;
-  width: min(calc(100% - var(--chat-horizontal-gutter) - var(--chat-horizontal-gutter)), var(--chat-content-max-width));
-  display: flex;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: clamp(18px, 5vw, 90px);
-  margin: 0 auto;
+  gap: clamp(12px, 2vw, 28px);
+  padding: 0 var(--chat-horizontal-gutter);
 }
-.scope-picker { position: relative; width: min(355px, 46%); height: 48px; display: grid; grid-template-columns: auto 24px minmax(0, 1fr) 20px; align-items: center; gap: 8px; padding: 0 15px; border: 1px solid var(--border); border-radius: 13px; background: rgba(7, 17, 30, 0.68); -webkit-app-region: no-drag; }
+.scope-picker { position: relative; grid-column: 1; width: min(355px, 100%); height: 48px; display: grid; grid-template-columns: auto 24px minmax(0, 1fr) 20px; align-items: center; gap: 8px; padding: 0 15px; border: 1px solid var(--border); border-radius: 13px; background: rgba(7, 17, 30, 0.68); cursor: pointer; -webkit-app-region: no-drag; }
 .scope-picker:focus-within { outline: 2px solid #9d97ff; outline-offset: 2px; }
 .scope-picker label { color: #d4d8e3; font-size: 14px; white-space: nowrap; }
 .scope-picker-icon { color: #9a92ff; font-size: 18px; text-align: center; }
 .scope-picker select { position: relative; z-index: 2; height: 46px; border: 0; padding: 0; appearance: none; color: #e1e5ef; background: transparent; font-size: 14px; }
 .scope-picker select:focus-visible { outline: 0; }
 .scope-picker > svg { width: 17px; height: 17px; color: #b7c0d2; pointer-events: none; }
-.archive-header-status { width: max-content; display: grid; gap: 7px; -webkit-app-region: no-drag; }
+.archive-header-status { grid-column: 2; justify-self: center; width: max-content; display: grid; gap: 7px; -webkit-app-region: no-drag; }
 .archive-status-line { display: flex; align-items: center; gap: 10px; color: #d6dae5; font-size: 13px; white-space: nowrap; }
 .archive-status-line > i { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(72,210,123,.35); }
 .archive-header-progress { width: 100%; height: 5px; overflow: hidden; margin-left: 0; border-radius: 99px; background: rgba(255,255,255,.07); }
 .archive-header-progress > i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #49d681, #8c78ff); transition: width 250ms ease; }
-.context-toggle { display: none; align-items: center; gap: 7px; margin-left: auto; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; color: #c8d0e1; background: rgba(14,27,45,.8); -webkit-app-region: no-drag; }
+.context-toggle { grid-column: 3; justify-self: end; display: none; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; color: #c8d0e1; background: rgba(14,27,45,.8); -webkit-app-region: no-drag; }
 .context-toggle span { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 999px; color: #d7d2ff; background: var(--violet-soft); font-size: 10px; }
 
 .left-drawer { position: fixed; top: var(--header-height); bottom: 0; left: var(--rail-width); z-index: 25; width: var(--drawer-width); display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--border-strong); background: rgba(8, 18, 32, 0.98); box-shadow: var(--shadow); transform: translateX(calc(-100% - 2px)); visibility: hidden; transition: left 180ms ease, transform 180ms ease, visibility 180ms; }
@@ -152,17 +151,18 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
 @media (max-width: 760px) {
   :root { --rail-width: var(--rail-collapsed-width); --drawer-width: calc(100vw - var(--rail-collapsed-width)); }
   body, body.navigation-expanded { --rail-width: var(--rail-collapsed-width); }
+  body.navigation-expanded { --rail-brand-center-x: min(155px, calc(50vw - 12px)); }
   body.navigation-expanded .navigation-rail { position: fixed; inset: 0 auto 0 0; z-index: 40; width: min(var(--rail-expanded-width), calc(100vw - 24px)); box-shadow: var(--shadow); }
-  body.navigation-expanded .sidebar-brand { grid-template-columns: 42px minmax(0, 1fr) 34px; justify-content: normal; }
-  body.navigation-expanded .sidebar-brand-name { display: block; }
+  body.navigation-expanded .sidebar-brand { grid-template-columns: minmax(34px, 1fr) 42px minmax(34px, 1fr); justify-content: normal; }
   body.navigation-expanded .recent-chats { display: flex; }
   body.navigation-expanded .sidebar-index-panel { display: block; }
   body.navigation-expanded .rail-button { grid-template-columns: 42px minmax(0, 1fr); }
   body.navigation-expanded .rail-label { position: static; width: auto; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 15px; opacity: 1; transform: none; }
-  .app-header-content { gap: 10px; }
-  .scope-picker { width: auto; flex: 1 1 auto; grid-template-columns: 22px minmax(0,1fr) 18px; }
+  .app-header-content { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .scope-picker { grid-column: 1; width: 100%; grid-template-columns: 22px minmax(0,1fr) 18px; }
   .scope-picker label { display: none; }
   .archive-header-status { display: none; }
+  .context-toggle { grid-column: 2; }
 }
 
 @keyframes context-refreshed { 0% { background: rgba(116,103,255,.28); box-shadow: inset 0 0 0 1px rgba(151,141,255,.65); } 100% { background: transparent; box-shadow: inset 0 0 0 1px transparent; } }

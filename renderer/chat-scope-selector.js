@@ -181,6 +181,13 @@ function setScopeLoading(isLoading) {
   if (isLoading) chatScopeStatus.textContent = "Načítám konverzace…";
 }
 
+function openScopePickerFromContainer(event) {
+  if (event.target.closest?.("select") || chatScopeSelect.disabled) return;
+  event.preventDefault();
+  chatScopeSelect.focus({ preventScroll: true });
+  chatScopeSelect.showPicker?.();
+}
+
 function sourceLabel(sourceType) {
   if (sourceType === "discord") return "Discord";
   if (sourceType === "whatsapp") return "WhatsApp";
@@ -196,6 +203,7 @@ function scopeKey(scope) {
 }
 
 chatScopeSelect.addEventListener("change", handleScopeChange);
+document.querySelector(".scope-picker").addEventListener("click", openScopePickerFromContainer);
 window.chatScopeSelector = {
   bind: (listener) => { scopeChangeListener = listener; },
   getSelectedScope,
