@@ -58,6 +58,10 @@ window.modelSelector = (() => {
       && providerAvailable(selection.providerId);
   }
 
+  function releaseSessionSelection() {
+    preserveSessionSelection = false;
+  }
+
   function toggleMenu(event) {
     event.stopPropagation();
     if (menu.classList.contains("hidden")) openMenu();
@@ -244,6 +248,7 @@ window.modelSelector = (() => {
 
   return {
     bind, getChatSelection, prepare, restoreSelection,
+    releaseSessionSelection,
     updateAvailability: updateChatAvailability,
   };
 })();

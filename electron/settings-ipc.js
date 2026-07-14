@@ -98,7 +98,9 @@ class SettingsIpcController {
     if (!settings.providers.some((provider) => provider.provider_id === model.providerId)) {
       throw new Error("Vybraný provider neexistuje.");
     }
-    return this.providerStore.saveChatModel(model);
+    const replacesDefault = settings.chatDefaults.chatProviderId === model.originalProviderId
+      && settings.chatDefaults.chatModel === model.originalModel;
+    return this.providerStore.saveChatModel({ ...model, replaceDefault: replacesDefault });
   }
 
   async deleteChatModel(model) {

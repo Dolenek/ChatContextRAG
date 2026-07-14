@@ -5,6 +5,12 @@ let prepareSettingsOpen = async () => {};
 function bindSettingsUi(dependencies) {
   showSettingsToast = dependencies.showToast;
   prepareSettingsOpen = dependencies.prepareOpen;
+  window.chatModelSettingsUi.bind({
+    loadSuggestions: loadChatModelSuggestions,
+    refreshSettings,
+    resetConversation: dependencies.resetConversation,
+    showToast: showSettingsToast,
+  });
   window.settingsOverlay.bind({ onClose: resetSettingsDrafts });
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
   window.indexingApiKeyUi.bind({
@@ -13,7 +19,6 @@ function bindSettingsUi(dependencies) {
   window.indexingJobHistoryUi.bind({
     refreshSettings, showToast: showSettingsToast,
   });
-  document.querySelector("#chat-model-form").addEventListener("submit", saveChatModel);
   document.querySelector("#embedding-index-form").addEventListener("submit", createIndex);
   document.querySelector("#cancel-provider-edit").addEventListener("click", resetProviderForm);
   document.querySelector("#refresh-settings-button").addEventListener("click", refreshSettings);
@@ -41,7 +46,7 @@ async function refreshSettings() {
     const indexingJobs = await loadSettingsState();
     renderProviders();
     window.indexingApiKeyUi.render(settingsState);
-    renderChatModels();
+    window.chatModelSettingsUi.render(settingsState);
     renderIndexes();
     window.indexingJobHistoryUi.render(indexingJobs);
     fillProviderSelect("#embedding-provider-select");
@@ -148,26 +153,6 @@ function renderProviders() {
   }));
 }
 
-function renderChatModels() {
-  const providers = new Map(settingsState.providers.map(
-    (provider) => [provider.provider_id, provider.name],
-  ));
-  const rows = (settingsState.chatModels || []).map((model) => {
-    const reasoning = model.reasoning_effort || "výchozí dle modelu";
-    const detail = `${providers.get(model.provider_id) || model.provider_id} · `
-      + `${model.model} · reasoning ${reasoning}`;
-    const row = createSettingsRow(model.label || model.model, detail);
-    if (model.managed) {
-      row.append(actionButton(
-        "Smazat", () => removeChatModel(model), "danger-link",
-      ));
-    }
-    return row;
-  });
-  if (!rows.length) rows.push(createDetail("Zatím není přidaný žádný chat model."));
-  document.querySelector("#chat-model-list").replaceChildren(...rows);
-}
-
 function renderIndexes() {
   const activeId = settingsState.embeddings.active_embedding_index_id;
   const rows = settingsState.embeddings.indexes.map((index) => {
@@ -219,23 +204,6 @@ async function saveProvider(submitEvent) {
   } catch (error) { showSettingsToast(error.message, true); }
 }
 
-async function saveChatModel(submitEvent) {
-  submitEvent.preventDefault();
-  try {
-    await window.chatContext.saveChatModel({
-      providerId: document.querySelector("#chat-model-provider-select").value,
-      model: document.querySelector("#chat-model-input").value,
-      label: document.querySelector("#chat-model-label").value,
-      reasoningEffort: document.querySelector("#chat-model-reasoning-effort").value,
-    });
-    document.querySelector("#chat-model-input").value = "";
-    document.querySelector("#chat-model-label").value = "";
-    document.querySelector("#chat-model-reasoning-effort").value = "";
-    await refreshSettings();
-    showSettingsToast("Chat model byl přidán.");
-  } catch (error) { showSettingsToast(error.message, true); }
-}
-
 async function createIndex(submitEvent) {
   submitEvent.preventDefault();
   const dimensionsValue = document.querySelector("#embedding-dimensions").value;
@@ -266,18 +234,13 @@ function resetProviderForm() { document.querySelector("#provider-form").reset();
 function resetSettingsDrafts() {
   [
     "#connection-form", "#provider-form", "#indexing-api-key-form",
-    "#chat-model-form", "#embedding-index-form",
+    "#embedding-index-form",
   ].forEach((selector) => document.querySelector(selector).reset());
+  window.chatModelSettingsUi.reset();
   document.querySelector("#provider-id").value = "";
   document.querySelector("#connection-token").value = "";
 }
 async function removeProvider(id) { await runAndRefresh(() => window.chatContext.deleteProvider(id), "Provider byl smazán."); }
-async function removeChatModel(model) {
-  await runAndRefresh(
-    () => window.chatContext.deleteChatModel(model.provider_id, model.model),
-    "Chat model byl smazán.",
-  );
-}
 async function activateIndex(id) { await runAndRefresh(() => window.chatContext.activateEmbeddingIndex(id), "Aktivní index byl změněn."); }
 async function syncIndex(index) { await runAndRefresh(() => window.chatContext.syncEmbeddingIndex(index.embedding_index_id), "Synchronizace byla zařazena."); }
 async function rebuildIndex(index) {

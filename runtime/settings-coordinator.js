@@ -60,7 +60,9 @@ class SettingsCoordinator {
     if (!settings.providers.some((item) => item.provider_id === model.providerId)) {
       throw new Error("The selected provider does not exist.");
     }
-    return this.providerStore.saveChatModel(model);
+    const replacesDefault = settings.chatDefaults.chatProviderId === model.originalProviderId
+      && settings.chatDefaults.chatModel === model.originalModel;
+    return this.providerStore.saveChatModel({ ...model, replaceDefault: replacesDefault });
   }
 
   deleteChatModel(providerId, model) {

@@ -18,6 +18,8 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(html, /role="dialog" aria-modal="true"/);
   assert.match(html, /id="chat-model-input"/);
   assert.match(html, /id="chat-model-reasoning-effort"/);
+  assert.match(html, /id="cancel-chat-model-edit"/);
+  assert.match(html, /id="save-chat-model-button"/);
   assert.match(html, /id="chat-model-trigger"/);
   assert.match(html, /id="indexing-api-key-form"/);
   assert.match(html, /id="indexing-key-provider"/);
@@ -31,10 +33,13 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(preload, /settings:chat-model:save/);
   assert.doesNotMatch(preload, /decryptString/);
   assert.match(modelSelector, /saveChatDefault/);
+  assert.match(modelSelector, /releaseSessionSelection/);
   assert.match(modelSelector, /model-provider-list/);
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
   assert.match(settingsUi, /Nastavit klíč pro indexing/);
   assert.match(settingsUi, /onClose: resetSettingsDrafts/);
+  assert.match(read("renderer/chat-model-settings-ui.js"), /actionButton\("Upravit"/);
+  assert.match(read("renderer/chat-model-settings-ui.js"), /originalProviderId/);
   assert.match(read("renderer/indexing-api-key-ui.js"), /saveProvider/);
   assert.match(read("renderer/indexing-job-history-ui.js"), /retryIndexingJob/);
   assert.match(controller, /getChatSelection/);
@@ -76,6 +81,61 @@ test("chat models reject unsupported reasoning effort values", () => {
   }), /reasoning effort/);
 
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("chat model edits replace their original identity and preserve an active default", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-model-edit-"));
+  const store = new ProviderStore(directory, {});
+  store.saveChatModel({ providerId: "openai", model: "old-model", label: "Old" });
+  store.setDefaults("openai", "old-model");
+
+  store.saveChatModel({
+    providerId: "openai", model: "new-model", label: "Renamed",
+    reasoningEffort: "medium", originalProviderId: "openai",
+    originalModel: "old-model", replaceDefault: true,
+  });
+
+  assert.deepEqual(store.listChatModels(), [{
+    provider_id: "openai", model: "new-model", label: "Renamed",
+    reasoning_effort: "medium", managed: true,
+  }]);
+  assert.deepEqual(store.getDefaults(), {
+    chatProviderId: "openai", chatModel: "new-model",
+  });
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("chat model edits reject target identity collisions without changing records", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-model-collision-"));
+  const store = new ProviderStore(directory, {});
+  store.saveChatModel({ providerId: "openai", model: "first" });
+  store.saveChatModel({ providerId: "openai", model: "second" });
+
+  assert.throws(() => store.saveChatModel({
+    providerId: "openai", model: "second",
+    originalProviderId: "openai", originalModel: "first",
+  }), /already exists|už existuje/);
+  assert.deepEqual(store.listChatModels().map((model) => model.model), ["first", "second"]);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("chat model edit action fills and submits the form with its original identity", async () => {
+  const fixture = createChatModelEditFixture();
+  const { elements, saved, resets } = fixture;
+
+  await elements.modelList.children[0].children[2].listeners.click();
+  assert.equal(elements.modelId.value, "gpt-old");
+  assert.equal(elements.saveButton.textContent, "Uložit změny");
+  elements.modelId.value = "gpt-new";
+  elements.effort.value = "medium";
+  await elements.form.listeners.submit({ preventDefault: () => {} });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
+    providerId: "openai", model: "gpt-new", label: "Old",
+    reasoningEffort: "medium", originalProviderId: "openai", originalModel: "gpt-old",
+  });
+  assert.equal(fixture.released(), true);
+  assert.deepEqual(resets, ["upraveným modelem"]);
 });
 
 test("keyless local provider remains available for compatible endpoints", () => {
@@ -202,5 +262,84 @@ function fakeSelect() {
   return {
     value: "", options: [],
     replaceChildren(...options) { this.options = options; },
+  };
+}
+
+function fakeUiElement(tagName) {
+  const classes = new Set();
+  return {
+    tagName, children: [], listeners: {}, value: "", textContent: "",
+    classList: {
+      contains: (name) => classes.has(name),
+      toggle(name, force) {
+        const enabled = force === undefined ? !classes.has(name) : force;
+        if (enabled) classes.add(name); else classes.delete(name);
+      },
+    },
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    reset() {},
+    focus() { this.focused = true; },
+  };
+}
+
+function createChatModelEditFixture() {
+  const elements = chatModelEditElements();
+  const saved = [];
+  const resets = [];
+  let released = false;
+  const context = chatModelEditContext(elements, saved, () => { released = true; });
+  vm.runInNewContext(read("renderer/chat-model-settings-ui.js"), context);
+  context.window.chatModelSettingsUi.bind({
+    loadSuggestions: async () => {}, refreshSettings: async () => {},
+    resetConversation: (reason) => resets.push(reason), showToast: () => {},
+  });
+  context.window.chatModelSettingsUi.render({
+    providers: [{ provider_id: "openai", name: "OpenAI" }],
+    chatModels: [{
+      provider_id: "openai", model: "gpt-old", label: "Old",
+      reasoning_effort: "high", managed: true,
+    }],
+  });
+  return { context, elements, saved, resets, released: () => released };
+}
+
+function chatModelEditElements() {
+  const elements = {
+    form: fakeUiElement("form"), provider: fakeUiElement("select"),
+    modelId: fakeUiElement("input"), label: fakeUiElement("input"),
+    effort: fakeUiElement("select"), saveButton: fakeUiElement("button"),
+    cancelButton: fakeUiElement("button"), modelList: fakeUiElement("div"),
+  };
+  elements.bySelector = new Map([
+    ["#chat-model-form", elements.form], ["#chat-model-provider-select", elements.provider],
+    ["#chat-model-input", elements.modelId], ["#chat-model-label", elements.label],
+    ["#chat-model-reasoning-effort", elements.effort],
+    ["#save-chat-model-button", elements.saveButton],
+    ["#cancel-chat-model-edit", elements.cancelButton],
+    ["#chat-model-list", elements.modelList],
+  ]);
+  return elements;
+}
+
+function chatModelEditContext(elements, saved, releaseSelection) {
+  return {
+    document: {
+      querySelector: (selector) => elements.bySelector.get(selector),
+      createElement: (tagName) => fakeUiElement(tagName),
+    },
+    window: {
+      chatContext: {
+        saveChatModel: async (model) => saved.push(model),
+        deleteChatModel: async () => {},
+      },
+      modelSelector: {
+        getChatSelection: () => ({
+          providerId: "openai", model: "gpt-old", reasoningEffort: "high",
+        }),
+        releaseSessionSelection: releaseSelection,
+      },
+    },
   };
 }

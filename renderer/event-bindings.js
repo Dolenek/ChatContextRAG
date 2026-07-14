@@ -68,6 +68,7 @@ window.settingsUi.bind({
     window.shellController.closeDrawer();
     window.shellController.closeContext();
   },
+  resetConversation: window.chatController.resetConversation,
   showToast: window.appUi.showToast,
 });
 window.discordBotUi.bind({

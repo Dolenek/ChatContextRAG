@@ -101,13 +101,24 @@ class ProviderStore {
     const model = requiredText(input.model, "Model", 200);
     const label = optionalText(input.label, 100) || model;
     const reasoningEffort = normalizeReasoningEffort(input.reasoningEffort);
-    const existingIndex = state.chatModels.findIndex(
+    const original = originalModelIdentity(input, providerId, model);
+    const originalIndex = state.chatModels.findIndex(
+      (entry) => entry.providerId === original.providerId && entry.model === original.model,
+    );
+    const targetIndex = state.chatModels.findIndex(
       (entry) => entry.providerId === providerId && entry.model === model,
     );
     const savedModel = { providerId, model, label, reasoningEffort };
-    if (existingIndex >= 0) state.chatModels[existingIndex] = savedModel;
+    if (original.edited && originalIndex < 0) {
+      throw new Error("Původní chat model už neexistuje.");
+    }
+    if (original.edited && targetIndex >= 0 && targetIndex !== originalIndex) {
+      throw new Error("Chat model s tímto providerem a ID už existuje.");
+    }
+    if (originalIndex >= 0) state.chatModels[originalIndex] = savedModel;
     else if (state.chatModels.length >= 100) throw new Error("Lze uložit nejvýše 100 chat modelů.");
     else state.chatModels.push(savedModel);
+    if (input.replaceDefault) state.defaults = { chatProviderId: providerId, chatModel: model };
     this._write(state);
     return {
       provider_id: providerId, model, label,
@@ -171,6 +182,21 @@ class ProviderStore {
 
 function modelKey(model) {
   return `${model.provider_id}\u0000${model.model}`;
+}
+
+function originalModelIdentity(input, providerId, model) {
+  const hasProvider = input.originalProviderId !== undefined
+    && input.originalProviderId !== null;
+  const hasModel = input.originalModel !== undefined && input.originalModel !== null;
+  if (hasProvider !== hasModel) {
+    throw new Error("Původní provider a ID modelu musí být uvedeny společně.");
+  }
+  if (!hasProvider) return { providerId, model, edited: false };
+  return {
+    providerId: requiredText(input.originalProviderId, "Původní provider", 100),
+    model: requiredText(input.originalModel, "Původní model", 200),
+    edited: true,
+  };
 }
 
 function requiredText(value, label, maxLength) {

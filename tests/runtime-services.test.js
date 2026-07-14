@@ -139,6 +139,21 @@ test("settings coordinator enforces provider and active-model deletion guards", 
   );
 });
 
+test("settings coordinator moves the default when editing the active chat model", async () => {
+  const backend = fakeSettingsBackend();
+  const providerStore = fakeProviderStore();
+  providerStore.defaults = { chatProviderId: "local", chatModel: "old-model" };
+  const coordinator = new SettingsCoordinator({ providerStore, backend });
+
+  await coordinator.saveChatModel({
+    providerId: "local", model: "new-model",
+    originalProviderId: "local", originalModel: "old-model",
+  });
+
+  assert.equal(providerStore.savedModel.replaceDefault, true);
+  assert.equal(providerStore.savedModel.model, "new-model");
+});
+
 test("settings coordinator forwards index lifecycle operations and monitors jobs", async () => {
   const backend = fakeSettingsBackend();
   const monitored = [];
@@ -240,12 +255,13 @@ function fakeSettingsBackend() {
 
 function fakeProviderStore() {
   return {
-    defaults: null,
+    defaults: null, savedModel: null,
     decryptedProfiles: () => [{ provider_id: "local" }],
     getDefaults(fallback = { chatProviderId: "openai", chatModel: "" }) {
       return this.defaults || fallback;
     },
     listChatModels: (models) => models.filter((model) => model.model),
-    delete: () => {}, deleteChatModel: () => {}, saveChatModel: (model) => model,
+    delete: () => {}, deleteChatModel: () => {},
+    saveChatModel(model) { this.savedModel = model; return model; },
   };
 }
