@@ -2,6 +2,7 @@ const chatScopeSelect = document.querySelector("#chat-scope-select");
 const chatScopeStatus = document.querySelector("#chat-scope-status");
 const chatScopeList = document.querySelector("#chat-scope-list");
 const availableChatScopes = new Map();
+let unavailableRestoredScope = null;
 let scopeChangeListener = () => {};
 
 async function refreshChatScopes() {
@@ -23,6 +24,7 @@ function renderChatScopes(scopes, preferredKey) {
     allOption,
     ...[...sourceGroups.entries()].map(createSourceGroup),
   );
+  preserveUnavailableScope(preferredKey);
   const selectedKey = availableChatScopes.has(preferredKey) ? preferredKey : "";
   chatScopeSelect.value = selectedKey;
   renderScopeButtons(scopes, selectedKey);
@@ -30,6 +32,15 @@ function renderChatScopes(scopes, preferredKey) {
   chatScopeStatus.textContent = scopes.length
     ? `${scopes.length} dostupných konverzací`
     : "Zatím není dostupná žádná zaindexovaná konverzace";
+}
+
+function preserveUnavailableScope(preferredKey) {
+  if (!unavailableRestoredScope || scopeKey(unavailableRestoredScope) !== preferredKey) return;
+  if (availableChatScopes.has(preferredKey)) {
+    unavailableRestoredScope = null;
+    return;
+  }
+  addUnavailableScope(preferredKey, unavailableRestoredScope);
 }
 
 function groupScopesBySource(scopes) {
@@ -92,6 +103,9 @@ function selectScope(key) {
 }
 
 function handleScopeChange() {
+  if (!availableChatScopes.get(chatScopeSelect.value)?.unavailable) {
+    unavailableRestoredScope = null;
+  }
   document.querySelectorAll(".scope-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.scopeKey === chatScopeSelect.value);
   });
@@ -114,6 +128,37 @@ function getSelectedScope() {
     source_type: selected.source_type,
     conversation_id: selected.conversation_id,
   } : null;
+}
+
+function restoreScope(scope) {
+  if (!scope) {
+    chatScopeSelect.value = "";
+    updateRestoredScopeUi();
+    return true;
+  }
+  const key = scopeKey(scope);
+  const selectedScope = availableChatScopes.get(key);
+  const isAvailable = Boolean(selectedScope && !selectedScope.unavailable);
+  unavailableRestoredScope = isAvailable ? null : scope;
+  if (!isAvailable) addUnavailableScope(key, scope);
+  chatScopeSelect.value = key;
+  updateRestoredScopeUi();
+  return isAvailable;
+}
+
+function addUnavailableScope(key, scope) {
+  const label = `${scope.conversation_id} (nedostupný zdroj)`;
+  availableChatScopes.set(key, {
+    ...scope, display_name: label, message_count: 0, unavailable: true,
+  });
+  chatScopeSelect.append(new Option(label, key));
+}
+
+function updateRestoredScopeUi() {
+  document.querySelectorAll(".scope-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.scopeKey === chatScopeSelect.value);
+  });
+  updateActiveScopeLabel();
 }
 
 function setScopeLoading(isLoading) {
@@ -146,4 +191,5 @@ window.chatScopeSelector = {
   bind: (listener) => { scopeChangeListener = listener; },
   getSelectedScope,
   refresh: refreshChatScopes,
+  restoreScope,
 };

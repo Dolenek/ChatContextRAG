@@ -153,7 +153,9 @@ function renderChatModels() {
     (provider) => [provider.provider_id, provider.name],
   ));
   const rows = (settingsState.chatModels || []).map((model) => {
-    const detail = `${providers.get(model.provider_id) || model.provider_id} · ${model.model}`;
+    const reasoning = model.reasoning_effort || "výchozí dle modelu";
+    const detail = `${providers.get(model.provider_id) || model.provider_id} · `
+      + `${model.model} · reasoning ${reasoning}`;
     const row = createSettingsRow(model.label || model.model, detail);
     if (model.managed) {
       row.append(actionButton(
@@ -224,9 +226,11 @@ async function saveChatModel(submitEvent) {
       providerId: document.querySelector("#chat-model-provider-select").value,
       model: document.querySelector("#chat-model-input").value,
       label: document.querySelector("#chat-model-label").value,
+      reasoningEffort: document.querySelector("#chat-model-reasoning-effort").value,
     });
     document.querySelector("#chat-model-input").value = "";
     document.querySelector("#chat-model-label").value = "";
+    document.querySelector("#chat-model-reasoning-effort").value = "";
     await refreshSettings();
     showSettingsToast("Chat model byl přidán.");
   } catch (error) { showSettingsToast(error.message, true); }

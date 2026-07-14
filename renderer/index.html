@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="panels.css" />
     <link rel="stylesheet" href="overview.css" />
     <link rel="stylesheet" href="settings-overlay.css" />
+    <link rel="stylesheet" href="chat-history.css" />
   </head>
   <body class="navigation-expanded" data-navigation-mode="expanded">
     <svg class="icon-sprite" aria-hidden="true">
@@ -51,8 +52,8 @@
         <button id="navigation-toggle" class="rail-button navigation-toggle" type="button" aria-label="Sbalit navigaci" aria-controls="primary-navigation" aria-expanded="true">
           <svg aria-hidden="true"><use href="#icon-menu" /></svg><span id="navigation-toggle-label" class="rail-label">Sbalit navigaci</span>
         </button>
-        <button id="open-chat-button" class="rail-button active" type="button" aria-label="Chat" aria-current="page">
-          <svg aria-hidden="true"><use href="#icon-chat" /></svg><span class="rail-label">Chat</span>
+        <button id="new-chat-button" class="rail-button active" type="button" aria-label="Nový chat" aria-current="page">
+          <svg aria-hidden="true"><use href="#icon-plus" /></svg><span class="rail-label">Nový chat</span>
         </button>
         <button id="open-sources-button" class="rail-button" type="button" aria-label="Zdroje a importy" aria-controls="left-drawer" aria-expanded="false">
           <svg aria-hidden="true"><use href="#icon-sources" /></svg><span class="rail-label">Zdroje a importy</span>
@@ -60,8 +61,11 @@
         <button id="open-overview-button" class="rail-button" type="button" aria-label="Databáze">
           <svg aria-hidden="true"><use href="#icon-database" /></svg><span class="rail-label">Databáze</span>
         </button>
+        <section class="recent-chats" aria-labelledby="recent-chats-heading">
+          <h2 id="recent-chats-heading">Nedávné</h2>
+          <div id="recent-chat-list" class="recent-chat-list"></div>
+        </section>
         <div class="rail-spacer"></div>
-        <button id="web-logout-button" class="rail-button hidden" type="button" aria-label="Odhlásit se"><svg aria-hidden="true"><use href="#icon-close" /></svg><span class="rail-label">Odhlásit se</span></button>
         <button id="open-settings-button" class="rail-button" type="button" aria-label="Otevřít nastavení" aria-haspopup="dialog" aria-expanded="false">
           <svg aria-hidden="true"><use href="#icon-settings" /></svg><span class="rail-label">Nastavení</span>
         </button>
@@ -146,9 +150,10 @@
         <section id="chat-screen" class="workspace-screen chat-screen">
           <header class="workspace-heading chat-heading">
             <div><p class="eyebrow">LOKÁLNÍ RAG DATABÁZE</p><h1>Ptejte se na historii vašich chatů</h1><p>Nahrajte své konverzace a bavte se o jejich kontextu.</p></div>
-            <button id="new-chat-button" class="secondary-button" type="button"><svg><use href="#icon-plus" /></svg>Nový chat</button>
+            <button id="open-chat-sources-button" class="secondary-button" type="button"><svg><use href="#icon-sources" /></svg>Zdroje</button>
           </header>
           <div id="conversation" class="conversation"><div class="empty-chat"><span>✦</span><h2>Na co si chcete vzpomenout?</h2><p>Zkuste třeba „Co jsme řešili ohledně termínu?“</p></div></div>
+          <p id="chat-readonly-notice" class="chat-readonly-notice hidden" role="status"></p>
           <form id="chat-form" class="chat-form">
             <label class="sr-only" for="question-input">Otázka pro databázi</label>
             <input id="question-input" type="text" minlength="2" placeholder="Zeptejte se na cokoliv z vaší historie chatů…" autocomplete="off" required />
@@ -230,6 +235,9 @@
             <button class="settings-nav-item" type="button" data-settings-section="indexing-history" aria-controls="settings-indexing-history-panel"><svg><use href="#icon-refresh" /></svg><span>Historie indexování</span></button>
             <button class="settings-nav-item" type="button" data-settings-section="workspace" aria-controls="settings-workspace-panel"><svg><use href="#icon-workspace" /></svg><span>Workspace</span></button>
           </nav>
+          <div class="settings-navigation-footer">
+            <button id="settings-logout-button" class="settings-nav-item hidden" type="button"><svg><use href="#icon-close" /></svg><span>Odhlásit se</span></button>
+          </div>
         </aside>
 
         <div class="settings-content">
@@ -241,6 +249,7 @@
             <section id="settings-providers-panel" class="settings-section" data-settings-panel="providers" aria-labelledby="settings-providers-title">
               <header class="settings-section-heading"><h2 id="settings-providers-title">Provideři a API klíče</h2><p>Spravujte připojení k AI službám a jejich šifrované přístupové klíče.</p></header>
               <div class="settings-section-stack">
+                <section class="settings-card"><h3>Přidat nebo upravit providera</h3><form id="provider-form" class="settings-form settings-two-column-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
                 <section class="settings-card">
                   <h3>Provideři</h3><p>API klíč providera používá chat i embedding/indexing. Klíče jsou uložené šifrovaně.</p>
                   <div id="provider-list" class="settings-list"></div>
@@ -251,13 +260,12 @@
                     <button class="primary-button" type="submit">Uložit klíč pro indexing</button>
                   </form>
                 </section>
-                <section class="settings-card"><h3>Přidat nebo upravit providera</h3><form id="provider-form" class="settings-form settings-two-column-form"><input id="provider-id" type="hidden" /><label for="provider-name">Název</label><input id="provider-name" required /><label for="provider-base-url">Base URL</label><input id="provider-base-url" type="url" required placeholder="http://localhost:11434/v1/" /><label for="provider-api-key">API klíč</label><input id="provider-api-key" type="password" autocomplete="off" placeholder="Volitelný pro lokální endpoint" /><label for="provider-chat-api">Chat API</label><select id="provider-chat-api"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select><div class="settings-form-actions"><button id="cancel-provider-edit" class="quiet-button" type="button">Zrušit úpravy</button><button class="primary-button" type="submit">Uložit providera</button></div></form></section>
               </div>
             </section>
 
             <section id="settings-chat-models-panel" class="settings-section hidden" data-settings-panel="chat-models" aria-labelledby="settings-chat-models-title" aria-hidden="true">
-              <header class="settings-section-heading"><h2 id="settings-chat-models-title">Chat modely</h2><p>Vyberte modely, které budou dostupné ve výběru pod chatem.</p></header>
-              <section class="settings-card"><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid separated-settings-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><button class="primary-button" type="submit">Přidat model</button></form></section>
+              <header class="settings-section-heading"><h2 id="settings-chat-models-title">Chat modely</h2><p>Vyberte modely a jejich reasoning effort, které budou dostupné ve výběru pod chatem.</p></header>
+              <section class="settings-card"><div id="chat-model-list" class="settings-list"></div><form id="chat-model-form" class="settings-form settings-form-grid separated-settings-form"><label for="chat-model-provider-select">Provider</label><select id="chat-model-provider-select" required></select><label for="chat-model-input">ID modelu</label><input id="chat-model-input" list="chat-model-options" required placeholder="např. gpt-5.1 nebo llama3.2" /><datalist id="chat-model-options"></datalist><label for="chat-model-label">Zobrazovaný název</label><input id="chat-model-label" placeholder="Volitelný" /><label for="chat-model-reasoning-effort">Reasoning effort</label><select id="chat-model-reasoning-effort"><option value="">Výchozí dle modelu</option><option value="none">None</option><option value="minimal">Minimal</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">XHigh</option><option value="max">Max</option></select><p class="settings-form-hint">Dostupné úrovně závisejí na modelu a providerovi. Výchozí volba parametr do API neposílá.</p><button class="primary-button" type="submit">Přidat model</button></form></section>
             </section>
 
             <section id="settings-embedding-indexes-panel" class="settings-section hidden" data-settings-panel="embedding-indexes" aria-labelledby="settings-embedding-indexes-title" aria-hidden="true">
@@ -296,6 +304,22 @@
       </section>
     </div>
 
+    <div id="rename-chat-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="rename-chat-title">
+      <form id="rename-chat-form" class="chat-session-dialog">
+        <h2 id="rename-chat-title">Přejmenovat chat</h2>
+        <label for="rename-chat-input">Název konverzace</label>
+        <input id="rename-chat-input" type="text" maxlength="120" required />
+        <div class="dialog-actions"><button id="cancel-rename-chat" class="secondary-button" type="button">Zrušit</button><button class="primary-button" type="submit">Uložit</button></div>
+      </form>
+    </div>
+    <div id="delete-chat-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="delete-chat-title">
+      <section class="chat-session-dialog danger-variant">
+        <h2 id="delete-chat-title">Odstranit chat?</h2>
+        <p>Konverzace „<strong id="delete-chat-name"></strong>“ bude trvale odstraněna.</p>
+        <div class="dialog-actions"><button id="cancel-delete-chat" class="secondary-button" type="button">Zrušit</button><button id="confirm-delete-chat" class="danger-button" type="button">Odstranit chat</button></div>
+      </section>
+    </div>
+
     <div id="clear-database-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
       <section class="danger-dialog"><div class="danger-icon">!</div><h2 id="clear-dialog-title">Vymazat celou databázi?</h2><p>Tato akce nevratně odstraní všechny chunky, vektory a metadata. Discord přihlášení zůstane zachované.</p><label for="clear-confirmation-input">Pro potvrzení napište <strong>VYMAZAT</strong></label><input id="clear-confirmation-input" type="text" autocomplete="off" placeholder="VYMAZAT" /><div class="dialog-actions"><button id="cancel-clear-button" class="secondary-button" type="button">Zrušit</button><button id="confirm-clear-button" class="danger-button" type="button" disabled>Trvale vymazat</button></div></section>
     </div>
@@ -317,6 +341,7 @@
     <script src="discord-bot-ui.js"></script>
     <script src="whatsapp-import-ui.js"></script>
     <script src="app.js"></script>
+    <script src="chat-history-ui.js"></script>
     <script src="chat-controller.js"></script>
     <script src="event-bindings.js"></script>
   </body>

@@ -1,0 +1,173 @@
+window.chatHistoryUi = (() => {
+  const list = document.querySelector("#recent-chat-list");
+  const renameDialog = document.querySelector("#rename-chat-dialog");
+  const deleteDialog = document.querySelector("#delete-chat-dialog");
+  const renameInput = document.querySelector("#rename-chat-input");
+  let summaries = [];
+  let activeSessionId = null;
+  let chatScreenActive = true;
+  let pendingSession = null;
+  let openMenu = null;
+  let dependencies = {};
+
+  function bind(inputDependencies) {
+    dependencies = inputDependencies;
+    document.querySelector("#rename-chat-form").addEventListener("submit", renameSession);
+    document.querySelector("#cancel-rename-chat").addEventListener("click", closeDialogs);
+    document.querySelector("#confirm-delete-chat").addEventListener("click", deleteSession);
+    document.querySelector("#cancel-delete-chat").addEventListener("click", closeDialogs);
+    document.addEventListener("click", closeContextMenu);
+    document.addEventListener("keydown", handleEscape);
+  }
+
+  async function refresh() {
+    try {
+      summaries = await window.chatContext.listChatSessions(10);
+      render();
+    } catch (error) {
+      dependencies.showToast?.(error.message, true);
+    }
+  }
+
+  function render() {
+    if (!summaries.length) {
+      const empty = document.createElement("p");
+      empty.className = "recent-chat-empty";
+      empty.textContent = "Uložené chaty se objeví po první odpovědi.";
+      list.replaceChildren(empty);
+      return;
+    }
+    list.replaceChildren(...summaries.map(createRow));
+  }
+
+  function createRow(summary) {
+    const row = document.createElement("div");
+    const openButton = document.createElement("button");
+    const menuButton = document.createElement("button");
+    row.className = "recent-chat-row";
+    const isActive = chatScreenActive && summary.session_id === activeSessionId;
+    row.classList.toggle("active", isActive);
+    openButton.className = "recent-chat-open";
+    openButton.type = "button";
+    openButton.title = summary.title;
+    openButton.textContent = summary.title;
+    openButton.toggleAttribute("aria-current", isActive);
+    openButton.addEventListener("click", () => dependencies.openSession(summary.session_id));
+    menuButton.className = "recent-chat-menu-button";
+    menuButton.type = "button";
+    menuButton.textContent = "⋯";
+    menuButton.setAttribute("aria-label", `Akce pro chat ${summary.title}`);
+    menuButton.addEventListener("click", (event) => showContextMenu(event, summary));
+    row.append(openButton, menuButton);
+    return row;
+  }
+
+  function showContextMenu(event, summary) {
+    event.stopPropagation();
+    closeContextMenu();
+    const menu = document.createElement("div");
+    menu.className = "recent-chat-menu";
+    menu.append(
+      createMenuButton("Přejmenovat", () => showRenameDialog(summary)),
+      createMenuButton("Odstranit chat", () => showDeleteDialog(summary), true),
+    );
+    document.body.append(menu);
+    positionMenu(menu, event.currentTarget.getBoundingClientRect());
+    openMenu = menu;
+  }
+
+  function createMenuButton(label, listener, danger = false) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.classList.toggle("danger-option", danger);
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeContextMenu();
+      listener();
+    });
+    return button;
+  }
+
+  function positionMenu(menu, anchor) {
+    const width = 142;
+    menu.style.left = `${Math.max(8, Math.min(anchor.right - width, innerWidth - width - 8))}px`;
+    menu.style.top = `${Math.min(anchor.bottom + 3, innerHeight - 90)}px`;
+  }
+
+  function showRenameDialog(summary) {
+    pendingSession = summary;
+    renameInput.value = summary.title;
+    renameDialog.classList.remove("hidden");
+    renameInput.focus();
+    renameInput.select();
+  }
+
+  function showDeleteDialog(summary) {
+    pendingSession = summary;
+    document.querySelector("#delete-chat-name").textContent = summary.title;
+    deleteDialog.classList.remove("hidden");
+    document.querySelector("#confirm-delete-chat").focus();
+  }
+
+  async function renameSession(event) {
+    event.preventDefault();
+    const title = renameInput.value.trim();
+    if (!title || !pendingSession) return;
+    try {
+      await window.chatContext.renameChatSession(pendingSession.session_id, title);
+      closeDialogs();
+      await refresh();
+    } catch (error) {
+      dependencies.showToast?.(error.message, true);
+    }
+  }
+
+  async function deleteSession() {
+    if (!pendingSession) return;
+    const deletedId = pendingSession.session_id;
+    try {
+      await window.chatContext.deleteChatSession(deletedId);
+      closeDialogs();
+      if (deletedId === activeSessionId) dependencies.startNewChat();
+      await refresh();
+    } catch (error) {
+      dependencies.showToast?.(error.message, true);
+    }
+  }
+
+  function setActiveSession(sessionId) {
+    activeSessionId = sessionId;
+    window.shellController.setActiveChatSession(sessionId);
+    render();
+  }
+
+  function setScreenActive(isActive) {
+    chatScreenActive = isActive;
+    render();
+  }
+
+  async function responseSaved(response) {
+    setActiveSession(response.chat_session_id || null);
+    await refresh();
+  }
+
+  function closeDialogs() {
+    renameDialog.classList.add("hidden");
+    deleteDialog.classList.add("hidden");
+    pendingSession = null;
+  }
+
+  function closeContextMenu() {
+    openMenu?.remove();
+    openMenu = null;
+  }
+
+  function handleEscape(event) {
+    if (event.key !== "Escape") return;
+    closeContextMenu();
+    closeDialogs();
+  }
+
+  return { bind, refresh, responseSaved, setActiveSession, setScreenActive };
+})();

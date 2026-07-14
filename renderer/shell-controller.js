@@ -22,6 +22,7 @@ window.shellController = (() => {
   let preferredNavigationMode = readStoredNavigationMode();
   let responsiveNavigationOpen = false;
   let discordActive = false;
+  let activeChatSessionId = null;
 
   function readStoredNavigationMode() {
     try {
@@ -110,12 +111,22 @@ window.shellController = (() => {
     Object.entries(screenElements).forEach(([name, element]) => {
       element.classList.toggle("hidden", name !== screenName);
     });
-    updateScreenButton("#open-chat-button", screenName === "chat");
+    updateScreenButton(
+      "#new-chat-button", screenName === "chat" && !activeChatSessionId,
+    );
     updateScreenButton("#open-overview-button", screenName === "overview");
+    window.chatHistoryUi?.setScreenActive?.(screenName === "chat");
+  }
+
+  function setActiveChatSession(sessionId) {
+    activeChatSessionId = sessionId;
+    const chatVisible = !screenElements.chat.classList.contains("hidden");
+    updateScreenButton("#new-chat-button", chatVisible && !sessionId);
   }
 
   function updateScreenButton(selector, isActive) {
     const button = document.querySelector(selector);
+    if (!button) return;
     button.classList.toggle("active", isActive);
     button.toggleAttribute("aria-current", isActive);
   }
@@ -162,6 +173,6 @@ window.shellController = (() => {
 
   return {
     closeContext, closeDrawer, closeResponsiveNavigation, openContext, openDrawerPanel,
-    setDiscordActive, showScreen, toggleContext, toggleNavigation,
+    setActiveChatSession, setDiscordActive, showScreen, toggleContext, toggleNavigation,
   };
 })();

@@ -11,6 +11,7 @@ def raw_schema_statements(
         + _embedding_schema_statements(default_embedding_model, dimensions)
         + _job_schema_statements()
         + _integration_schema_statements()
+        + chat_session_schema_statements()
     )
 
 
@@ -172,4 +173,25 @@ def _integration_schema_statements() -> List[str]:
             PRIMARY KEY(source_type,conversation_id))""",
         """ALTER TABLE integration_sync_states
             ADD COLUMN IF NOT EXISTS active_session_id TEXT""",
+    ]
+
+
+def chat_session_schema_statements() -> List[str]:
+    return [
+        """CREATE TABLE IF NOT EXISTS chat_sessions (
+            id TEXT PRIMARY KEY,title TEXT NOT NULL,source_type TEXT,
+            conversation_id TEXT,chat_provider_id TEXT,chat_model TEXT,
+            reasoning_effort TEXT,
+            title_manually_edited BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""",
+        """CREATE TABLE IF NOT EXISTS chat_session_messages (
+            session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+            content TEXT NOT NULL,sources JSONB NOT NULL DEFAULT '[]',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY(session_id,position))""",
+        """ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_effort TEXT""",
+        """CREATE INDEX IF NOT EXISTS chat_sessions_recent
+            ON chat_sessions(updated_at DESC,id)""",
     ]

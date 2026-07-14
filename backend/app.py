@@ -10,7 +10,7 @@ from backend.models import (
     ClearDatabaseResponse, DatabaseOverview, FinishIngestionRequest, HealthResponse,
     ImportRequest, ImportResponse, IndexingJobView, IngestionSessionRequest,
     IngestionSessionView, IntegrationSyncState, SourceConversationView, WhatsAppImportPreview,
-    WhatsAppImportResponse,
+    WhatsAppImportResponse, ChatSessionDetail, ChatSessionRename, ChatSessionSummary,
 )
 from backend.normalization import SourceMessageNormalizer
 from backend.openai_gateway import (
@@ -34,6 +34,7 @@ from backend.settings_service import ApplicationSettingsService
 from backend.migration_exports import (
     MigrationExportService, register_migration_export_routes,
 )
+from backend.chat_sessions import ChatSessionNotFoundError, PostgresChatSessionRepository
 
 
 def create_app(
@@ -83,6 +84,12 @@ def _register_exception_handlers(application: FastAPI) -> None:
     @application.exception_handler(ValueError)
     async def value_error_handler(_request: Request, error: ValueError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @application.exception_handler(ChatSessionNotFoundError)
+    async def chat_session_not_found_handler(
+        _request: Request, error: ChatSessionNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(error)})
 
 
 def _register_ingestion_routes(
@@ -211,6 +218,27 @@ def _register_chat_routes(application: FastAPI, chat_service: DatabaseChatServic
     def chat(request: ChatRequest) -> ChatResponse:
         return chat_service.answer(request)
 
+    @application.get("/chat/sessions", response_model=list[ChatSessionSummary])
+    def chat_sessions(
+        limit: int = Query(default=10, ge=1, le=100),
+    ) -> list[ChatSessionSummary]:
+        return chat_service.list_sessions(limit)
+
+    @application.get("/chat/sessions/{session_id}", response_model=ChatSessionDetail)
+    def chat_session(session_id: str) -> ChatSessionDetail:
+        return chat_service.get_session(session_id)
+
+    @application.patch("/chat/sessions/{session_id}", response_model=ChatSessionSummary)
+    def rename_chat_session(
+        session_id: str, request: ChatSessionRename,
+    ) -> ChatSessionSummary:
+        return chat_service.rename_session(session_id, request.title)
+
+    @application.delete("/chat/sessions/{session_id}")
+    def delete_chat_session(session_id: str) -> dict:
+        chat_service.delete_session(session_id)
+        return {"deleted": True}
+
 
 def _register_database_routes(
     application: FastAPI, overview_service: DatabaseOverviewService,
@@ -282,6 +310,9 @@ def _build_default_services() -> tuple:
         PostgresChatScopeCatalog(settings.postgres_dsn),
         provider_registry=provider_registry, index_repository=index_repository,
         default_chat_model=settings.chat_model,
+        chat_session_repository=PostgresChatSessionRepository(
+            raw_repository.ensure_schema, raw_repository.open_connection,
+        ),
     )
     overview = DatabaseOverviewService(repository, raw_repository)
     settings_service = ApplicationSettingsService(

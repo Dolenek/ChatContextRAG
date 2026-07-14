@@ -103,6 +103,7 @@ class ApiRouter {
 function matchBackendRoute(method, pathname) {
   const exact = new Map([
     ["GET /api/chat/scopes", "/chat/scopes"],
+    ["GET /api/chat/sessions", "/chat/sessions"],
     ["POST /api/chat", "/chat"],
     ["GET /api/database/overview", "/database/overview"],
     ["GET /api/database/resume-point", "/database/resume-point"],
@@ -117,6 +118,10 @@ function matchBackendRoute(method, pathname) {
 }
 
 function matchParameterizedRoute(method, pathname) {
+  const chatSession = pathname.match(/^\/api\/chat\/sessions\/([^/]+)$/);
+  if (chatSession && ["GET", "PATCH", "DELETE"].includes(method)) {
+    return `/chat/sessions/${encodeURIComponent(decodeURIComponent(chatSession[1]))}`;
+  }
   const job = pathname.match(/^\/api\/indexing\/jobs\/([^/]+)(?:\/(retry|cancel))?$/);
   if (job && ((method === "GET" && !job[2]) || (method === "POST" && job[2]))) {
     return `/indexing/jobs/${encodeURIComponent(decodeURIComponent(job[1]))}${job[2] ? `/${job[2]}` : ""}`;

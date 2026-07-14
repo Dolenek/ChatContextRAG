@@ -75,3 +75,50 @@ def test_chat_completions_adapter_uses_system_context() -> None:
     assert answer == "answer"
     assert calls[0]["messages"][0]["role"] == "system"
     assert "reasoning" not in calls[0]
+    assert "reasoning_effort" not in calls[0]
+
+
+def test_chat_completions_adapter_forwards_reasoning_effort() -> None:
+    calls = []
+    provider = OpenAIChatCompletionProvider(
+        "test-key", "reasoning-chat", chat_api="chat_completions",
+    )
+    provider.client = SimpleNamespace(chat=SimpleNamespace(
+        completions=SimpleNamespace(create=lambda **kwargs: (
+            calls.append(kwargs) or SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="answer"),
+            )])
+        )),
+    ))
+
+    provider.answer("question", [], [], "high")
+
+    assert calls[0]["reasoning_effort"] == "high"
+
+
+def test_responses_adapter_forwards_nested_reasoning_effort() -> None:
+    calls = []
+    provider = OpenAIChatCompletionProvider("test-key", "reasoning-chat")
+    provider.client = SimpleNamespace(responses=SimpleNamespace(
+        create=lambda **kwargs: (
+            calls.append(kwargs) or SimpleNamespace(output_text="answer")
+        ),
+    ))
+
+    provider.answer("question", [], [], "medium")
+
+    assert calls[0]["reasoning"] == {"effort": "medium"}
+
+
+def test_responses_adapter_omits_unspecified_reasoning_effort() -> None:
+    calls = []
+    provider = OpenAIChatCompletionProvider("test-key", "regular-chat")
+    provider.client = SimpleNamespace(responses=SimpleNamespace(
+        create=lambda **kwargs: (
+            calls.append(kwargs) or SimpleNamespace(output_text="answer")
+        ),
+    ))
+
+    provider.answer("question", [], [])
+
+    assert "reasoning" not in calls[0]

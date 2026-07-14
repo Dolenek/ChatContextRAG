@@ -1,0 +1,79 @@
+.recent-chats {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding-top: 4px;
+  overflow: hidden;
+}
+
+.recent-chats h2 {
+  margin: 3px 10px 7px;
+  color: #737f9b;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.recent-chat-list { min-height: 0; display: grid; gap: 3px; overflow-y: auto; }
+.recent-chat-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 28px; }
+.recent-chat-open, .recent-chat-menu-button {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #929db8;
+  background: transparent;
+}
+.recent-chat-open {
+  padding: 8px 7px 8px 10px;
+  overflow: hidden;
+  text-align: left;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-chat-menu-button { width: 28px; padding: 0; font-size: 16px; }
+.recent-chat-row:hover > button { color: #e2e5ef; background: rgba(255, 255, 255, 0.035); }
+.recent-chat-row.active > button { color: #cfcdff; background: var(--violet-soft); }
+.recent-chat-menu {
+  position: fixed;
+  z-index: 75;
+  width: 142px;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #181f2f;
+  box-shadow: var(--shadow);
+}
+.recent-chat-menu button { border: 0; border-radius: 7px; padding: 8px; color: #dce0ec; background: transparent; text-align: left; font-size: 10px; }
+.recent-chat-menu button:hover { background: rgba(255, 255, 255, 0.06); }
+.recent-chat-menu .danger-option { color: #ff9aaa; }
+.recent-chat-empty { margin: 4px 10px; color: #65718d; font-size: 9px; line-height: 1.45; }
+
+body:not(.navigation-expanded) .recent-chats { display: none; }
+
+.chat-session-dialog {
+  width: min(100%, 420px);
+  padding: 24px;
+  border: 1px solid rgba(108, 103, 245, 0.38);
+  border-radius: 16px;
+  background: #111827;
+  box-shadow: var(--shadow);
+}
+.chat-session-dialog h2 { margin: 0 0 17px; font-size: 19px; }
+.chat-session-dialog label, .chat-session-dialog p { color: var(--muted-strong); font-size: 11px; line-height: 1.55; }
+.chat-session-dialog label { display: block; margin-bottom: 7px; font-weight: 700; }
+.chat-session-dialog input { width: 100%; }
+.chat-session-dialog.danger-variant { border-color: #713042; background: #15101a; }
+
+.chat-readonly-notice {
+  margin: 0 0 8px;
+  padding: 9px 12px;
+  border: 1px solid rgba(239, 108, 128, 0.35);
+  border-radius: 9px;
+  color: #ffc5cf;
+  background: rgba(86, 29, 44, 0.24);
+  font-size: 10px;
+}

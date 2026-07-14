@@ -34,13 +34,21 @@ contextBridge.exposeInMainWorld("chatContext", {
     return () => ipcRenderer.removeListener("discord:index:progress", listener);
   },
   hideDiscord: () => ipcRenderer.invoke("discord:hide"),
-  askDatabase: (question, history, scope, chatSelection = {}) =>
+  askDatabase: (question, history, scope, chatSelection = {}, sessionId = null) =>
     ipcRenderer.invoke("database:ask", {
       question, history, scope,
       chat_provider_id: chatSelection.providerId,
       chat_model: chatSelection.model,
+      ...(chatSelection.reasoningEffort
+        ? { reasoning_effort: chatSelection.reasoningEffort } : {}),
+      ...(sessionId ? { session_id: sessionId } : {}),
     }),
   getChatScopes: () => ipcRenderer.invoke("database:chat-scopes"),
+  listChatSessions: (limit = 10) => ipcRenderer.invoke("chat-sessions:list", limit),
+  getChatSession: (sessionId) => ipcRenderer.invoke("chat-sessions:get", sessionId),
+  renameChatSession: (sessionId, title) =>
+    ipcRenderer.invoke("chat-sessions:rename", { sessionId, title }),
+  deleteChatSession: (sessionId) => ipcRenderer.invoke("chat-sessions:delete", sessionId),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
   clearDatabase: (confirmation) =>

@@ -52,6 +52,7 @@ test("chat controller sends bounded history, renders text safely, and recalls so
   const conversation = new FakeElement("section");
   const requests = [];
   const shownSources = [];
+  const savedSessions = [];
   const elements = new Map([
     ["#question-input", questionInput],
     ["#chat-form button[type='submit']", submitButton],
@@ -67,11 +68,20 @@ test("chat controller sends bounded history, renders text safely, and recalls so
       chatContext: {
         askDatabase: async (...arguments) => {
           requests.push(arguments);
-          return { answer: "grounded", sources: [{ content: "source" }] };
+          return {
+            answer: "grounded", sources: [{ content: "source" }],
+            chat_session_id: "session-1", chat_session_title: "First question",
+          };
         },
       },
       chatScopeSelector: { getSelectedScope: () => ({ source_type: "discord", conversation_id: "20" }) },
-      modelSelector: { getChatSelection: () => ({ providerId: "openai", model: "chat" }) },
+      modelSelector: {
+        getChatSelection: () => ({
+          providerId: "openai", model: "chat", reasoningEffort: "high",
+        }),
+        updateAvailability: () => {},
+      },
+      chatHistoryUi: { responseSaved: (response) => savedSessions.push(response.chat_session_id) },
       contextPanel: { showSources: (sources) => shownSources.push(sources), clear: () => {} },
       shellController: { openContext: () => {}, setDiscordActive: () => {}, showScreen: () => {}, closeDrawer: () => {} },
     },
@@ -84,12 +94,16 @@ test("chat controller sends bounded history, renders text safely, and recalls so
   await context.window.chatController.submitQuestion({ preventDefault: () => {} });
 
   assert.deepEqual(Array.from(requests[0][1]), []);
+  assert.equal(requests[0][4], null);
+  assert.equal(requests[0][3].reasoningEffort, "high");
+  assert.equal(requests[1][4], "session-1");
   assert.deepEqual(JSON.parse(JSON.stringify(requests[1][1])), [
     { role: "user", content: "<img src=x onerror=alert(1)>" },
     { role: "assistant", content: "grounded" },
   ]);
   assert.equal(conversation.children[0].children[0].textContent, "<img src=x onerror=alert(1)>");
   assert.equal(shownSources.length, 2);
+  assert.deepEqual(savedSessions, ["session-1", "session-1"]);
   const assistantFooter = conversation.children[1].children[1];
   assistantFooter.children[0].listeners.click();
   assert.equal(shownSources.length, 3);
@@ -129,7 +143,8 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
 
   await context.window.chatContext.askDatabase(
     "question", [], { source_type: "discord", conversation_id: "20" },
-    { providerId: "openai", model: "chat" },
+    { providerId: "openai", model: "chat", reasoningEffort: "high" },
+    null,
   );
   await context.window.chatContext.clearDatabase("VYMAZAT");
   const indexingEvents = [];
@@ -147,6 +162,7 @@ test("web runtime bridge attaches CSRF, reuses the session, and dispatches event
     question: "question", history: [],
     scope: { source_type: "discord", conversation_id: "20" },
     chat_provider_id: "openai", chat_model: "chat",
+    reasoning_effort: "high",
   });
   assert.equal(fetchCalls[2][1].method, "DELETE");
   assert.deepEqual(JSON.parse(JSON.stringify(indexingEvents)), [{ status: "running" }]);

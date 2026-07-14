@@ -2,6 +2,10 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const REASONING_EFFORTS = new Set([
+  "none", "minimal", "low", "medium", "high", "xhigh", "max",
+]);
+
 class ProviderStore {
   constructor(userDataPath, safeStorage) {
     this.safeStorage = safeStorage;
@@ -71,7 +75,8 @@ class ProviderStore {
   listChatModels(fallbackModels = []) {
     const managedModels = this._read().chatModels.map((model) => ({
       provider_id: model.providerId, model: model.model,
-      label: model.label || model.model, managed: true,
+      label: model.label || model.model,
+      reasoning_effort: normalizeReasoningEffort(model.reasoningEffort), managed: true,
     }));
     const knownKeys = new Set(managedModels.map(modelKey));
     const fallbackEntries = fallbackModels
@@ -84,7 +89,8 @@ class ProviderStore {
       })
       .map((model) => ({
         provider_id: model.providerId, model: model.model,
-        label: model.label || model.model, managed: false,
+        label: model.label || model.model,
+        reasoning_effort: normalizeReasoningEffort(model.reasoningEffort), managed: false,
       }));
     return [...managedModels, ...fallbackEntries];
   }
@@ -94,15 +100,19 @@ class ProviderStore {
     const providerId = requiredText(input.providerId, "Provider", 100);
     const model = requiredText(input.model, "Model", 200);
     const label = optionalText(input.label, 100) || model;
+    const reasoningEffort = normalizeReasoningEffort(input.reasoningEffort);
     const existingIndex = state.chatModels.findIndex(
       (entry) => entry.providerId === providerId && entry.model === model,
     );
-    const savedModel = { providerId, model, label };
+    const savedModel = { providerId, model, label, reasoningEffort };
     if (existingIndex >= 0) state.chatModels[existingIndex] = savedModel;
     else if (state.chatModels.length >= 100) throw new Error("Lze uložit nejvýše 100 chat modelů.");
     else state.chatModels.push(savedModel);
     this._write(state);
-    return { provider_id: providerId, model, label, managed: true };
+    return {
+      provider_id: providerId, model, label,
+      reasoning_effort: reasoningEffort, managed: true,
+    };
   }
 
   deleteChatModel(providerId, model) {
@@ -174,6 +184,14 @@ function optionalText(value, maxLength) {
   const normalized = String(value || "").trim();
   if (normalized.length > maxLength) throw new Error("Popisek modelu je příliš dlouhý.");
   return normalized;
+}
+
+function normalizeReasoningEffort(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized && !REASONING_EFFORTS.has(normalized)) {
+    throw new Error("Neplatná úroveň reasoning effort.");
+  }
+  return normalized || null;
 }
 
 function assertBuiltinIdentity(providerId, baseUrl, chatApi) {

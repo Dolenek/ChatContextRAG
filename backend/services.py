@@ -16,6 +16,8 @@ from backend.repository import VectorRepository
 from backend.vector_models import RetrievedChunk
 from backend.provider_registry import ProviderRegistry
 from backend.embedding_indexes import PostgresEmbeddingIndexRepository
+from backend.chat_sessions import ChatSessionRepository
+from backend.models import ChatSessionDetail, ChatSessionSummary
 
 
 class MessageIngestionService:
@@ -120,6 +122,7 @@ class DatabaseChatService:
         index_repository: Optional[PostgresEmbeddingIndexRepository] = None,
         default_chat_provider_id: str = "openai",
         default_chat_model: Optional[str] = None,
+        chat_session_repository: Optional[ChatSessionRepository] = None,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
@@ -131,6 +134,7 @@ class DatabaseChatService:
         self.index_repository = index_repository
         self.default_chat_provider_id = default_chat_provider_id
         self.default_chat_model = default_chat_model
+        self.chat_session_repository = chat_session_repository
 
     def list_scopes(self) -> ChatScopeList:
         scopes = self.scope_catalog.list_scopes() if self.scope_catalog else []
@@ -138,11 +142,35 @@ class DatabaseChatService:
 
     def answer(self, request: ChatRequest) -> ChatResponse:
         if self.provider_registry and self.index_repository:
-            return self._answer_with_selected_models(request)
+            response = self._answer_with_selected_models(request)
+        else:
+            response = self._answer_with_default_models(request)
+        return self._store_answer(request, response)
+
+    def list_sessions(self, limit: int) -> List[ChatSessionSummary]:
+        return self._sessions().list_recent(limit)
+
+    def get_session(self, session_id: str) -> ChatSessionDetail:
+        return self._sessions().get(session_id)
+
+    def rename_session(self, session_id: str, title: str) -> ChatSessionSummary:
+        return self._sessions().rename(session_id, title)
+
+    def delete_session(self, session_id: str) -> None:
+        self._sessions().delete(session_id)
+
+    def _answer_with_default_models(self, request: ChatRequest) -> ChatResponse:
         query_embedding = self.embedding_provider.embed_texts([request.question])[0]
         retrieved_chunks = self._retrieve(request.question, query_embedding, request.scope)
-        answer = self.chat_provider.answer(request.question, request.history, retrieved_chunks)
-        return ChatResponse(answer=answer, sources=self._to_sources(retrieved_chunks))
+        answer = self.chat_provider.answer(
+            request.question, request.history, retrieved_chunks, request.reasoning_effort,
+        )
+        return ChatResponse(
+            answer=answer, sources=self._to_sources(retrieved_chunks),
+            chat_provider_id=request.chat_provider_id or self.default_chat_provider_id,
+            chat_model=request.chat_model or self.default_chat_model,
+            reasoning_effort=request.reasoning_effort,
+        )
 
     def _answer_with_selected_models(self, request: ChatRequest) -> ChatResponse:
         active_index = self.index_repository.active()
@@ -162,10 +190,13 @@ class DatabaseChatService:
         if not model:
             raise ValueError("No chat model is configured.")
         chat_provider = self.provider_registry.create_chat_provider(provider_id, model)
-        answer = chat_provider.answer(request.question, request.history, retrieved_chunks)
+        answer = chat_provider.answer(
+            request.question, request.history, retrieved_chunks, request.reasoning_effort,
+        )
         return ChatResponse(
             answer=answer, sources=self._to_sources(retrieved_chunks),
             chat_provider_id=provider_id, chat_model=model,
+            reasoning_effort=request.reasoning_effort,
             embedding_index_id=active_index.embedding_index_id,
         )
 
@@ -181,6 +212,20 @@ class DatabaseChatService:
         return self.repository.search_similar(
             query_embedding, self.retrieval_limit, scope,
         )
+
+    def _store_answer(self, request: ChatRequest, response: ChatResponse) -> ChatResponse:
+        if not self.chat_session_repository:
+            return response
+        session = self.chat_session_repository.save_turn(request, response)
+        return response.model_copy(update={
+            "chat_session_id": session.session_id,
+            "chat_session_title": session.title,
+        })
+
+    def _sessions(self) -> ChatSessionRepository:
+        if not self.chat_session_repository:
+            raise ValueError("Chat session storage is not configured.")
+        return self.chat_session_repository
 
     @staticmethod
     def _to_sources(chunks: List[RetrievedChunk]) -> List[ChatSource]:

@@ -64,6 +64,10 @@ function deleteJson(endpoint, body) {
   return backendClient.delete(endpoint, body);
 }
 
+function patchJson(endpoint, body) {
+  return backendClient.patch(endpoint, body);
+}
+
 function postMultipart(endpoint, form) {
   return backendClient.multipart(endpoint, form);
 }
@@ -87,6 +91,16 @@ function registerIpcHandlers() {
 function registerDatabaseHandlers() {
   ipcMain.handle("database:ask", (_event, request) => postJson("/chat", request));
   ipcMain.handle("database:chat-scopes", () => getJson("/chat/scopes"));
+  ipcMain.handle("chat-sessions:list", (_event, limit) =>
+    getJson(`/chat/sessions?limit=${encodeURIComponent(limit)}`));
+  ipcMain.handle("chat-sessions:get", (_event, sessionId) =>
+    getJson(`/chat/sessions/${encodeURIComponent(sessionId)}`));
+  ipcMain.handle("chat-sessions:rename", (_event, input) =>
+    patchJson(`/chat/sessions/${encodeURIComponent(input.sessionId)}`, {
+      title: input.title,
+    }));
+  ipcMain.handle("chat-sessions:delete", (_event, sessionId) =>
+    deleteJson(`/chat/sessions/${encodeURIComponent(sessionId)}`));
   ipcMain.handle("database:overview", (_event, pagination) => {
     const parameters = new URLSearchParams(pagination);
     return getJson(`/database/overview?${parameters}`);

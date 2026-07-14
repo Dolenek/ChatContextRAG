@@ -6,7 +6,8 @@ window.modelSelector = (() => {
   const modelList = document.querySelector("#model-list");
   let settingsState = null;
   let activeProviderId = null;
-  let selection = { providerId: "openai", model: "" };
+  let selection = { providerId: "openai", model: "", reasoningEffort: null };
+  let preserveSessionSelection = false;
   let showToast = () => {};
   let resetConversation = () => {};
 
@@ -22,20 +23,39 @@ window.modelSelector = (() => {
 
   async function prepare(providedSettings = null) {
     settingsState = providedSettings || await window.chatContext.getSettings();
+    if (preserveSessionSelection) {
+      render();
+      return;
+    }
     const defaults = settingsState.chatDefaults || {};
     const preferred = findModel(defaults.chatProviderId, defaults.chatModel);
     const fallback = availableModels().find((model) => providerAvailable(model.provider_id))
       || availableModels()[0];
     const selectedModel = preferred || fallback;
     selection = selectedModel
-      ? { providerId: selectedModel.provider_id, model: selectedModel.model }
-      : { providerId: defaults.chatProviderId || "openai", model: defaults.chatModel || "" };
+      ? selectionFromModel(selectedModel)
+      : {
+        providerId: defaults.chatProviderId || "openai",
+        model: defaults.chatModel || "", reasoningEffort: null,
+      };
     activeProviderId = selection.providerId;
     render();
   }
 
   function getChatSelection() {
     return { ...selection };
+  }
+
+  function restoreSelection(providerId, model, reasoningEffort = null) {
+    selection = {
+      providerId: providerId || "", model: model || "",
+      reasoningEffort: reasoningEffort || null,
+    };
+    preserveSessionSelection = true;
+    activeProviderId = selection.providerId;
+    render();
+    return Boolean(findModel(selection.providerId, selection.model))
+      && providerAvailable(selection.providerId);
   }
 
   function toggleMenu(event) {
@@ -72,9 +92,11 @@ window.modelSelector = (() => {
   function renderTrigger() {
     const model = findModel(selection.providerId, selection.model);
     const provider = findProvider(selection.providerId);
-    document.querySelector("#selected-model-label").textContent = model?.label || selection.model || "Žádný model";
+    const modelLabel = model?.label || selection.model || "Žádný model";
+    document.querySelector("#selected-model-label").textContent = selection.reasoningEffort
+      ? `${modelLabel} · ${selection.reasoningEffort}` : modelLabel;
     trigger.title = provider && selection.model
-      ? `${provider.name} · ${selection.model}` : "V Nastavení přidejte chat model";
+      ? modelSelectionTitle(provider.name) : "V Nastavení přidejte chat model";
     trigger.disabled = !availableModels().length;
   }
 
@@ -123,11 +145,13 @@ window.modelSelector = (() => {
     const label = document.createElement("strong");
     const identifier = document.createElement("small");
     const checkmark = document.createElement("span");
-    const selected = model.provider_id === selection.providerId && model.model === selection.model;
+    const selected = model.provider_id === selection.providerId
+      && model.model === selection.model
+      && (model.reasoning_effort || null) === selection.reasoningEffort;
     button.className = "model-menu-button";
     button.type = "button";
     label.textContent = model.label || model.model;
-    identifier.textContent = model.label && model.label !== model.model ? model.model : "";
+    identifier.textContent = modelDescription(model);
     checkmark.className = "checkmark";
     checkmark.textContent = selected ? "✓" : "";
     copy.append(label, identifier);
@@ -141,7 +165,9 @@ window.modelSelector = (() => {
 
   async function selectModel(model) {
     const previousSelection = selection;
-    selection = { providerId: model.provider_id, model: model.model };
+    const previousPreserveSessionSelection = preserveSessionSelection;
+    selection = selectionFromModel(model);
+    preserveSessionSelection = false;
     render();
     closeMenu();
     try {
@@ -150,6 +176,7 @@ window.modelSelector = (() => {
       resetConversation("novým modelem");
     } catch (error) {
       selection = previousSelection;
+      preserveSessionSelection = previousPreserveSessionSelection;
       render();
       showToast(error.message, true);
     }
@@ -160,8 +187,11 @@ window.modelSelector = (() => {
       index.embedding_index_id === settingsState.embeddings.active_embedding_index_id);
     const embeddingReady = activeIndex?.status === "ready"
       && providerAvailable(activeIndex.provider_id);
-    const chatReady = Boolean(selection.model) && providerAvailable(selection.providerId);
-    document.querySelector("#chat-form button[type='submit']").disabled = !embeddingReady || !chatReady;
+    const chatReady = Boolean(findModel(selection.providerId, selection.model))
+      && providerAvailable(selection.providerId);
+    const readOnly = window.chatController?.isReadOnly?.() || false;
+    document.querySelector("#chat-form button[type='submit']").disabled =
+      readOnly || !embeddingReady || !chatReady;
     document.querySelector("#active-embedding-index").textContent = activeIndex
       ? `RAG: ${activeIndex.name}` : "Není vybraný připravený RAG index";
   }
@@ -173,6 +203,27 @@ window.modelSelector = (() => {
   function findModel(providerId, modelId) {
     return availableModels().find((model) =>
       model.provider_id === providerId && model.model === modelId);
+  }
+
+  function selectionFromModel(model) {
+    return {
+      providerId: model.provider_id, model: model.model,
+      reasoningEffort: model.reasoning_effort || null,
+    };
+  }
+
+  function modelSelectionTitle(providerName) {
+    const effort = selection.reasoningEffort
+      ? ` · reasoning ${selection.reasoningEffort}` : " · výchozí reasoning";
+    return `${providerName} · ${selection.model}${effort}`;
+  }
+
+  function modelDescription(model) {
+    const parts = [];
+    if (model.label && model.label !== model.model) parts.push(model.model);
+    parts.push(model.reasoning_effort
+      ? `reasoning ${model.reasoning_effort}` : "výchozí reasoning");
+    return parts.join(" · ");
   }
 
   function findProvider(providerId) {
@@ -191,5 +242,8 @@ window.modelSelector = (() => {
     return label;
   }
 
-  return { bind, getChatSelection, prepare };
+  return {
+    bind, getChatSelection, prepare, restoreSelection,
+    updateAvailability: updateChatAvailability,
+  };
 })();

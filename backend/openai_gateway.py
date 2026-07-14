@@ -2,7 +2,7 @@ from typing import List, Literal, Optional, Protocol, Sequence
 
 from openai import OpenAI, OpenAIError
 
-from backend.models import ChatHistoryTurn
+from backend.models import ChatHistoryTurn, ReasoningEffort
 from backend.vector_models import RetrievedChunk
 
 
@@ -25,7 +25,8 @@ class ChatCompletionProvider(Protocol):
     model_name: str
 
     def answer(
-        self, question: str, history: Sequence[ChatHistoryTurn], sources: Sequence[RetrievedChunk]
+        self, question: str, history: Sequence[ChatHistoryTurn],
+        sources: Sequence[RetrievedChunk], reasoning_effort: Optional[ReasoningEffort] = None,
     ) -> str:
         ...
 
@@ -79,27 +80,35 @@ class OpenAIChatCompletionProvider:
         self.chat_api = chat_api
 
     def answer(
-        self, question: str, history: Sequence[ChatHistoryTurn], sources: Sequence[RetrievedChunk]
+        self, question: str, history: Sequence[ChatHistoryTurn],
+        sources: Sequence[RetrievedChunk], reasoning_effort: Optional[ReasoningEffort] = None,
     ) -> str:
         if not self.client:
             raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
         try:
             if self.chat_api == "chat_completions":
-                return self._answer_with_chat_completions(question, history, sources)
-            return self._answer_with_responses(question, history, sources)
+                return self._answer_with_chat_completions(
+                    question, history, sources, reasoning_effort,
+                )
+            return self._answer_with_responses(question, history, sources, reasoning_effort)
         except OpenAIError as error:
             raise ExternalIntegrationError("OpenAI-compatible chat API request failed.") from error
 
-    def _answer_with_responses(self, question, history, sources) -> str:
+    def _answer_with_responses(self, question, history, sources, reasoning_effort) -> str:
         context = self._render_context(sources)
-        response = self.client.responses.create(
+        parameters = dict(
             model=self.model_name,
             instructions=self._instructions(),
             input=self._build_input(question, history, context),
         )
+        if reasoning_effort:
+            parameters["reasoning"] = {"effort": reasoning_effort}
+        response = self.client.responses.create(**parameters)
         return response.output_text
 
-    def _answer_with_chat_completions(self, question, history, sources) -> str:
+    def _answer_with_chat_completions(
+        self, question, history, sources, reasoning_effort,
+    ) -> str:
         context = self._render_context(sources)
         messages = [{
             "role": "system",
@@ -109,9 +118,10 @@ class OpenAIChatCompletionProvider:
             {"role": turn.role, "content": turn.content} for turn in history[-8:]
         )
         messages.append({"role": "user", "content": question})
-        response = self.client.chat.completions.create(
-            model=self.model_name, messages=messages,
-        )
+        parameters = {"model": self.model_name, "messages": messages}
+        if reasoning_effort:
+            parameters["reasoning_effort"] = reasoning_effort
+        response = self.client.chat.completions.create(**parameters)
         return response.choices[0].message.content or ""
 
     @staticmethod

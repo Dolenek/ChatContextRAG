@@ -117,6 +117,7 @@ def test_chat_service_resolves_the_active_index_and_selected_chat_model() -> Non
 
     response = service.answer(ChatRequest(
         question="Find the plan", chat_provider_id="local", chat_model="chat-v2",
+        reasoning_effort="high",
     ))
 
     assert registry.embedding_request == ("embeddings", "embed-model", 2)
@@ -125,6 +126,7 @@ def test_chat_service_resolves_the_active_index_and_selected_chat_model() -> Non
     assert response.embedding_index_id == "index-1"
     assert response.chat_provider_id == "local"
     assert response.chat_model == "chat-v2"
+    assert response.reasoning_effort == "high"
 
 
 @pytest.mark.parametrize("active_index", [None, SimpleNamespace(status="building")])
@@ -191,10 +193,12 @@ class FakeEmbeddingProvider:
 
 
 class FakeChatProvider:
-    def answer(self, question, history, sources):
+    def answer(self, question, history, sources, reasoning_effort=None):
         assert question
         assert history == []
         assert sources
+        if reasoning_effort is not None:
+            assert reasoning_effort == "high"
         return "grounded answer"
 
 

@@ -3,6 +3,10 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+ReasoningEffort = Literal[
+    "none", "minimal", "low", "medium", "high", "xhigh", "max",
+]
+
 
 class SourceMessageInput(BaseModel):
     external_id: str = Field(min_length=1, max_length=128)
@@ -67,6 +71,8 @@ class ChatRequest(BaseModel):
     scope: Optional[ChatScope] = None
     chat_provider_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
     chat_model: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    reasoning_effort: Optional[ReasoningEffort] = None
+    session_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
 
 
 class ChatSource(BaseModel):
@@ -87,7 +93,35 @@ class ChatResponse(BaseModel):
     sources: List[ChatSource]
     chat_provider_id: Optional[str] = None
     chat_model: Optional[str] = None
+    reasoning_effort: Optional[ReasoningEffort] = None
     embedding_index_id: Optional[str] = None
+    chat_session_id: Optional[str] = None
+    chat_session_title: Optional[str] = None
+
+
+class ChatSessionSummary(BaseModel):
+    session_id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatSessionMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    sources: List[ChatSource] = Field(default_factory=list)
+
+
+class ChatSessionDetail(ChatSessionSummary):
+    scope: Optional[ChatScope] = None
+    chat_provider_id: Optional[str] = None
+    chat_model: Optional[str] = None
+    reasoning_effort: Optional[ReasoningEffort] = None
+    messages: List[ChatSessionMessage] = Field(default_factory=list)
+
+
+class ChatSessionRename(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
 
 
 class HealthResponse(BaseModel):

@@ -141,7 +141,8 @@ message count.
 The transfer merges raw messages and Discord synchronization cursors through
 the gateway. Matching external message IDs are updated from the Local archive;
 server-only messages remain. Provider profiles, API keys, Discord bot tokens,
-embedding vectors, model selections, and indexing-job history are not copied.
+embedding vectors, model selections, indexing-job history, and persisted chat
+sessions are not copied.
 The server never connects to the desktop PostgreSQL port.
 
 Progress is checkpointed only after the server acknowledges the complete batch.
@@ -219,15 +220,25 @@ The application opens directly in the chat workspace. The left navigation starts
 expanded with icons and labels; its top button switches to a compact icon-only
 rail and the chosen desktop mode is restored on the next start. Below 700 px the
 expanded rail overlays the workspace and begins compact without changing that
-saved preference. Embedded Discord also uses the compact rail temporarily. The
-rail switches between chat and database detail. **Settings** opens a modal over
+saved preference. Embedded Discord also uses the compact rail temporarily.
+**New chat** always opens a blank conversation while retaining the currently
+selected source and model. In expanded mode, **Recent** lists the ten most
+recently active backend-stored chats directly between **Database** and
+**Settings**. The list is hidden in icon-only mode. Selecting a row restores its
+messages, grounding sources, source scope, and model without changing the global
+model default. Its context menu supports rename and permanent deletion. Deleting
+the currently open chat starts a new blank conversation.
+
+The rail switches between chat and database detail. **Settings** opens a modal over
 the current screen with separate sections for **Providers and API keys**, **Chat
 models**, **Embedding indexes**, **Indexing history**, and the Electron-only
 **Workspace** target. Closing the modal discards unfinished form values. **Sources
 and imports** independently opens an overlay drawer containing the searchable
 conversation scope and all Discord and WhatsApp ingestion controls. The drawer is
 collapsed again when the user returns to chat; its open state is not persisted
-between starts.
+between starts. The chat heading also has a **Sources** action for the same drawer.
+In the web runtime, **Log out** is at the bottom of the settings navigation;
+Electron has no logout action.
 
 Grounding sources for the selected assistant answer appear in the right panel.
 The same panel reports raw and indexed message counts, chunks, database size,
@@ -268,6 +279,11 @@ chat model or activates another ready embedding index. Existing saved choices
 are never overwritten during startup.
 
 Add the chat model IDs that should be selectable to the **Chat models** section.
+Each saved model may also choose **Reasoning effort**: model default, `none`,
+`minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Support depends on the
+model and compatible provider. **Model default** is the safest fallback because
+it omits the parameter entirely. Explicit effort is sent as `reasoning.effort`
+for Responses or `reasoning_effort` for Chat Completions.
 Model fields load suggestions from the provider's `/models` endpoint and still
 accept a model ID typed by hand, which also supports local servers that do not
 list models. The selector at the bottom-right of the chat composer groups saved
@@ -354,12 +370,21 @@ recovers raw messages not currently covered by an index or active job.
 
 Open the source drawer and select a Discord channel, WhatsApp conversation, or
 all stored messages under **Chatovat nad**. Changing the scope clears visible
-chat history so turns from different sources cannot influence one another. A
-**New chat** action clears the visible conversation without changing the scope.
+chat history so turns from different sources cannot influence one another.
+The next successful response creates a persisted session named from the
+normalized first question (up to 80 characters). Later turns append to it.
+User-renamed titles accept up to 120 characters and are not regenerated.
 
-Changing the chat scope, provider, or model resets visible history. Chat is
+Changing the chat scope, provider, model, or its configured reasoning effort
+resets visible history. Chat is
 disabled when the active embedding index or either required provider is
-unavailable.
+unavailable. Restored chats keep their original source, model, and reasoning
+effort. If the source or model no
+longer exists, the old messages and grounding remain readable, but the composer
+explains why it is read-only instead of silently switching context. Clearing the
+RAG database preserves chat history; chats whose source was cleared become
+read-only. Recent sessions belong to the active backend workspace, so desktop
+and web see the same list only when they connect to that backend.
 
 ## Verification
 

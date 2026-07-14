@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,8 +9,10 @@ from backend.models import (
     ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
     DatabaseOverview, ImportResponse, IndexingJobView, IngestionSessionView,
     IntegrationSyncState, SourceConversationView,
+    ChatScope, ChatSessionDetail, ChatSessionMessage, ChatSessionSummary,
 )
 from backend.openai_gateway import ExternalIntegrationError, IntegrationConfigurationError
+from backend.chat_sessions import ChatSessionNotFoundError
 
 
 class FakeIngestionService:
@@ -85,6 +88,36 @@ class FakeChatService:
             ],
         )
 
+    def list_sessions(self, limit):
+        return [self._summary()][:limit]
+
+    def get_session(self, session_id):
+        if session_id == "missing":
+            raise ChatSessionNotFoundError("Chat session was not found.")
+        return ChatSessionDetail(
+            **self._summary().model_dump(),
+            scope=ChatScope(source_type="discord", conversation_id="20"),
+            chat_provider_id="openai", chat_model="chat-model",
+            reasoning_effort="high",
+            messages=[ChatSessionMessage(role="user", content="Kdy je termín?")],
+        )
+
+    def rename_session(self, session_id, title):
+        summary = self._summary()
+        return summary.model_copy(update={"session_id": session_id, "title": title})
+
+    def delete_session(self, session_id):
+        if session_id == "missing":
+            raise ChatSessionNotFoundError("Chat session was not found.")
+
+    @staticmethod
+    def _summary():
+        timestamp = datetime(2026, 7, 14, tzinfo=timezone.utc)
+        return ChatSessionSummary(
+            session_id="session-1", title="Kdy je termín?",
+            created_at=timestamp, updated_at=timestamp,
+        )
+
 
 class FakeOverviewService:
     deleted_chunks = 0
@@ -115,6 +148,20 @@ def test_import_and_chat() -> None:
     assert import_response.json()["chunk_count"] == 1
     assert chat_response.status_code == 200
     assert "pátek" in chat_response.json()["answer"]
+
+
+def test_chat_validates_reasoning_effort_values() -> None:
+    client = _client()
+
+    valid = client.post("/chat", json={
+        "question": "Kdy je termín?", "reasoning_effort": "max",
+    })
+    invalid = client.post("/chat", json={
+        "question": "Kdy je termín?", "reasoning_effort": "extreme",
+    })
+
+    assert valid.status_code == 200
+    assert invalid.status_code == 422
 
 
 def test_health_and_source_conversation_routes() -> None:
@@ -170,6 +217,23 @@ def test_chat_scopes_expose_source_neutral_conversation_identity() -> None:
         "source_type": "discord", "conversation_id": "20",
         "display_name": "projekt", "container_name": "10", "message_count": 42,
     }]
+
+
+def test_chat_session_crud_routes_and_not_found_response() -> None:
+    client = _client()
+
+    listed = client.get("/chat/sessions?limit=10")
+    detail = client.get("/chat/sessions/session-1")
+    renamed = client.patch("/chat/sessions/session-1", json={"title": "Nový název"})
+    deleted = client.delete("/chat/sessions/session-1")
+    missing = client.get("/chat/sessions/missing")
+
+    assert listed.json()[0]["title"] == "Kdy je termín?"
+    assert detail.json()["messages"][0]["role"] == "user"
+    assert detail.json()["reasoning_effort"] == "high"
+    assert renamed.json()["title"] == "Nový název"
+    assert deleted.json() == {"deleted": True}
+    assert missing.status_code == 404
 
 
 def test_resume_and_database_clear_routes() -> None:

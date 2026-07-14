@@ -128,15 +128,26 @@
     onDiscordScanProgress: () => () => {},
     onIndexingProgress: (callback) => subscribe("indexing", callback),
     hideDiscord: () => Promise.resolve(),
-    askDatabase: (question, history, scope, selection = {}) => api("/chat", {
+    askDatabase: (question, history, scope, selection = {}, sessionId = null) => api("/chat", {
       method: "POST",
       body: {
         question, history, scope,
         chat_provider_id: selection.providerId,
         chat_model: selection.model,
+        ...(selection.reasoningEffort
+          ? { reasoning_effort: selection.reasoningEffort } : {}),
+        ...(sessionId ? { session_id: sessionId } : {}),
       },
     }),
     getChatScopes: () => api("/chat/scopes"),
+    listChatSessions: (limit = 10) => api(`/chat/sessions?limit=${limit}`),
+    getChatSession: (id) => api(`/chat/sessions/${encodeURIComponent(id)}`),
+    renameChatSession: (id, title) => api(`/chat/sessions/${encodeURIComponent(id)}`, {
+      method: "PATCH", body: { title },
+    }),
+    deleteChatSession: (id) => api(`/chat/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE", body: {},
+    }),
     getDatabaseOverview: (limit, offset) => api(`/database/overview?limit=${limit}&offset=${offset}`),
     clearDatabase: (confirmation) => api("/database", { method: "DELETE", body: { confirmation } }),
     retryIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
@@ -172,7 +183,7 @@
   if (localStatus) localStatus.title = "Data zůstávají na vašem serveru";
   const localStatusLabel = document.querySelector("#local-status-label");
   if (localStatusLabel) localStatusLabel.textContent = "Data zůstávají na serveru";
-  const logoutButton = document.querySelector("#web-logout-button");
+  const logoutButton = document.querySelector("#settings-logout-button");
   logoutButton?.classList.remove("hidden");
   logoutButton?.addEventListener("click", async () => {
     await api("/auth/logout", { method: "POST", body: {} });

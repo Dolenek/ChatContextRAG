@@ -61,7 +61,7 @@
 .rail-button:hover { color: #e2e6f2; background: rgba(255, 255, 255, 0.04); }
 .rail-button.active, .rail-button.drawer-active { color: #bab7ff; border-color: rgba(108, 103, 245, 0.34); background: var(--violet-soft); }
 .navigation-toggle { margin-bottom: 4px; }
-.rail-spacer { flex: 1; }
+.rail-spacer { flex: 0 0 0; }
 
 .local-status {
   position: relative;

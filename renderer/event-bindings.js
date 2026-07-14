@@ -19,9 +19,9 @@ document.querySelector("#resume-scan-button")
   .addEventListener("click", resumeChannelScan);
 document.querySelector("#close-discord-button")
   .addEventListener("click", () => window.appUi.closeDiscordView());
-document.querySelector("#open-chat-button")
-  .addEventListener("click", showChatWorkspace);
 document.querySelector("#open-sources-button")
+  .addEventListener("click", () => window.shellController.openDrawerPanel("sources"));
+document.querySelector("#open-chat-sources-button")
   .addEventListener("click", () => window.shellController.openDrawerPanel("sources"));
 document.querySelector("#open-overview-button")
   .addEventListener("click", showDatabaseOverview);
@@ -51,6 +51,11 @@ window.indexingControls.bind({
   showToast: window.appUi.showToast,
 });
 window.chatController.bind({ showToast: window.appUi.showToast });
+window.chatHistoryUi.bind({
+  openSession: window.chatController.restoreSession,
+  showToast: window.appUi.showToast,
+  startNewChat: window.chatController.startNewChat,
+});
 window.chatScopeSelector.bind(window.chatController.resetConversation);
 window.modelSelector.bind({
   resetConversation: window.chatController.resetConversation,
@@ -80,4 +85,5 @@ window.shellController.showScreen("chat");
 void Promise.all([
   window.appUi.refreshWorkspaceData(),
   window.modelSelector.prepare().catch((error) => window.appUi.showToast(error.message, true)),
+  window.chatHistoryUi.refresh(),
 ]);

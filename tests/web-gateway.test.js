@@ -196,6 +196,7 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     "openDiscord", "openDiscordSource", "captureDiscord",
     "startDiscordScan", "resumeDiscordScan", "stopDiscordScan", "onDiscordScanProgress",
     "onIndexingProgress", "hideDiscord", "askDatabase", "getChatScopes",
+    "listChatSessions", "getChatSession", "renameChatSession", "deleteChatSession",
     "getDatabaseOverview", "clearDatabase", "retryIndexingJob", "cancelIndexingJob",
     "getIndexingJob", "indexPendingMessages", "getDiscordBotStatus", "connectDiscordBot",
     "disconnectDiscordBot", "inviteDiscordBot", "onDiscordBotProgress",

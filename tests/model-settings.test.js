@@ -17,11 +17,16 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(html, /id="settings-overlay" class="settings-overlay hidden"/);
   assert.match(html, /role="dialog" aria-modal="true"/);
   assert.match(html, /id="chat-model-input"/);
+  assert.match(html, /id="chat-model-reasoning-effort"/);
   assert.match(html, /id="chat-model-trigger"/);
   assert.match(html, /id="indexing-api-key-form"/);
   assert.match(html, /id="indexing-key-provider"/);
   assert.match(html, /id="indexing-api-key"/);
   assert.match(html, /id="indexing-job-history"/);
+  assert.ok(
+    html.indexOf("Přidat nebo upravit providera") < html.indexOf("<h3>Provideři</h3>"),
+    "provider form must appear before the provider list",
+  );
   assert.match(preload, /settings:provider:save/);
   assert.match(preload, /settings:chat-model:save/);
   assert.doesNotMatch(preload, /decryptString/);
@@ -41,17 +46,35 @@ test("managed chat models persist without exposing provider secrets", () => {
 
   store.saveChatModel({
     providerId: "openai", model: "gpt-test", label: "Testovací model",
+    reasoningEffort: "high",
   });
   const models = store.listChatModels([
     { providerId: "openai", model: "environment-model" },
   ]);
 
   assert.deepEqual(models, [
-    { provider_id: "openai", model: "gpt-test", label: "Testovací model", managed: true },
-    { provider_id: "openai", model: "environment-model", label: "environment-model", managed: false },
+    {
+      provider_id: "openai", model: "gpt-test", label: "Testovací model",
+      reasoning_effort: "high", managed: true,
+    },
+    {
+      provider_id: "openai", model: "environment-model", label: "environment-model",
+      reasoning_effort: null, managed: false,
+    },
   ]);
   store.deleteChatModel("openai", "gpt-test");
   assert.equal(store.listChatModels().length, 0);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("chat models reject unsupported reasoning effort values", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-reasoning-"));
+  const store = new ProviderStore(directory, {});
+
+  assert.throws(() => store.saveChatModel({
+    providerId: "openai", model: "gpt-test", reasoningEffort: "extreme",
+  }), /reasoning effort/);
+
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
