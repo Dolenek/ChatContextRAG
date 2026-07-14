@@ -1,4 +1,4 @@
-const { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } = require("discord.js");
+const { MessageFlags, SlashCommandBuilder } = require("discord.js");
 const { discordChannelContext } = require("./discord-bot-message");
 
 class DiscordBotCommands {
@@ -7,13 +7,14 @@ class DiscordBotCommands {
     this.setState = options.setState;
     this.saveState = options.saveState;
     this.synchronizer = options.synchronizer;
+    this.canManage = options.canManage || (() => false);
   }
 
   async register(client) {
     const command = new SlashCommandBuilder()
       .setName("chatcontext")
       .setDescription("Synchronizace kanálu do lokální Chat Context databáze")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .setDMPermission(false)
       .addSubcommand((item) => item.setName("sync").setDescription("Načte a sleduje tento kanál"))
       .addSubcommand((item) => item.setName("status").setDescription("Zobrazí stav tohoto kanálu"))
       .addSubcommand((item) => item.setName("stop").setDescription("Ukončí sledování tohoto kanálu"));
@@ -22,8 +23,12 @@ class DiscordBotCommands {
 
   async handle(interaction) {
     if (!interaction.isChatInputCommand() || interaction.commandName !== "chatcontext") return;
-    if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-      await interaction.reply({ content: "Příkaz vyžaduje Manage Channels.", flags: MessageFlags.Ephemeral });
+    if (!interaction.inGuild()
+      || !this.canManage(interaction.member, interaction.guildId)) {
+      await interaction.reply({
+        content: "Pro tento příkaz nemáte oprávnění v nastavení Discord bota.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
     const subcommand = interaction.options.getSubcommand();

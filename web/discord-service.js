@@ -21,6 +21,19 @@ class DiscordService {
         `/integrations/sync-states?source_type=${encodeURIComponent(sourceType)}`,
       ),
       saveSyncState: (state) => this.backend.post("/integrations/sync-state", state),
+      getDiscordBotSettings: () => this.backend.get("/integrations/discord-bot/settings"),
+      updateDiscordBotModel: (model) =>
+        this.backend.put("/integrations/discord-bot/settings/model", model),
+      updateDiscordGuildPermissions: (permissions) => this.backend.put(
+        `/integrations/discord-bot/guilds/${encodeURIComponent(permissions.guild_id)}/permissions`,
+        permissions,
+      ),
+      answerDiscordQuestion: (request) => this.backend.post(
+        "/integrations/discord-bot/answers", request, { timeoutMs: 130_000 },
+      ),
+      recordDiscordAnswerDelivery: (answerId, update) => this.backend.patch(
+        `/integrations/discord-bot/answers/${encodeURIComponent(answerId)}/delivery`, update,
+      ),
     };
   }
 
@@ -63,9 +76,46 @@ class DiscordService {
     return { invite_url: this.bot.inviteUrl() };
   }
 
+  settings() { return this.bot.directory.refresh(); }
+  updateModel(model) { return this.bot.directory.updateModel(model); }
+  updatePermissions(permissions) { return this.bot.directory.updatePermissions(permissions); }
+  roles(guildId) { return this.bot.directory.roles(guildId); }
+  members(guildId, query) { return this.bot.directory.members(guildId, query); }
+  subjectAvailability(guildId, subjects) {
+    return this.bot.directory.subjectAvailability(guildId, subjects);
+  }
+
+  listAnswers(query) {
+    return this.backend.get(`/integrations/discord-bot/answers?${historyQuery(query)}`);
+  }
+
+  answerDetail(answerId) {
+    return this.backend.get(`/integrations/discord-bot/answers/${encodeURIComponent(answerId)}`);
+  }
+
+  deleteAnswer(answerId) {
+    return this.backend.delete(
+      `/integrations/discord-bot/answers/${encodeURIComponent(answerId)}`,
+    );
+  }
+
+  deleteAnswers(guildId) {
+    const suffix = guildId ? `?guild_id=${encodeURIComponent(guildId)}` : "";
+    return this.backend.delete(`/integrations/discord-bot/answers${suffix}`);
+  }
+
   shutdown() {
     return this.bot.shutdown();
   }
 }
 
-module.exports = { DiscordService };
+function historyQuery(query = {}) {
+  const parameters = new URLSearchParams({
+    limit: String(query.limit || 25), offset: String(query.offset || 0),
+  });
+  if (query.guildId) parameters.set("guild_id", query.guildId);
+  if (query.channelId) parameters.set("channel_id", query.channelId);
+  return parameters.toString();
+}
+
+module.exports = { DiscordService, historyQuery };

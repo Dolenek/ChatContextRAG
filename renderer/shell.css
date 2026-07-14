@@ -95,7 +95,7 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
   grid-column: 1;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 190px minmax(0, 1fr);
   align-items: center;
   gap: clamp(12px, 2vw, 28px);
   padding: 0 var(--chat-horizontal-gutter);
@@ -107,7 +107,7 @@ body:not(.navigation-expanded) .recent-chats, body:not(.navigation-expanded) .si
 .scope-picker select { position: relative; z-index: 2; height: 46px; border: 0; padding: 0; appearance: none; color: #e1e5ef; background: transparent; font-size: 14px; }
 .scope-picker select:focus-visible { outline: 0; }
 .scope-picker > svg { width: 17px; height: 17px; color: #b7c0d2; pointer-events: none; }
-.archive-header-status { grid-column: 2; justify-self: center; width: max-content; display: grid; gap: 7px; -webkit-app-region: no-drag; }
+.archive-header-status { position: fixed; top: 0; left: 50%; grid-column: 2; width: max-content; height: var(--header-height); display: grid; align-content: center; gap: 7px; transform: translateX(-50%); -webkit-app-region: no-drag; }
 .archive-status-line { display: flex; align-items: center; gap: 10px; color: #d6dae5; font-size: 13px; white-space: nowrap; }
 .archive-status-line > i { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(72,210,123,.35); }
 .archive-header-progress { width: 100%; height: 5px; overflow: hidden; margin-left: 0; border-radius: 99px; background: rgba(255,255,255,.07); }

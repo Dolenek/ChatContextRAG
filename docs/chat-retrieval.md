@@ -6,6 +6,12 @@ models whose saved configuration enables archive tools. New composer chats use
 adaptive mode for those models and deterministic mode for all other models.
 Old request payloads and migrated chat sessions remain deterministic.
 
+The application chat remains strictly archive-grounded in both modes. The
+Discord bot reuses the retrieval engine with a separate policy that can combine
+an immutable recent-room snapshot, room-scoped historical evidence, and the
+selected model's general knowledge. That policy does not change `POST /chat` and
+is documented in [Discord bot](discord-bot.md).
+
 ## Deterministic retrieval
 
 The current question is embedded once. Hybrid retrieval combines candidates from

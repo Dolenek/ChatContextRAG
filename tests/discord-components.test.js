@@ -129,10 +129,11 @@ test("Discord slash commands enforce permission and report channel status", asyn
       raw_message_count: 12, indexed_message_count: 10,
     }),
     setState: () => {}, saveState: async () => {}, synchronizer: {},
+    canManage: (member) => member.permitted,
   });
   const denied = fakeInteraction({ permitted: false });
   await commands.handle(denied);
-  assert.match(denied.replies[0].content, /Manage Channels/);
+  assert.match(denied.replies[0].content, /nastavení Discord bota/);
 
   const status = fakeInteraction({ subcommand: "status" });
   await commands.handle(status);
@@ -318,6 +319,7 @@ function fakeInteraction(options = {}) {
   return {
     replies,
     commandName: options.commandName || "chatcontext", channelId: "20", channel: fakeChannel([]),
+    guildId: "10", member: { permitted: options.permitted !== false },
     isChatInputCommand: () => true, inGuild: () => true,
     memberPermissions: { has: () => options.permitted !== false },
     options: { getSubcommand: () => options.subcommand || "status" },

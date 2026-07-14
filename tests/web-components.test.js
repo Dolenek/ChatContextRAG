@@ -32,6 +32,16 @@ test("web configuration validates required secrets, ports, and session duration"
   assert.equal(config.trustProxy, true);
 });
 
+test("web volume repair keeps only its required Linux capabilities", () => {
+  const compose = fs.readFileSync(path.resolve(__dirname, "..", "docker-compose.yml"), "utf8");
+
+  for (const capability of ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]) {
+    assert.match(compose, new RegExp(`      - ${capability}\\r?$`, "m"));
+  }
+  assert.match(compose, /cap_drop:\r?\n      - ALL/);
+  assert.match(compose, /no-new-privileges:true/);
+});
+
 test("HTTP utilities parse JSON and reject malformed or oversized bodies", async () => {
   assert.deepEqual(await readJson(requestFrom('{"value":3}')), { value: 3 });
   assert.deepEqual(await readJson(requestFrom("")), {});

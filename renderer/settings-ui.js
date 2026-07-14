@@ -30,12 +30,13 @@ function bindSettingsUi(dependencies) {
     "change", loadChatModelSuggestions,
   );
   window.connectionSettingsUi.bind({ showToast: showSettingsToast });
+  window.discordBotSettingsUi.bind({ showToast: showSettingsToast });
 }
 
-async function openSettings() {
+async function openSettings(sectionName = "providers") {
   await prepareSettingsOpen();
   resetSettingsDrafts();
-  window.settingsOverlay.open();
+  window.settingsOverlay.open(sectionName);
   await Promise.all([window.connectionSettingsUi.refresh(), refreshSettings()]);
 }
 
@@ -52,6 +53,7 @@ async function refreshSettings() {
     fillProviderSelect("#chat-model-provider-select");
     await Promise.all([loadEmbeddingModels(), loadChatModelSuggestions()]);
     await window.modelSelector.prepare(settingsState);
+    await window.discordBotSettingsUi.refresh(settingsState);
   } catch (error) {
     showSettingsToast(error.message, true);
   }

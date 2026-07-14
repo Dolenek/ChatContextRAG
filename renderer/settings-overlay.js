@@ -27,10 +27,13 @@ window.settingsOverlay = (() => {
     listenersBound = true;
   }
 
-  function open() {
-    if (isOpen()) return;
+  function open(sectionName = defaultSection) {
+    if (isOpen()) {
+      selectSection(sectionName);
+      return;
+    }
     focusReturnTarget = document.activeElement;
-    selectSection(defaultSection);
+    selectSection(sectionName);
     overlay.classList.remove("hidden");
     overlay.setAttribute("aria-hidden", "false");
     document.body.classList.add("settings-overlay-open");

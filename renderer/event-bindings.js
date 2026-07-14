@@ -78,7 +78,7 @@ window.settingsUi.bind({
   showToast: window.appUi.showToast,
 });
 window.discordBotUi.bind({
-  openDrawerPanel: window.shellController.openDrawerPanel,
+  openSettings: window.settingsUi.open,
   showToast: window.appUi.showToast,
 });
 window.whatsappImportUi.bind({

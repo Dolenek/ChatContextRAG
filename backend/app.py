@@ -10,6 +10,9 @@ from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.chat_sessions import ChatSessionNotFoundError, PostgresChatSessionRepository
 from backend.chunking import ConversationAwareChunker
 from backend.database_routes import register_database_routes
+from backend.discord_bot_repository import DiscordBotRepository
+from backend.discord_bot_routes import register_discord_bot_routes
+from backend.discord_bot_service import DiscordBotService
 from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.indexing_worker import PersistentIndexingWorker
@@ -40,13 +43,15 @@ def create_app(
     overview_service: Optional[DatabaseOverviewService] = None,
     settings_service: Optional[ApplicationSettingsService] = None,
     migration_export_service: Optional[MigrationExportService] = None,
+    discord_bot_service: Optional[DiscordBotService] = None,
     internal_token: Optional[str] = None,
 ) -> FastAPI:
-    application = FastAPI(title="Chat Context RAG API", version="0.4.0")
+    application = FastAPI(title="Chat Context RAG API", version="0.5.0")
     services = _resolve_services(
-        ingestion_service, chat_service, overview_service, settings_service, internal_token,
+        ingestion_service, chat_service, overview_service, settings_service,
+        discord_bot_service, internal_token,
     )
-    active_ingestion, active_chat, active_overview, active_settings, token = services
+    active_ingestion, active_chat, active_overview, active_settings, active_discord, token = services
     application.add_middleware(InternalApiSecurityMiddleware, internal_token=token)
     _register_exception_handlers(application)
     register_ingestion_routes(
@@ -59,6 +64,8 @@ def create_app(
     register_database_routes(application, active_overview)
     if active_settings:
         register_settings_routes(application, active_settings, token)
+    if active_discord:
+        register_discord_bot_routes(application, active_discord)
     return application
 
 
@@ -87,11 +94,15 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
 
 def _resolve_services(
-    ingestion_service, chat_service, overview_service, settings_service, internal_token,
+    ingestion_service, chat_service, overview_service, settings_service,
+    discord_bot_service, internal_token,
 ) -> tuple:
     if ingestion_service and chat_service and overview_service:
         token = require_internal_token(internal_token)
-        return ingestion_service, chat_service, overview_service, settings_service, token
+        return (
+            ingestion_service, chat_service, overview_service, settings_service,
+            discord_bot_service, token,
+        )
     return _build_default_services()
 
 
@@ -130,7 +141,15 @@ def _build_default_services() -> tuple:
         indexing_worker, default_chat_model=settings.chat_model,
         workspace_settings=workspace_settings,
     )
-    return ingestion, chat, overview, settings_service, settings.internal_token
+    discord_bot = DiscordBotService(
+        DiscordBotRepository(raw_repository.ensure_schema, raw_repository.open_connection),
+        provider_registry, index_repository, hybrid_repository,
+        SourceContextProjector(raw_repository), raw_repository, workspace_settings,
+    )
+    return (
+        ingestion, chat, overview, settings_service, discord_bot,
+        settings.internal_token,
+    )
 
 
 def _build_default_chat(

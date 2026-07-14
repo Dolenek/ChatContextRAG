@@ -119,7 +119,8 @@ In an Electron Local workspace, the optional Discord bot runs in the main
 process only while the desktop application is running. Its token is encrypted with Electron
 `safeStorage` and is never exposed back to the renderer or stored in PostgreSQL,
 `.env`, or logs. The bot registers `/chatcontext sync`, `status`, and `stop`.
-Commands require the Discord `Manage Channels` permission.
+Commands and questions use separate persisted per-guild role/user allowlists;
+Discord ownership and administrator permissions never bypass them.
 
 In Web and Electron Remote modes the bot instead runs in the Node gateway. Its
 token is encrypted with `CHAT_CONTEXT_SERVER_KEY`, persisted in the server-state
@@ -135,11 +136,18 @@ complete scan. Startup catches up from the newest cursor before listening for li
 message create and update events. Discord deletes are intentionally ignored,
 because the local database is an archive.
 
-Live bot events are deduplicated by Discord message ID and flushed after 30
+Live synchronization events are deduplicated by Discord message ID and flushed after 30
 seconds of inactivity, after a hard 60-second limit, or at 100 messages. Each
 flush closes an ingestion session and creates durable per-index jobs. An edited
 message uses the same external ID, so its raw content and affected RAG boundary
 are replaced rather than duplicated.
+
+The same runtime answers authorized mentions and replies using an immutable live
+room snapshot, current-room historical retrieval, and a Discord-only general
+knowledge fallback. Settings, permission subjects, answer audits, and sent-message
+mappings are normalized PostgreSQL records outside the raw-archive migration.
+The complete behavior and API boundary are canonical in
+[Discord bot](discord-bot.md).
 
 The WhatsApp connector imports local UTF-8 `.txt` or `.zip` exports. It supports
 the common bracketed iOS and dashed Android formats, Czech and English date
@@ -172,6 +180,8 @@ therefore prevents application startup without leaving a partially migrated
 schema. Clearing the database removes messages, vectors, jobs, and integration
 cursors while preserving embedding-index definitions, provider profiles,
 encrypted secrets, the Discord bot token, and the embedded Discord login.
+Discord bot model settings, guild permissions, and answer audits are also
+independent of raw-archive clearing.
 
 Ingestion is source-neutral:
 
@@ -271,6 +281,9 @@ Electron Remote calls use its bearer token.
 - `GET /ingestion/conversations` lists raw conversations for a source.
 - `GET /integrations/sync-states` and `POST /integrations/sync-state` persist
   connector cursors.
+- `/integrations/discord-bot` persists the bot model, strict guild permissions,
+  answer generation and delivery audit, and paginated history. Its complete
+  contract is documented in [Discord bot](discord-bot.md).
 - `POST /imports/whatsapp/preview` validates and previews a multipart export.
 - `POST /imports/whatsapp` imports a validated multipart export and queues it.
 - `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints manage jobs.

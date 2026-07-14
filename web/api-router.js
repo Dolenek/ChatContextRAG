@@ -1,6 +1,7 @@
 const { readBody, readJson, securityHeaders, sendJson } = require("./http-utils");
 const { SettingsRouter } = require("./settings-router");
 const { MigrationRouter } = require("./migration-router");
+const { DiscordRouter } = require("./discord-router");
 
 class ApiRouter {
   constructor(options) {
@@ -10,6 +11,7 @@ class ApiRouter {
     this.monitor = options.monitor;
     this.settings = new SettingsRouter(options.settings);
     this.migrations = new MigrationRouter(options.backend, options.monitor);
+    this.discordRoutes = new DiscordRouter(options.discord);
   }
 
   async handle(request, response, url, identity) {
@@ -28,7 +30,7 @@ class ApiRouter {
       return this.migrations.handle(request, response, pathname, identity);
     }
     if (pathname.startsWith("/api/discord-bot")) {
-      return this.handleDiscord(request, response, pathname);
+      return this.discordRoutes.handle(request, response, url);
     }
     if (pathname.startsWith("/api/imports/whatsapp")) {
       return this.handleWhatsApp(request, response, pathname);
@@ -65,23 +67,6 @@ class ApiRouter {
       if (!response.destroyed) response.end();
     }
     return true;
-  }
-
-  async handleDiscord(request, response, pathname) {
-    if (request.method === "GET" && pathname === "/api/discord-bot/status") {
-      return this.json(response, this.discord.status());
-    }
-    if (request.method === "POST" && pathname === "/api/discord-bot/connect") {
-      const input = await readJson(request);
-      return this.proxy(response, this.discord.connect(input.token));
-    }
-    if (request.method === "POST" && pathname === "/api/discord-bot/disconnect") {
-      return this.proxy(response, this.discord.disconnect());
-    }
-    if (request.method === "GET" && pathname === "/api/discord-bot/invite") {
-      return this.json(response, this.discord.invite());
-    }
-    return false;
   }
 
   async handleWhatsApp(request, response, pathname) {

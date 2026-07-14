@@ -83,7 +83,7 @@ class ChatSource(BaseModel):
     guild_id: Optional[str] = None
     source_type: str = "discord"
     conversation_id: Optional[str] = None
-    evidence_origin: Literal["search", "context"] = "search"
+    evidence_origin: Literal["search", "context", "recent"] = "search"
 
 
 class ChatToolActivity(BaseModel):

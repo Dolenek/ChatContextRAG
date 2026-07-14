@@ -1,0 +1,36 @@
+.discord-settings-stack { padding-bottom: 28px; }
+.discord-connection-card { display: grid; gap: 16px; }
+.discord-token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.discord-token-row input { min-width: 0; }
+.discord-permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+.discord-permission-grid fieldset { min-width: 0; margin: 0; border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.discord-permission-grid legend { padding: 0 6px; color: var(--text); font-weight: 700; }
+.discord-permission-actions { grid-column: 1 / -1; justify-content: space-between; }
+.discord-subject-option { display: flex; align-items: center; gap: 8px; margin: 7px 0; color: var(--muted-strong); }
+.discord-subject-chip { margin: 4px 6px 4px 0; border: 1px solid rgba(139, 128, 255, .4); border-radius: 999px; padding: 6px 9px; color: #d9d5ff; background: rgba(116, 103, 255, .13); }
+.member-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
+.discord-member-result { margin: 7px 7px 0 0; }
+
+.discord-history-dialog { width: min(1040px, calc(100vw - 48px)); max-height: calc(100vh - 48px); display: grid; grid-template-rows: auto auto minmax(120px, 1fr) auto auto auto; gap: 14px; overflow: auto; border: 1px solid var(--border-strong); border-radius: 18px; padding: 22px; color: var(--text); background: #0b1525; box-shadow: var(--shadow); }
+.discord-history-dialog > header, .discord-history-detail > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.discord-history-dialog h2, .discord-history-dialog h3, .discord-history-dialog h4 { margin: 0; }
+.discord-history-filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; align-items: end; gap: 10px; }
+.discord-history-filters label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.discord-history-list { min-height: 120px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; }
+.discord-history-row { width: 100%; display: grid; gap: 5px; border: 0; border-bottom: 1px solid var(--border); padding: 13px 15px; color: var(--text); background: transparent; text-align: left; }
+.discord-history-row:hover, .discord-history-row:focus-visible { background: rgba(116, 103, 255, .1); }
+.discord-history-row span, .discord-history-row small { color: var(--muted); }
+.discord-history-pagination, .discord-history-delete-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.discord-history-pagination span { margin-right: auto; color: var(--muted); }
+.discord-history-detail { display: grid; gap: 14px; border-top: 1px solid var(--border); padding-top: 18px; }
+.discord-history-detail section { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.discord-history-detail p { margin: 7px 0; color: var(--muted-strong); white-space: pre-wrap; overflow-wrap: anywhere; }
+.discord-history-detail pre { max-height: 240px; overflow: auto; color: #c8d2e6; white-space: pre-wrap; }
+
+@media (max-width: 760px) {
+  .discord-permission-grid, .discord-history-filters { grid-template-columns: 1fr; }
+  .discord-permission-actions { grid-column: 1; align-items: stretch; flex-direction: column; }
+  .discord-token-row { grid-template-columns: 1fr; }
+  .discord-history-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); padding: 15px; }
+  .discord-history-delete-actions { align-items: stretch; flex-direction: column; }
+}

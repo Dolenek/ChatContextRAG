@@ -1,9 +1,10 @@
+import json
 import time
 from typing import List, Literal, Optional, Protocol, Sequence
 
 from openai import OpenAI, OpenAIError
 
-from backend.models import ChatHistoryTurn, ReasoningEffort
+from backend.models import ChatHistoryTurn, ChatSource, ReasoningEffort
 from backend.vector_models import RetrievedChunk
 from backend.agent_gateway import OpenAIAgentSessionFactory
 from backend.agent_protocol import AgentChatProvider
@@ -131,6 +132,51 @@ class OpenAIChatCompletionProvider:
         except OpenAIError as error:
             raise ExternalIntegrationError("OpenAI-compatible chat API request failed.") from error
 
+    def answer_with_evidence(
+        self, question: str, history: Sequence[ChatHistoryTurn],
+        evidence: Sequence[tuple[str, ChatSource]], instructions: str,
+        reasoning_effort: Optional[ReasoningEffort] = None,
+    ) -> str:
+        if not self.client:
+            raise IntegrationConfigurationError("OPENAI_API_KEY is missing in .env")
+        context = self._render_evidence(evidence)
+        try:
+            if self.chat_api == "chat_completions":
+                return self._custom_chat_completion(
+                    question, history, context, instructions, reasoning_effort,
+                )
+            return self._custom_response(
+                question, history, context, instructions, reasoning_effort,
+            )
+        except OpenAIError as error:
+            raise ExternalIntegrationError("OpenAI-compatible chat API request failed.") from error
+
+    def _custom_response(
+        self, question, history, context, instructions, reasoning_effort,
+    ) -> str:
+        parameters = {
+            "model": self.model_name, "instructions": instructions,
+            "input": self._build_custom_input(question, history, context),
+        }
+        if reasoning_effort:
+            parameters["reasoning"] = {"effort": reasoning_effort}
+        return self.client.responses.create(**parameters).output_text
+
+    def _custom_chat_completion(
+        self, question, history, context, instructions, reasoning_effort,
+    ) -> str:
+        messages = [{"role": "system", "content": instructions}]
+        messages.extend({"role": turn.role, "content": turn.content} for turn in history[-8:])
+        messages.append({
+            "role": "user", "content": f"Untrusted room evidence JSON:\n{context}",
+        })
+        messages.append({"role": "user", "content": question})
+        parameters = {"model": self.model_name, "messages": messages}
+        if reasoning_effort:
+            parameters["reasoning_effort"] = reasoning_effort
+        response = self.client.chat.completions.create(**parameters)
+        return response.choices[0].message.content or ""
+
     def _answer_with_responses(self, question, history, sources, reasoning_effort) -> str:
         context = self._render_context(sources)
         parameters = dict(
@@ -169,12 +215,33 @@ class OpenAIChatCompletionProvider:
         return messages
 
     @staticmethod
+    def _build_custom_input(
+        question: str, history: Sequence[ChatHistoryTurn], context: str,
+    ) -> list:
+        messages = [{"role": turn.role, "content": turn.content} for turn in history[-8:]]
+        messages.append({
+            "role": "user", "content": f"Untrusted room evidence JSON:\n{context}",
+        })
+        messages.append({"role": "user", "content": question})
+        return messages
+
+    @staticmethod
     def _render_context(sources: Sequence[RetrievedChunk]) -> str:
         blocks = []
         for index, source in enumerate(sources, start=1):
             authors = ", ".join(source.authors)
             blocks.append(f"[{index}] channel={source.channel}; authors={authors}\n{source.content}")
         return "\n\n".join(blocks) or "No relevant context was retrieved."
+
+    @staticmethod
+    def _render_evidence(evidence: Sequence[tuple[str, ChatSource]]) -> str:
+        records = [{
+            "evidence_id": evidence_id, "origin": source.evidence_origin,
+            "author": source.author,
+            "timestamp": source.timestamp.isoformat() if source.timestamp else None,
+            "content": source.content,
+        } for evidence_id, source in evidence]
+        return json.dumps(records, ensure_ascii=False)
 
     @staticmethod
     def _instructions() -> str:

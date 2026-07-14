@@ -69,6 +69,10 @@ function getJson(endpoint) {
   return backendClient.get(endpoint);
 }
 
+function putJson(endpoint, body) {
+  return backendClient.put(endpoint, body);
+}
+
 function deleteJson(endpoint, body) {
   return backendClient.delete(endpoint, body);
 }
@@ -220,7 +224,8 @@ async function configureLocalRuntime() {
   settingsController.register();
   await settingsController.initializeRegistry();
   integrationController = new IntegrationIpcController({
-    postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
+    postJson, getJson, putJson, patchJson, deleteJson, postMultipart,
+    getMainWindow: () => mainWindow,
     ipcMain: trustedIpcMain,
   });
   integrationController.register();

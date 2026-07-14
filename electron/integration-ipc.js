@@ -8,6 +8,9 @@ class IntegrationIpcController {
   constructor(options) {
     this.postJson = options.postJson;
     this.getJson = options.getJson;
+    this.putJson = options.putJson;
+    this.patchJson = options.patchJson;
+    this.deleteJson = options.deleteJson;
     this.postMultipart = options.postMultipart;
     this.getMainWindow = options.getMainWindow;
     this.ipcMain = options.ipcMain || ipcMain;
@@ -27,6 +30,7 @@ class IntegrationIpcController {
       await shell.openExternal(url);
       return { opened: true };
     });
+    this.registerDiscordSettingsHandlers();
     this.ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
     this.ipcMain.handle("whatsapp:preview", (_event, options) =>
       this.sendWhatsAppFile("/imports/whatsapp/preview", options));
@@ -45,7 +49,44 @@ class IntegrationIpcController {
       listSyncStates: (sourceType) =>
         this.getJson(`/integrations/sync-states?source_type=${encodeURIComponent(sourceType)}`),
       saveSyncState: (state) => this.postJson("/integrations/sync-state", state),
+      getDiscordBotSettings: () => this.getJson("/integrations/discord-bot/settings"),
+      updateDiscordBotModel: (model) =>
+        this.putJson("/integrations/discord-bot/settings/model", model),
+      updateDiscordGuildPermissions: (permissions) => this.putJson(
+        `/integrations/discord-bot/guilds/${encodeURIComponent(permissions.guild_id)}/permissions`,
+        permissions,
+      ),
+      answerDiscordQuestion: (request) =>
+        this.postJson("/integrations/discord-bot/answers", request, { timeoutMs: 130_000 }),
+      recordDiscordAnswerDelivery: (answerId, update) => this.patchJson(
+        `/integrations/discord-bot/answers/${encodeURIComponent(answerId)}/delivery`, update,
+      ),
     };
+  }
+
+  registerDiscordSettingsHandlers() {
+    const answerPath = (answerId) =>
+      `/integrations/discord-bot/answers/${encodeURIComponent(answerId)}`;
+    this.ipcMain.handle("discord-bot:settings", () => this.bot.directory.refresh());
+    this.ipcMain.handle("discord-bot:model:update", (_event, model) =>
+      this.bot.directory.updateModel(model));
+    this.ipcMain.handle("discord-bot:permissions:update", (_event, permissions) =>
+      this.bot.directory.updatePermissions(permissions));
+    this.ipcMain.handle("discord-bot:roles", (_event, guildId) =>
+      this.bot.directory.roles(guildId));
+    this.ipcMain.handle("discord-bot:members", (_event, guildId, query) =>
+      this.bot.directory.members(guildId, query));
+    this.ipcMain.handle("discord-bot:subjects", (_event, guildId, subjects) =>
+      this.bot.directory.subjectAvailability(guildId, subjects));
+    this.ipcMain.handle("discord-bot:answers", (_event, query) =>
+      this.getJson(`/integrations/discord-bot/answers?${historyQuery(query)}`));
+    this.ipcMain.handle("discord-bot:answer", (_event, answerId) =>
+      this.getJson(answerPath(answerId)));
+    this.ipcMain.handle("discord-bot:answer:delete", (_event, answerId) =>
+      this.deleteJson(answerPath(answerId)));
+    this.ipcMain.handle("discord-bot:answers:delete", (_event, guildId) =>
+      this.deleteJson(`/integrations/discord-bot/answers${guildId
+        ? `?guild_id=${encodeURIComponent(guildId)}` : ""}`));
   }
 
   async importMessageBatches(sessionId, messages) {
@@ -92,4 +133,13 @@ class IntegrationIpcController {
   }
 }
 
-module.exports = { IntegrationIpcController };
+function historyQuery(query = {}) {
+  const parameters = new URLSearchParams({
+    limit: String(query.limit || 25), offset: String(query.offset || 0),
+  });
+  if (query.guildId) parameters.set("guild_id", query.guildId);
+  if (query.channelId) parameters.set("channel_id", query.channelId);
+  return parameters.toString();
+}
+
+module.exports = { IntegrationIpcController, historyQuery };

@@ -86,6 +86,21 @@ contextBridge.exposeInMainWorld("chatContext", {
   connectDiscordBot: (token) => ipcRenderer.invoke("discord-bot:connect", token),
   disconnectDiscordBot: () => ipcRenderer.invoke("discord-bot:disconnect"),
   inviteDiscordBot: () => ipcRenderer.invoke("discord-bot:invite"),
+  getDiscordBotSettings: () => ipcRenderer.invoke("discord-bot:settings"),
+  updateDiscordBotModel: (model) => ipcRenderer.invoke("discord-bot:model:update", model),
+  updateDiscordGuildPermissions: (permissions) =>
+    ipcRenderer.invoke("discord-bot:permissions:update", permissions),
+  getDiscordGuildRoles: (guildId) => ipcRenderer.invoke("discord-bot:roles", guildId),
+  searchDiscordGuildMembers: (guildId, query) =>
+    ipcRenderer.invoke("discord-bot:members", guildId, query),
+  getDiscordSubjectAvailability: (guildId, subjects) =>
+    ipcRenderer.invoke("discord-bot:subjects", guildId, subjects),
+  listDiscordBotAnswers: (query) => ipcRenderer.invoke("discord-bot:answers", query),
+  getDiscordBotAnswer: (answerId) => ipcRenderer.invoke("discord-bot:answer", answerId),
+  deleteDiscordBotAnswer: (answerId) =>
+    ipcRenderer.invoke("discord-bot:answer:delete", answerId),
+  deleteDiscordBotAnswers: (guildId = null) =>
+    ipcRenderer.invoke("discord-bot:answers:delete", guildId),
   onDiscordBotProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
     ipcRenderer.on("discord-bot:progress", listener);

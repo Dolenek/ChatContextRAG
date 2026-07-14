@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="chat.css" /><link rel="stylesheet" href="panels.css" />
     <link rel="stylesheet" href="overview.css" /><link rel="stylesheet" href="settings-overlay.css" />
     <link rel="stylesheet" href="chat-history.css" /><link rel="stylesheet" href="context-detail.css" />
+    <link rel="stylesheet" href="discord-bot-settings.css" />
   </head>
   <body class="navigation-expanded" data-navigation-mode="expanded">
 
@@ -96,20 +97,6 @@
               <button id="scan-channel-button" class="secondary-button accent" type="button">Procházet do databáze</button>
               <button id="close-discord-button" class="quiet-button" type="button">Zavřít Discord</button>
             </div>
-          </section>
-
-          <section id="discord-bot-drawer-panel" class="drawer-panel">
-            <button class="drawer-back" type="button" data-drawer-target="sources">← Zpět ke zdrojům</button>
-            <div class="integration-heading"><span class="source-logo discord-logo"><svg class="brand-icon" aria-hidden="true"><use href="assets/icon-sprite.svg#icon-discord" /></svg></span><div><h3>Discord bot</h3><p>Automatická synchronizace dostupných kanálů.</p></div></div>
-            <label class="field-label" for="discord-bot-token">Bot token</label>
-            <input id="discord-bot-token" type="password" autocomplete="off" placeholder="Token se uloží šifrovaně" />
-            <button id="connect-discord-bot-button" class="primary-button full-width" type="button">Připojit</button>
-            <p id="discord-bot-status" class="integration-status">Načítám stav…</p>
-            <div class="stacked-actions">
-              <button id="invite-discord-bot-button" class="secondary-button" type="button" disabled>Pozvat na server</button>
-              <button id="disconnect-discord-bot-button" class="danger-button" type="button" disabled>Odpojit a odstranit token</button>
-            </div>
-            <p class="fine-print">V cílovém kanálu spusťte <code>/chatcontext sync</code>. Bot funguje pouze při spuštěné aplikaci.</p>
           </section>
 
           <section id="whatsapp-drawer-panel" class="drawer-panel">
@@ -231,6 +218,7 @@
             <button class="settings-nav-item" type="button" data-settings-section="chat-models" aria-controls="settings-chat-models-panel"><svg><use href="assets/icon-sprite.svg#icon-chat" /></svg><span>Chat modely</span></button>
             <button class="settings-nav-item" type="button" data-settings-section="embedding-indexes" aria-controls="settings-embedding-indexes-panel"><svg><use href="assets/icon-sprite.svg#icon-database" /></svg><span>Embedding indexy</span></button>
             <button class="settings-nav-item" type="button" data-settings-section="indexing-history" aria-controls="settings-indexing-history-panel"><svg><use href="assets/icon-sprite.svg#icon-refresh" /></svg><span>Historie indexování</span></button>
+            <button class="settings-nav-item" type="button" data-settings-section="discord-bot" aria-controls="settings-discord-bot-panel"><svg><use href="assets/icon-sprite.svg#icon-discord" /></svg><span>Discord bot</span></button>
             <button class="settings-nav-item" type="button" data-settings-section="workspace" aria-controls="settings-workspace-panel"><svg><use href="assets/icon-sprite.svg#icon-workspace" /></svg><span>Workspace</span></button>
           </nav>
           <div class="settings-navigation-footer">
@@ -277,6 +265,11 @@
             <section id="settings-indexing-history-panel" class="settings-section hidden" data-settings-panel="indexing-history" aria-labelledby="settings-indexing-history-title" aria-hidden="true">
               <header class="settings-section-heading"><h2 id="settings-indexing-history-title">Historie indexování</h2><p>Dokončené, zrušené a neúspěšné úlohy. Aktivní průběh zůstává v pravém panelu.</p></header>
               <section class="settings-card"><div id="indexing-job-history" class="settings-list"></div></section>
+            </section>
+
+            <section id="settings-discord-bot-panel" class="settings-section hidden" data-settings-panel="discord-bot" aria-labelledby="settings-discord-bot-title" aria-hidden="true">
+              <header class="settings-section-heading"><h2 id="settings-discord-bot-title">Discord bot</h2><p>Připojení, model odpovědí, oprávnění serverů a audit odpovědí.</p></header>
+              <div id="discord-bot-settings-root"></div>
             </section>
 
             <section id="settings-workspace-panel" class="settings-section hidden" data-settings-panel="workspace" aria-labelledby="settings-workspace-title" aria-hidden="true">
@@ -329,8 +322,8 @@
     <script src="workspace-state.js"></script><script src="chat-scope-selector.js"></script><script src="retrieval-mode-selector.js"></script>
     <script src="indexing-controls.js"></script><script src="overview-controller.js"></script><script src="archive-migration-ui.js"></script>
     <script src="indexing-api-key-ui.js"></script><script src="indexing-job-history-ui.js"></script><script src="settings-overlay.js"></script>
-    <script src="chat-model-settings-ui.js"></script><script src="workspace-timezone-ui.js"></script><script src="connection-settings-ui.js"></script><script src="settings-ui.js"></script>
-    <script src="model-selector.js"></script><script src="discord-bot-ui.js"></script><script src="whatsapp-import-ui.js"></script>
+    <script src="chat-model-settings-ui.js"></script><script src="workspace-timezone-ui.js"></script><script src="connection-settings-ui.js"></script><script src="discord-bot-history-ui.js"></script>
+    <script src="discord-bot-settings-ui.js"></script><script src="settings-ui.js"></script><script src="model-selector.js"></script><script src="discord-bot-ui.js"></script><script src="whatsapp-import-ui.js"></script>
     <script src="app.js"></script><script src="chat-history-ui.js"></script><script src="tool-activity-view.js"></script>
     <script src="conversation-view.js"></script><script src="chat-controller.js"></script><script src="event-bindings.js"></script>
   </body>

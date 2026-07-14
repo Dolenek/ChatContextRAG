@@ -104,6 +104,25 @@ def test_first_search_is_forced_and_uses_bounded_history():
     assert sources[0].source_message_ids == ["m1"]
 
 
+def test_discord_adaptive_policy_includes_recent_evidence_and_general_fallback() -> None:
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_archive", {"query": "current question"})]),
+        AgentTurn("General answer without a fallback label.", []),
+    ])
+    recent = source("recent-1", "Latest room message", origin="recent")
+
+    answer, sources = AdaptiveChatOrchestrator(
+        provider, FakeArchiveTools({}), initial_sources=[recent],
+        allow_general_knowledge=True,
+    ).answer(adaptive_request())
+
+    output = json.loads(provider.session.requests[1][2][0].output)
+    assert output["messages"][0]["evidence_origin"] == "recent"
+    assert sources[0].evidence_origin == "recent"
+    assert answer == "General answer without a fallback label."
+    assert "general knowledge" in provider.creation[2]
+
+
 def test_context_and_refined_search_run_in_received_order_then_tools_stop():
     initial = source("m1", "Initial hit")
     neighbor = source("m2", "Neighbor", origin="context", score=0.0)

@@ -1,5 +1,7 @@
 from typing import List
 
+from backend.discord_bot_schema import discord_bot_schema_statements
+
 
 def raw_schema_statements(
     default_embedding_model: str = "text-embedding-3-small",
@@ -12,6 +14,7 @@ def raw_schema_statements(
         + _job_schema_statements()
         + _integration_schema_statements()
         + chat_session_schema_statements()
+        + discord_bot_schema_statements()
     )
 
 

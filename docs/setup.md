@@ -161,8 +161,9 @@ message count.
 The transfer merges raw messages and Discord synchronization cursors through
 the gateway. Matching external message IDs are updated from the Local archive;
 server-only messages remain. Provider profiles, API keys, Discord bot tokens,
-embedding vectors, model selections, indexing-job history, and persisted chat
-sessions are not copied.
+Discord bot model/permission settings and answer history, embedding vectors,
+model selections, indexing-job history, and persisted chat sessions are not
+copied.
 The server never connects to the desktop PostgreSQL port.
 
 Progress is checkpointed only after the server acknowledges the complete batch.
@@ -260,26 +261,12 @@ is laid out beside it so the scan controls remain accessible.
 
 ## Discord bot
 
-1. Create an application and bot in the Discord Developer Portal.
-2. Enable the Message Content privileged intent for the bot.
-3. Open **Sources and imports**, choose **Discord bot**, and paste the bot token. The renderer never
-   receives the token after the connect call.
-4. Choose **Pozvat na server** and grant the bot View Channel and Read Message
-   History in the channels that should be archived.
-5. A server member with Manage Channels runs `/chatcontext sync` in a text
-   channel or thread.
-
-The first command imports all accessible history and enables live create/edit
-tracking. `/chatcontext status` reports the channel state and `/chatcontext stop`
-disables live tracking. If the application or computer stops during the initial
-history scan, the next start reuses the same durable session and continues from
-the last committed 100-message page. The bot only connects while the desktop
-application is running. On the next start it also catches up messages created
-while it was offline.
-
-Live messages normally become searchable within 30–60 seconds plus embedding
-latency. Closing the application flushes pending raw messages; a queued indexing
-job resumes on the next start. Deleted Discord messages remain in the archive.
+Create the application in the Discord Developer Portal and enable both **Message
+Content** and **Server Members** privileged intents. Connect it under **Settings
+> Discord bot**, configure its model and strict guild allowlists, then use the
+generated invite. The complete setup, synchronization, question, fallback,
+permission, history, and verification contract is documented in
+[Discord bot](discord-bot.md).
 
 ## WhatsApp export import
 

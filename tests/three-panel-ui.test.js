@@ -83,22 +83,24 @@ test("shell keeps navigation compact and themes native selection menus", () => {
   assert.match(shellCss, /\.rail-button \{[\s\S]*?min-height: 44px/);
   assert.match(shellCss, /\.navigation-rail\.navigation-rollout-visible \.navigation-toggle/);
   assert.match(shellCss, /grid-template-columns: minmax\(34px, 1fr\) 42px minmax\(34px, 1fr\)/);
-  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: center; width: max-content/);
+  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) 190px minmax\(0, 1fr\)/);
+  assert.match(shellCss, /\.archive-header-status \{ position: fixed; top: 0; left: 50%/);
+  assert.match(shellCss, /transform: translateX\(-50%\)/);
   assert.match(shellCss, /\.archive-header-progress \{ width: 100%;[\s\S]*?margin-left: 0/);
   assert.match(shellCss, /width: min\(414px, calc\(100vw - var\(--rail-width\)\)\)/);
 });
 
-test("header centers archive status beside the gutter-aligned scope picker", () => {
+test("header centers archive status in the viewport beside the scope picker", () => {
   const html = read("renderer/index.html");
   const baseCss = read("renderer/styles.css");
   const shellCss = read("renderer/shell.css");
   const chatCss = read("renderer/chat.css");
   assert.match(html, /class="app-header-content"[\s\S]*?class="scope-picker"/);
   assert.match(baseCss, /--chat-content-max-width: 784px/);
-  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
+  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) 190px minmax\(0, 1fr\)/);
   assert.match(shellCss, /\.scope-picker:focus-within/);
   assert.match(shellCss, /\.scope-picker select:focus-visible \{ outline: 0; \}/);
-  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: center/);
+  assert.match(shellCss, /\.archive-header-status \{ position: fixed; top: 0; left: 50%/);
   assert.match(chatCss, /padding: 0 var\(--chat-horizontal-gutter\) 38px/);
   assert.match(chatCss, /\.chat-form \{[\s\S]*?var\(--chat-content-max-width\)/);
 });

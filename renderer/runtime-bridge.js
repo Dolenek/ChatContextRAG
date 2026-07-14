@@ -185,6 +185,15 @@
     return { opened: true };
   }
 
+  function discordHistoryQuery(query = {}) {
+    const parameters = new URLSearchParams({
+      limit: String(query.limit || 25), offset: String(query.offset || 0),
+    });
+    if (query.guildId) parameters.set("guild_id", query.guildId);
+    if (query.channelId) parameters.set("channel_id", query.channelId);
+    return parameters.toString();
+  }
+
   window.chatContext = {
     getRuntimeCapabilities: async () => {
       const session = await ensureSession();
@@ -238,6 +247,34 @@
     connectDiscordBot: (token) => api("/discord-bot/connect", { method: "POST", body: { token } }),
     disconnectDiscordBot: () => api("/discord-bot/disconnect", { method: "POST", body: {} }),
     inviteDiscordBot,
+    getDiscordBotSettings: () => api("/discord-bot/settings"),
+    updateDiscordBotModel: (model) => api("/discord-bot/settings/model", {
+      method: "PUT", body: model,
+    }),
+    updateDiscordGuildPermissions: (permissions) => api(
+      `/discord-bot/guilds/${encodeURIComponent(permissions.guild_id)}/permissions`,
+      { method: "PUT", body: permissions },
+    ),
+    getDiscordGuildRoles: (guildId) =>
+      api(`/discord-bot/guilds/${encodeURIComponent(guildId)}/roles`),
+    searchDiscordGuildMembers: (guildId, query) => api(
+      `/discord-bot/guilds/${encodeURIComponent(guildId)}/members?query=${encodeURIComponent(query)}`,
+    ),
+    getDiscordSubjectAvailability: (guildId, subjects) => api(
+      `/discord-bot/guilds/${encodeURIComponent(guildId)}/subjects/availability`,
+      { method: "POST", body: { subjects } },
+    ),
+    listDiscordBotAnswers: (query = {}) =>
+      api(`/discord-bot/answers?${discordHistoryQuery(query)}`),
+    getDiscordBotAnswer: (answerId) =>
+      api(`/discord-bot/answers/${encodeURIComponent(answerId)}`),
+    deleteDiscordBotAnswer: (answerId) => api(
+      `/discord-bot/answers/${encodeURIComponent(answerId)}`, { method: "DELETE" },
+    ),
+    deleteDiscordBotAnswers: (guildId = null) => api(
+      `/discord-bot/answers${guildId ? `?guild_id=${encodeURIComponent(guildId)}` : ""}`,
+      { method: "DELETE" },
+    ),
     onDiscordBotProgress: (callback) => subscribe("discord-bot", callback),
     selectWhatsAppExport,
     previewWhatsAppExport: (options) => sendWhatsApp("/imports/whatsapp/preview", options),

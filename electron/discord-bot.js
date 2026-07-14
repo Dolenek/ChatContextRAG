@@ -5,6 +5,9 @@ const { DiscordBotBatcher } = require("./discord-bot-batcher");
 const { DiscordBotChannelSynchronizer, maximumId } = require("./discord-bot-channel-sync");
 const { discordChannelContext, discordMessageToInput } = require("./discord-bot-message");
 const { DiscordBotCommands } = require("./discord-bot-commands");
+const { DiscordBotAccessPolicy } = require("./discord-bot-access");
+const { DiscordBotDirectory } = require("./discord-bot-directory");
+const { DiscordBotQuestionHandler } = require("./discord-bot-questions");
 
 class DiscordBotController {
   constructor(options) {
@@ -14,6 +17,10 @@ class DiscordBotController {
     this.client = null;
     this.states = new Map();
     this.lastError = null;
+    this.directory = new DiscordBotDirectory({
+      api: this.api, getClient: () => this.client,
+    });
+    this.access = new DiscordBotAccessPolicy(() => this.directory.current());
     this.batcher = new DiscordBotBatcher({
       ...this.api, onProgress: this.onProgress,
       onStored: (context, messages) => this.updateCursor(context, messages),
@@ -27,6 +34,11 @@ class DiscordBotController {
       setState: (id, state) => this.states.set(id, state),
       saveState: (state) => this.saveState(state),
       synchronizer: this.synchronizer,
+      canManage: (member, guildId) => this.access.permits(member, guildId, "sync"),
+    });
+    this.questions = new DiscordBotQuestionHandler({
+      api: this.api, getSettings: () => this.directory.current(),
+      access: this.access, onProgress: this.onProgress,
     });
   }
 
@@ -56,6 +68,7 @@ class DiscordBotController {
       if (shouldSave) this.tokenStore.save(token);
       this.lastError = null;
       await this.loadStates();
+      await this.directory.refresh();
       await this.commands.register(this.client);
       void this.catchUpTrackedChannels();
       return this.status();
@@ -71,12 +84,13 @@ class DiscordBotController {
     const client = new Client({
       intents: [
         GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent,
       ],
       partials: [Partials.Message, Partials.Channel],
     });
     client.on(Events.InteractionCreate, (interaction) => this.commands.handle(interaction));
     client.on(Events.MessageCreate, (message) => this.handleLiveMessage(message));
+    client.on(Events.MessageCreate, (message) => this.handleQuestion(message));
     client.on(Events.MessageUpdate, (_oldMessage, message) => this.handleLiveMessage(message));
     client.on(Events.Error, (error) => {
       this.lastError = error.message;
@@ -94,6 +108,17 @@ class DiscordBotController {
     } catch (error) {
       this.lastError = error.message;
       this.onProgress({ type: "error", conversationId: message.channelId, error: error.message });
+    }
+  }
+
+  async handleQuestion(message) {
+    try {
+      await this.questions.handle(message, this.client?.user?.id);
+    } catch (error) {
+      this.lastError = error.message;
+      this.onProgress({
+        type: "error", conversationId: message.channelId, error: error.message,
+      });
     }
   }
 
@@ -135,7 +160,11 @@ class DiscordBotController {
     if (!this.client?.isReady()) throw new Error("Nejdřív připojte Discord bota.");
     return this.client.generateInvite({
       scopes: ["bot", "applications.commands"],
-      permissions: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory],
+      permissions: [
+        PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads,
+        PermissionFlagsBits.AddReactions,
+      ],
     });
   }
 

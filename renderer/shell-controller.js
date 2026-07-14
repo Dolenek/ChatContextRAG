@@ -16,7 +16,6 @@ window.shellController = (() => {
   const panelTitles = {
     sources: "Zdroje a importy",
     discord: "Vestavěný Discord",
-    discordBot: "Discord bot",
     whatsapp: "WhatsApp export",
     importResult: "Výsledek importu",
   };

@@ -30,8 +30,10 @@ group labels throughout the renderer. Focusing the scope selector outlines the
 complete **Search in** control rather than only the native select. Clicking any
 part of that control opens its native menu. Scope options carry a source icon and
 conversation label. The selector shares the chat content's responsive gutter.
-The archive-ready status occupies the centered header column independently of
-the selector. The archive progress track spans from the status dot to the
+The archive-ready status is fixed to the horizontal center of the viewport,
+independently of the selector, navigation rail, and grounding-context panel.
+The header grid reserves space for it so adjacent controls do not consume its
+layout slot. The archive progress track spans from the status dot to the
 percentage label. The same
 selection is exposed in the sources drawer; both controls update one state and
 changing it starts a clean conversation. Startup requests the lightweight
@@ -98,8 +100,12 @@ it switches the workspace immediately, renders cached status when available,
 and loads breakdowns and the first chunk page in parallel. Loading failures keep
 the previous snapshot visible. Manual refresh bypasses freshness windows.
 Settings opens over the current screen as an accessible modal and keeps its
-provider, model, embedding-index, indexing-history, workspace-target, and
-web-session behavior. The workspace section also provides a searchable IANA
+provider, model, embedding-index, indexing-history, Discord-bot, workspace-target,
+and web-session behavior. The Discord bot item in **Sources and imports** is a
+shortcut to that settings section; there is no duplicate connector drawer. Its
+answer-history dialog traps focus, returns focus to its opener, and renders audit
+values as text. The complete surface is documented in
+[Discord bot](discord-bot.md). The workspace section also provides a searchable IANA
 timezone field shared by web, Electron Local, and Electron Remote. It controls
 calendar boundaries for future adaptive searches and defaults to `UTC`.
 For a non-loopback HTTP remote target, the section shows an acknowledgement
