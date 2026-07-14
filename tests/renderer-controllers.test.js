@@ -46,17 +46,18 @@ class FakeElement {
   }
 }
 
-test("chat controller sends bounded history, renders text safely, and recalls sources", async () => {
+test("chat controller sends bounded history and delegates safe message rendering", async () => {
   const questionInput = new FakeElement("input");
   const submitButton = new FakeElement("button");
-  const conversation = new FakeElement("section");
   const requests = [];
   const shownSources = [];
   const savedSessions = [];
+  const renderedUsers = [];
+  const renderedAssistants = [];
+  const persistedEntries = [];
   const elements = new Map([
     ["#question-input", questionInput],
     ["#chat-form button[type='submit']", submitButton],
-    ["#conversation", conversation],
     ["#chat-scope-select", { selectedOptions: [{ textContent: "General · 10" }] }],
   ]);
   const context = {
@@ -83,6 +84,16 @@ test("chat controller sends bounded history, renders text safely, and recalls so
       },
       chatHistoryUi: { responseSaved: (response) => savedSessions.push(response.chat_session_id) },
       contextPanel: { showSources: (sources) => shownSources.push(sources), clear: () => {} },
+      conversationView: {
+        appendUser: (text) => {
+          const entry = { text };
+          renderedUsers.push(text);
+          return entry;
+        },
+        appendAssistant: (text, sources) => renderedAssistants.push([text, sources]),
+        markPersisted: (entry) => persistedEntries.push(entry.text),
+        resetComposer: () => { questionInput.value = ""; },
+      },
       shellController: { openContext: () => {}, setDiscordActive: () => {}, showScreen: () => {}, closeDrawer: () => {} },
     },
   };
@@ -101,12 +112,11 @@ test("chat controller sends bounded history, renders text safely, and recalls so
     { role: "user", content: "<img src=x onerror=alert(1)>" },
     { role: "assistant", content: "grounded" },
   ]);
-  assert.equal(conversation.children[0].children[0].textContent, "<img src=x onerror=alert(1)>");
+  assert.deepEqual(renderedUsers, ["<img src=x onerror=alert(1)>", "second question"]);
+  assert.equal(renderedAssistants[0][0], "grounded");
+  assert.deepEqual(persistedEntries, ["<img src=x onerror=alert(1)>", "second question"]);
   assert.equal(shownSources.length, 2);
   assert.deepEqual(savedSessions, ["session-1", "session-1"]);
-  const assistantFooter = conversation.children[1].children[1];
-  assistantFooter.children[0].listeners.click();
-  assert.equal(shownSources.length, 3);
   assert.equal(submitButton.disabled, false);
   assert.equal(questionInput.focused, true);
 });

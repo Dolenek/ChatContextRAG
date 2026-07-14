@@ -23,6 +23,7 @@ from backend.postgres_repository import PostgresVectorRepository
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.indexing_worker import PersistentIndexingWorker
 from backend.raw_repository import PostgresRawMessageRepository
+from backend.source_context import SourceContextProjector
 from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
 from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.whatsapp_import import WhatsAppImportCoordinator
@@ -313,6 +314,7 @@ def _build_default_services() -> tuple:
         chat_session_repository=PostgresChatSessionRepository(
             raw_repository.ensure_schema, raw_repository.open_connection,
         ),
+        source_context_projector=SourceContextProjector(raw_repository),
     )
     overview = DatabaseOverviewService(repository, raw_repository)
     settings_service = ApplicationSettingsService(

@@ -1,71 +1,84 @@
 # Renderer shell
 
-The renderer is a framework-free three-panel workspace. Its left navigation rail
-switches directly between a 58 px icon mode and a 220 px icon-and-label mode,
-defaults to expanded, and keeps the desktop preference in browser-local storage.
-**New chat** clears the conversation while retaining the selected source and
-model. The expanded rail directly lists the ten most recently active persisted
-chats between Database and Settings; the section is absent in icon-only mode.
-Rows restore messages, grounding, original scope, and the per-chat model without
-changing the global model default. Row menus use dedicated rename and delete
-dialogs. The source item independently opens an overlay drawer for scope and
-connector workflows, the center switches between chat and database detail, and
-the right panel renders grounding sources plus a compact index snapshot anchored
-to its bottom edge. The
-chat heading's **Sources** action opens the same drawer. Below 700 px the expanded
-rail is a transient overlay; embedded Discord temporarily forces the compact rail
-and restores the preference when it closes. Settings opens as an accessible
-modal over the current center screen. Its navigation separates providers and API
-keys, chat models, embedding indexes, indexing history, and the Electron-only
-workspace target. Web logout appears only at the bottom of this settings
-navigation; Electron does not render a logout action. The context panel becomes
-a drawer below 1,100 px.
-Each area owns its scrolling so long source lists and database results do not move
-the chat composer.
+The framework-free renderer uses a four-region application shell: a left
+navigation rail, an 82 px header, a central workspace, and a grounding-context
+panel. The expanded rail is 310 px wide and its compact mode is 72 px. The
+desktop preference is stored in browser-local storage. The context panel uses
+`clamp(360px, 31vw, 508px)`, while chat content is capped at 784 px. The rail,
+workspace, context list, drawers, and modal bodies own their scrolling so the
+composer remains anchored when content grows.
 
-Controllers share one database-overview snapshot between the right status panel,
-the full database view, and indexing controls. Chat response sources are handed
-to the context panel and retained on each assistant entry so an older response's
-grounding can be selected again. All source content is inserted through DOM text
-properties rather than interpreted as HTML.
+The rail starts with the Chat Context sparkle mark and its collapse control. It
+contains **New chat**, **Sources and imports**, **Database**, the six most recent
+persisted chats, the expandable remainder of the 20 loaded summaries, the index
+status card, and **Settings**. Compact mode retains the logo, collapse control,
+and navigation icons with accessible labels and hover/focus tooltips. Recent
+chat rows use `updated_at`: same-day rows show `HH:mm`, yesterday uses a localized
+label, and older rows use a short date. Rows restore their ordered messages,
+grounding sources, scope, provider, model, and reasoning effort. Rename and
+delete actions use dedicated dialogs.
 
-The full database view presents the snapshot as a responsive two-tier dashboard.
-Primary cards report chunk, source, raw, uniqueness, duplicate, and indexing
-counts; compact cards report pending work, storage size, conversation count, and
-message boundaries. Conversation, author, and embedding-model distributions stay
-available as scrollable count lists, followed by the paginated chunk detail. The
-dashboard uses only current overview values and does not infer historical trends.
+The header owns the native **Search in** scope selector and the archive-ready
+status. Scope options carry a source icon and conversation label. The same
+selection is exposed in the sources drawer; both controls update one state and
+changing it starts a clean conversation. Archive percentage, index metrics,
+active jobs, pending-message indexing, and the database dashboard all render
+from one shared database-overview snapshot. At widths where context is a drawer,
+the header also exposes its message count and open control.
 
-The chat composer owns a two-level model popover: the first level selects a
-configured provider and the second selects one of its persisted chat models.
-Each managed model can carry an optional reasoning effort. The unset option
-delegates to the model's own default and omits the API parameter; explicit values
-are shown in the model popover and forwarded using the selected provider's API
-shape. Because effort support is model-dependent, compatible-provider errors are
-returned to the user rather than silently substituting another level.
-Managed model records are editable in place. The original provider/model identity
-travels with the save request so the settings store can replace the record in one
-atomic write, reject identity collisions, and move an active default to the new
-identity. A context-changing edit resets the renderer's open conversation.
-Changing the selection writes the Electron-owned default and resets visible chat
-history so messages generated by different models are not mixed. A restored
-session uses its own model only for that session. If its model or source no
-longer exists, the messages remain readable while the composer is disabled with
-an explicit explanation; no fallback context is selected silently.
+## Conversation and grounding
 
-The embedded Discord `BrowserView` starts below the custom title bar and to the
-right of the locked-open import drawer. This keeps scan controls in the isolated
-renderer visible while Discord continues to run in its persistent partition.
+The conversation view renders saved user turns as timestamped bubbles with a
+persisted confirmation and assistant turns as cards with a sparkle avatar. Each
+assistant card retains its own complete source array. Its **Answer supported by
+N messages** action restores that answer's grounding after the user has selected
+or generated a newer answer.
+
+The composer uses an automatically growing textarea. Enter submits and
+Shift+Enter inserts a line break. The send button and two-level model selector
+sit inside the composer card. Provider and model selection behavior, optional
+reasoning effort, unavailable restored-model handling, and context-reset rules
+remain unchanged.
+
+The context panel shows the total number of source messages and at most four
+numbered preview cards. Each card includes the source type, conversation,
+timestamp, deterministically colored author, and shortened text. **Show complete
+context (N)** opens every source in an accessible modal with full text and
+metadata. Eligible Discord sources include a deep link. Source text is inserted
+with DOM text properties rather than interpreted as HTML. Discord and WhatsApp
+surfaces use local SVG sprite symbols, so brand icons require no runtime request.
+
+The context modal has `aria-modal`, an explicit label, a focus trap, and focus
+return. It closes from its close button, Escape, or the backdrop. Opening a new
+answer automatically opens the context drawer when the fixed panel is not
+available.
+
+## Supporting surfaces
+
+**Sources and imports** opens a 320 px overlay drawer for scope selection and
+connector workflows. Database remains a central workspace dashboard. Settings
+opens over the current screen as an accessible modal and keeps its provider,
+model, embedding-index, indexing-history, workspace-target, and web-session
+behavior. Import drawers, confirmation dialogs, indexing controls, and the web
+runtime reuse the shell's color, type, radius, button, card, and focus tokens.
+
+Embedded Discord forces the 72 px rail, locks open the 320 px import drawer, and
+starts its `BrowserView` 82 px below the top edge and 392 px from the left. This
+keeps import controls visible while Discord runs in its persistent isolated
+partition. Interactive header elements opt out of Electron drag regions.
+
+## Responsive behavior
+
+At 1,199 px and below the grounding panel becomes a right drawer controlled by
+the header count button. At 760 px and below the rail defaults to its icon mode;
+expanding it produces a transient overlay and selecting a destination closes it.
+The grounding panel remains an independent right drawer. Low-height desktop
+windows scroll the full sidebar, preserving access to recent chats, index status,
+and settings.
 
 The web adapter uses browser file selection and multipart requests for WhatsApp
 exports. It hides embedded Discord controls and opens complete Discord source
-links in a new browser tab. `/api/events` carries best-effort indexing and bot
-progress over SSE. The renderer applies pushed job snapshots immediately and
-polls every queued and running job independently with an adaptive backoff as the authoritative fallback
-across reconnects. A newer queued maintenance job therefore cannot mask the
-progress of an older running job. The live context panel renders only queued and
-running jobs. Terminal job records remain stored for diagnostics and appear in
-the **Indexing history** settings section; failed and cancelled entries can
-be retried there. Running jobs sort before queued jobs in the live panel, while
-the summary reports the queued count separately instead of treating queue
-presence as proof that a worker is processing data.
+links in a new browser tab. `/api/events` supplies best-effort indexing and bot
+progress over SSE. Adaptive polling of every queued and running job remains the
+authoritative fallback across reconnects; running jobs sort before queued jobs,
+and terminal records stay available in **Indexing history**.

@@ -60,7 +60,7 @@ class PostgresChatSessionRepository:
                 if not session:
                     raise ChatSessionNotFoundError("Chat session was not found.")
                 messages = connection.execute(
-                    """SELECT role,content,sources FROM chat_session_messages
+                    """SELECT role,content,sources,created_at FROM chat_session_messages
                        WHERE session_id=%s ORDER BY position""", (session_id,),
                 ).fetchall()
         except psycopg.Error as error:
@@ -163,14 +163,16 @@ class PostgresChatSessionRepository:
     @staticmethod
     def _insert_messages(connection, session_id, position, request, response) -> None:
         serialized_sources = [source.model_dump(mode="json") for source in response.sources]
-        connection.executemany(
-            """INSERT INTO chat_session_messages
-               (session_id,position,role,content,sources) VALUES (%s,%s,%s,%s,%s)""",
-            [
-                (session_id, position, "user", request.question, Jsonb([])),
-                (session_id, position + 1, "assistant", response.answer, Jsonb(serialized_sources)),
-            ],
-        )
+        message_rows = [
+            (session_id, position, "user", request.question, Jsonb([])),
+            (session_id, position + 1, "assistant", response.answer, Jsonb(serialized_sources)),
+        ]
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO chat_session_messages
+                   (session_id,position,role,content,sources) VALUES (%s,%s,%s,%s,%s)""",
+                message_rows,
+            )
 
     @staticmethod
     def _automatic_title(question: str) -> str:
@@ -190,6 +192,7 @@ class PostgresChatSessionRepository:
             ChatSessionMessage(
                 role=message[0], content=message[1],
                 sources=[ChatSource.model_validate(source) for source in message[2]],
+                created_at=message[3],
             )
             for message in message_rows
         ]

@@ -29,12 +29,12 @@ async function submitChatQuestion(event) {
   const question = input.value.trim();
   if (!question) return;
   const requestHistory = conversationHistory.slice(-8);
-  appendConversationEntry("user", question);
+  const userEntry = window.conversationView.appendUser(question);
   conversationHistory.push({ role: "user", content: question });
-  input.value = "";
+  window.conversationView.resetComposer();
   setSubmitting(true);
   try {
-    await requestAnswer(question, requestHistory);
+    await requestAnswer(question, requestHistory, userEntry);
   } catch (error) {
     showChatToast(error.message, true);
   } finally {
@@ -43,13 +43,14 @@ async function submitChatQuestion(event) {
   }
 }
 
-async function requestAnswer(question, requestHistory) {
+async function requestAnswer(question, requestHistory, userEntry) {
   const scope = window.chatScopeSelector.getSelectedScope();
   const chatSelection = window.modelSelector.getChatSelection();
   const response = await window.chatContext.askDatabase(
     question, requestHistory, scope, chatSelection, activeSessionId,
   );
-  appendConversationEntry("assistant", response.answer, response.sources);
+  window.conversationView.markPersisted(userEntry);
+  window.conversationView.appendAssistant(response.answer, response.sources);
   conversationHistory.push({ role: "assistant", content: response.answer });
   activeSessionId = response.chat_session_id || null;
   window.contextPanel.showSources(response.sources || []);
@@ -63,55 +64,13 @@ function setSubmitting(isSubmitting) {
   if (!isSubmitting) window.modelSelector.updateAvailability?.();
 }
 
-function appendConversationEntry(role, text, sources = []) {
-  const conversation = document.querySelector("#conversation");
-  conversation.querySelector(".empty-chat")?.remove();
-  const entry = document.createElement("article");
-  const bubble = document.createElement("div");
-  entry.className = `conversation-entry ${role}`;
-  bubble.className = "chat-bubble";
-  bubble.textContent = text;
-  entry.append(bubble);
-  if (role === "assistant" && sources.length) entry.append(createAssistantFooter(sources));
-  conversation.append(entry);
-  conversation.scrollTop = conversation.scrollHeight;
-}
-
-function createAssistantFooter(sources) {
-  const footer = document.createElement("div");
-  const button = document.createElement("button");
-  footer.className = "assistant-footer";
-  button.className = "source-recall-button";
-  button.type = "button";
-  button.textContent = `Zdroje (${sources.length})`;
-  button.addEventListener("click", () => {
-    window.contextPanel.showSources(sources);
-    window.shellController.openContext();
-  });
-  footer.append(button);
-  return footer;
-}
-
 function resetConversation(scopeLabel = currentScopeLabel()) {
   conversationHistory.length = 0;
   activeSessionId = null;
   setReadOnly("");
   window.contextPanel.clear();
   window.chatHistoryUi?.setActiveSession?.(null);
-  document.querySelector("#conversation").replaceChildren(createEmptyChat(scopeLabel));
-}
-
-function createEmptyChat(scopeLabel) {
-  const emptyChat = document.createElement("div");
-  const icon = document.createElement("span");
-  const heading = document.createElement("h2");
-  const prompt = document.createElement("p");
-  emptyChat.className = "empty-chat";
-  icon.textContent = "✦";
-  heading.textContent = "Nový chat";
-  prompt.textContent = `Položte první otázku nad ${scopeLabel.toLowerCase()}.`;
-  emptyChat.append(icon, heading, prompt);
-  return emptyChat;
+  window.conversationView.reset(scopeLabel);
 }
 
 function startNewChat() {
@@ -154,11 +113,7 @@ function applyRestoredSession(session) {
 }
 
 function renderRestoredMessages(messages) {
-  const conversation = document.querySelector("#conversation");
-  conversation.replaceChildren();
-  messages.forEach((message) => {
-    appendConversationEntry(message.role, message.content, message.sources || []);
-  });
+  window.conversationView.renderMessages(messages);
   window.contextPanel.clear();
 }
 

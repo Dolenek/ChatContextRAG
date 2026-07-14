@@ -4,15 +4,15 @@ const {
 } = require("./discord-extractor");
 const { DiscordChannelScanner } = require("./discord-channel-scanner");
 
-const TITLEBAR_HEIGHT = 30;
-const DISCORD_LEFT_INSET = 360;
+const HEADER_HEIGHT = 82;
+const DISCORD_LEFT_INSET = 392;
 
 function calculateDiscordBounds(width, height) {
   return {
     x: DISCORD_LEFT_INSET,
-    y: TITLEBAR_HEIGHT,
+    y: HEADER_HEIGHT,
     width: Math.max(0, width - DISCORD_LEFT_INSET),
-    height: Math.max(0, height - TITLEBAR_HEIGHT),
+    height: Math.max(0, height - HEADER_HEIGHT),
   };
 }
 

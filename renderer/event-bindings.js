@@ -21,8 +21,6 @@ document.querySelector("#close-discord-button")
   .addEventListener("click", () => window.appUi.closeDiscordView());
 document.querySelector("#open-sources-button")
   .addEventListener("click", () => window.shellController.openDrawerPanel("sources"));
-document.querySelector("#open-chat-sources-button")
-  .addEventListener("click", () => window.shellController.openDrawerPanel("sources"));
 document.querySelector("#open-overview-button")
   .addEventListener("click", showDatabaseOverview);
 document.querySelector("#open-settings-button")
@@ -57,6 +55,7 @@ window.chatHistoryUi.bind({
   startNewChat: window.chatController.startNewChat,
 });
 window.chatScopeSelector.bind(window.chatController.resetConversation);
+window.conversationView.bindComposer();
 window.modelSelector.bind({
   resetConversation: window.chatController.resetConversation,
   showToast: window.appUi.showToast,

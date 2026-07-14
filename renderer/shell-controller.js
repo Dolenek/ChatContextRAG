@@ -43,7 +43,7 @@ window.shellController = (() => {
   }
 
   function isNarrowViewport() {
-    return window.matchMedia("(max-width: 700px)").matches;
+    return window.matchMedia("(max-width: 760px)").matches;
   }
 
   function isNavigationExpanded() {
@@ -140,7 +140,7 @@ window.shellController = (() => {
   }
 
   function openContext() {
-    if (window.matchMedia("(max-width: 1100px)").matches) contextPanel.classList.add("open");
+    if (window.matchMedia("(max-width: 1199px)").matches) contextPanel.classList.add("open");
   }
 
   function closeContext() {

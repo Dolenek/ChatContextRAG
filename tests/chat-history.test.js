@@ -5,18 +5,22 @@ const path = require("node:path");
 
 const projectRoot = path.resolve(__dirname, "..");
 
-test("sidebar exposes new chat and direct recent conversations only when expanded", () => {
+test("sidebar exposes branded navigation, dated recent chats, and expandable history", () => {
   const html = read("renderer/index.html");
   const styles = read("renderer/chat-history.css");
+  const history = read("renderer/chat-history-ui.js");
 
   assert.match(html, /id="new-chat-button"[^>]+aria-label="Nový chat"/);
-  assert.match(html, /id="recent-chats-heading">Nedávné/);
+  assert.match(html, /class="sidebar-brand-name">Chat Context/);
+  assert.match(html, /id="recent-chats-heading">Nedávné chaty/);
   assert.match(html, /id="recent-chat-list"/);
-  assert.match(html, /id="open-chat-sources-button"[^>]*>[\s\S]*?Zdroje<\/button>/);
+  assert.match(html, /id="show-more-chats-button"/);
+  assert.match(history, /formatRecentTimestamp/);
+  assert.match(history, /collapsedCount = 6/);
   assert.doesNotMatch(html, /id="open-chat-button"/);
   assert.doesNotMatch(html, /id="web-logout-button"/);
   assert.match(html, /id="settings-logout-button" class="settings-nav-item hidden"/);
-  assert.match(styles, /body:not\(\.navigation-expanded\) \.recent-chats/);
+  assert.match(read("renderer/shell.css"), /body:not\(\.navigation-expanded\) \.recent-chats/);
 });
 
 test("chat session UI supports restore, read-only fallback, rename, and custom delete", () => {
@@ -29,7 +33,7 @@ test("chat session UI supports restore, read-only fallback, rename, and custom d
   assert.match(controller, /restoreSelection\(/);
   assert.match(controller, /session\.reasoning_effort/);
   assert.match(controller, /Chat zůstává jen pro čtení/);
-  assert.match(history, /listChatSessions\(10\)/);
+  assert.match(history, /listChatSessions\(20\)/);
   assert.match(history, /renameChatSession/);
   assert.match(history, /deleteChatSession/);
   assert.match(html, /id="rename-chat-dialog"[\s\S]*id="rename-chat-input"/);

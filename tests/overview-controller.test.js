@@ -151,7 +151,7 @@ function createHarness(responses) {
         if (response instanceof Error) throw response;
         return response;
       } },
-      contextPanel: { renderOverview: () => {} },
+      archiveStatus: { render: () => {} },
       indexingControls: { render: () => {} },
       appUi: { showToast: (...arguments_) => toasts.push(arguments_) },
     },

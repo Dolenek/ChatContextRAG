@@ -3,7 +3,10 @@ window.chatHistoryUi = (() => {
   const renameDialog = document.querySelector("#rename-chat-dialog");
   const deleteDialog = document.querySelector("#delete-chat-dialog");
   const renameInput = document.querySelector("#rename-chat-input");
+  const showMoreButton = document.querySelector("#show-more-chats-button");
+  const collapsedCount = 6;
   let summaries = [];
+  let expanded = false;
   let activeSessionId = null;
   let chatScreenActive = true;
   let pendingSession = null;
@@ -16,13 +19,14 @@ window.chatHistoryUi = (() => {
     document.querySelector("#cancel-rename-chat").addEventListener("click", closeDialogs);
     document.querySelector("#confirm-delete-chat").addEventListener("click", deleteSession);
     document.querySelector("#cancel-delete-chat").addEventListener("click", closeDialogs);
+    showMoreButton.addEventListener("click", toggleExpanded);
     document.addEventListener("click", closeContextMenu);
     document.addEventListener("keydown", handleEscape);
   }
 
   async function refresh() {
     try {
-      summaries = await window.chatContext.listChatSessions(10);
+      summaries = await window.chatContext.listChatSessions(20);
       render();
     } catch (error) {
       dependencies.showToast?.(error.message, true);
@@ -35,14 +39,19 @@ window.chatHistoryUi = (() => {
       empty.className = "recent-chat-empty";
       empty.textContent = "Uložené chaty se objeví po první odpovědi.";
       list.replaceChildren(empty);
+      showMoreButton.classList.add("hidden");
       return;
     }
-    list.replaceChildren(...summaries.map(createRow));
+    const visibleSummaries = expanded ? summaries : summaries.slice(0, collapsedCount);
+    list.replaceChildren(...visibleSummaries.map(createRow));
+    showMoreButton.classList.toggle("hidden", summaries.length <= collapsedCount);
+    showMoreButton.firstChild.textContent = expanded ? "Zobrazit méně " : "Zobrazit další ";
   }
 
   function createRow(summary) {
     const row = document.createElement("div");
     const openButton = document.createElement("button");
+    const timestamp = document.createElement("time");
     const menuButton = document.createElement("button");
     row.className = "recent-chat-row";
     const isActive = chatScreenActive && summary.session_id === activeSessionId;
@@ -53,13 +62,38 @@ window.chatHistoryUi = (() => {
     openButton.textContent = summary.title;
     openButton.toggleAttribute("aria-current", isActive);
     openButton.addEventListener("click", () => dependencies.openSession(summary.session_id));
+    timestamp.className = "recent-chat-time";
+    timestamp.textContent = formatRecentTimestamp(summary.updated_at);
     menuButton.className = "recent-chat-menu-button";
     menuButton.type = "button";
     menuButton.textContent = "⋯";
     menuButton.setAttribute("aria-label", `Akce pro chat ${summary.title}`);
     menuButton.addEventListener("click", (event) => showContextMenu(event, summary));
-    row.append(openButton, menuButton);
+    row.append(openButton, timestamp, menuButton);
     return row;
+  }
+
+  function toggleExpanded() {
+    expanded = !expanded;
+    render();
+  }
+
+  function formatRecentTimestamp(value) {
+    const timestamp = new Date(value);
+    const today = new Date();
+    const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startTimestamp = new Date(
+      timestamp.getFullYear(), timestamp.getMonth(), timestamp.getDate(),
+    );
+    const dayDifference = Math.round((startToday - startTimestamp) / 86400000);
+    if (dayDifference === 0) return timestamp.toLocaleTimeString("cs-CZ", {
+      hour: "2-digit", minute: "2-digit",
+    });
+    if (dayDifference === 1) return "Včera";
+    return timestamp.toLocaleDateString("cs-CZ", {
+      day: "numeric", month: "numeric",
+      year: timestamp.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    });
   }
 
   function showContextMenu(event, summary) {

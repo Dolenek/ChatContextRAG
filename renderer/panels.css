@@ -40,6 +40,9 @@
 .source-action strong { font-size: 12px; }
 .source-action small { margin-top: 3px; color: var(--muted); font-size: 9px; }
 .source-logo { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; font-size: 12px; font-weight: 900; }
+.brand-icon { width: 19px; height: 19px; fill: currentColor; stroke: none; }
+.scope-icon .brand-icon { width: 16px; height: 16px; }
+.source-service .brand-icon { width: 14px; height: 14px; }
 .discord-logo { color: #dcddff; background: #5865f2; }
 .whatsapp-logo { color: #effff4; background: #269c55; }
 
@@ -61,26 +64,37 @@
 .message-meta span { color: var(--muted); }
 .message-card p { display: -webkit-box; margin: 6px 0 0; overflow: hidden; color: var(--muted-strong); font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
-.context-section { min-height: 130px; margin-bottom: 16px; }
-.context-empty { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 20px; text-align: center; color: var(--muted); }
-.context-empty span { color: #8782ff; font-size: 24px; }
-.context-empty p { margin: 0; font-size: 11px; line-height: 1.5; }
-.context-list { display: grid; gap: 9px; }
-.chat-source-card { border: 1px solid var(--border); border-radius: 10px; padding: 11px; background: linear-gradient(135deg, rgba(22, 30, 47, 0.94), rgba(17, 24, 38, 0.94)); }
-.source-card-heading { display: grid; grid-template-columns: 29px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.source-card-heading .source-logo { width: 29px; height: 29px; border-radius: 8px; font-size: 10px; }
-.source-card-copy { min-width: 0; }
-.source-card-copy strong, .source-card-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.source-card-copy strong { font-size: 11px; }
-.source-card-copy small { margin-top: 2px; color: var(--muted); font-size: 9px; }
-.source-score { border: 1px solid rgba(108, 103, 245, 0.34); border-radius: 999px; padding: 3px 6px; color: #b8b5ff; background: var(--violet-soft); font-size: 9px; }
-.chat-source-card p { display: -webkit-box; margin: 9px 0 0; overflow: hidden; color: #aeb7cc; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 5; white-space: pre-wrap; }
-.source-open-button { margin-top: 9px; border: 0; border-radius: 6px; padding: 5px 7px; color: #bdbaff; background: var(--violet-soft); font-size: 9px; }
+.context-section { min-height: 150px; margin-bottom: 14px; }
+.context-empty { min-height: 190px; display: grid; place-items: center; align-content: center; gap: 9px; padding: 20px; text-align: center; color: var(--muted); }
+.context-empty span { color: #9188ff; font-size: 28px; }
+.context-empty p { max-width: 220px; margin: 0; font-size: 12px; line-height: 1.5; }
+.context-list { display: grid; gap: 13px; }
+.chat-source-card { border: 1px solid var(--border); border-radius: 15px; padding: 15px; background: linear-gradient(145deg, rgba(15,29,48,.94), rgba(10,21,36,.94)); box-shadow: inset 0 1px rgba(255,255,255,.018); }
+.source-card-heading { display: grid; grid-template-columns: 28px 24px minmax(0,1fr) auto; align-items: center; gap: 8px; }
+.source-rank { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: #d9d4ff; background: rgba(93,80,224,.2); font-size: 11px; font-weight: 750; }
+.source-service { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; font-size: 10px; font-weight: 900; }
+.source-service.discord-logo { color: #fff; background: #5865f2; }
+.source-service.whatsapp-logo { color: #fff; background: #24b45a; border-radius: 50%; }
+.source-card-copy { min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--muted-strong); font-size: 11px; white-space: nowrap; }
+.source-card-copy strong { overflow: hidden; color: #d4d9e5; font-weight: 560; text-overflow: ellipsis; }
+.source-card-copy small { color: #72819d; font-size: 10px; }
+.source-timestamp { color: #9eabc1; font-size: 10px; white-space: nowrap; }
+.source-author { display: block; margin-top: 13px; color: #a89cff; font-size: 12px; font-weight: 750; }
+.source-author.accent-1 { color: #55bff0; }
+.source-author.accent-2 { color: #4ed787; }
+.source-author.accent-3 { color: #e6a85c; }
+.chat-source-card p { display: -webkit-box; margin: 8px 0 0; overflow: hidden; color: #aab6cb; font-size: 11px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 4; white-space: pre-wrap; }
+.source-card-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.source-open-button { border: 0; border-radius: 7px; padding: 6px 8px; color: #c5c0ff; background: var(--violet-soft); font-size: 9px; }
+.context-detail-trigger { width: 100%; min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 11px; margin-top: auto; border: 1px solid var(--border); border-radius: 13px; color: #d8dce7; background: rgba(14,27,45,.75); font-size: 13px; }
+.context-detail-trigger:hover:not(:disabled) { border-color: rgba(126,121,255,.48); background: rgba(24,38,62,.9); }
+.context-detail-trigger svg { width: 21px; height: 21px; color: #a59dff; }
 
-.index-panel { margin-top: auto; padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: rgba(17, 24, 39, 0.76); }
+.index-panel { margin-top: auto; padding: 14px; border: 1px solid var(--border); border-radius: 13px; background: linear-gradient(145deg, rgba(15,28,46,.92), rgba(10,21,36,.92)); }
+.sidebar-index-panel { flex: 0 0 auto; max-height: 270px; overflow-y: auto; }
 .index-panel .section-heading > strong { color: #d6d4ff; font-size: 17px; }
-.index-progress { height: 7px; overflow: hidden; margin: 13px 0; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
-.index-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f5ae9, #8681ff); transition: width 250ms ease; }
+.index-progress { height: 7px; overflow: hidden; margin: 13px 0; border-radius: 999px; background: rgba(255,255,255,.07); }
+.index-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5fd784, #8475ff); transition: width 250ms ease; }
 .index-metrics { display: grid; gap: 7px; margin: 0; }
 .index-metrics > div { display: flex; justify-content: space-between; gap: 12px; }
 .index-metrics dt { color: var(--muted); font-size: 10px; }

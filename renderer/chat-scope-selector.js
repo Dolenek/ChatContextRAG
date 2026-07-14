@@ -58,10 +58,7 @@ function createSourceGroup([sourceType, scopes]) {
   scopes.forEach((scope) => {
     const key = scopeKey(scope);
     availableChatScopes.set(key, scope);
-    const context = scope.container_name ? `${scope.container_name} / ` : "";
-    group.append(new Option(
-      `${context}${scope.display_name} · ${scope.message_count} zpráv`, key,
-    ));
+    group.append(new Option(`${sourceLabel(sourceType)} / ${scope.display_name}`, key));
   });
   return group;
 }
@@ -86,7 +83,8 @@ function createScopeButton(scope, key, selectedKey) {
   icon.className = "scope-icon";
   copy.className = "scope-copy";
   count.className = "scope-count";
-  icon.textContent = scope ? sourceShortLabel(scope.source_type) : "✦";
+  if (scope) icon.append(window.chatSources.createBrandIcon(scope.source_type));
+  else icon.textContent = "✦";
   title.textContent = scope?.display_name || "Všechny zprávy";
   detail.textContent = scope?.container_name || (scope ? sourceLabel(scope.source_type) : "Celá databáze");
   count.textContent = scope ? formatCount(scope.message_count) : "";
@@ -115,6 +113,11 @@ function handleScopeChange() {
 
 function updateActiveScopeLabel() {
   document.querySelector("#active-scope-label").textContent = selectedScopeLabel().toLowerCase();
+  const selected = availableChatScopes.get(chatScopeSelect.value);
+  const activeIcon = document.querySelector("#active-scope-icon");
+  activeIcon.replaceChildren();
+  if (selected) activeIcon.append(window.chatSources.createBrandIcon(selected.source_type));
+  else activeIcon.textContent = "✦";
 }
 
 function selectedScopeLabel() {
@@ -170,12 +173,6 @@ function sourceLabel(sourceType) {
   if (sourceType === "discord") return "Discord";
   if (sourceType === "whatsapp") return "WhatsApp";
   return "Ostatní zdroje";
-}
-
-function sourceShortLabel(sourceType) {
-  if (sourceType === "discord") return "D";
-  if (sourceType === "whatsapp") return "W";
-  return "?";
 }
 
 function formatCount(value) {

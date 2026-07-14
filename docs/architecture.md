@@ -233,6 +233,21 @@ recency multiplier. The best diverse contexts are sent through the chat provider
 selected for the current conversation. Both Responses and OpenAI-compatible Chat
 Completions preserve the same grounding instructions and source identity.
 
+The model continues to receive ranked RAG chunks. After generation, the injected
+`SourceContextProjector` resolves each chunk's `source_message_ids` through the
+raw-message repository and produces the UI grounding contract. It preserves
+chunk relevance order and source order within each chunk, removes duplicate raw
+messages, and assigns a duplicate the highest similarity score it received.
+Each projected `ChatSource` represents one original message and contains exactly
+one source-message ID. If a referenced raw message is unavailable, the projector
+retains the chunk representation as a safe fallback instead of dropping the
+grounding evidence.
+
+The same projection runs when a persisted session is restored. Legacy sessions
+that stored chunk-shaped sources therefore display original messages whenever
+the raw archive still contains them. New assistant entries persist every unique
+projected message, while retrieval and LLM prompting remain chunk-based.
+
 Electron owns custom provider secrets. `safeStorage` ciphertext and non-secret
 metadata live below Electron `userData`; only the main process decrypts them.
 Electron synchronizes the runtime registry through a token-protected loopback
@@ -260,8 +275,9 @@ bootstrap likewise seeds the initial embedding index from
 `OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMENSIONS`; conflict-safe inserts
 preserve an existing active index and any saved user choice.
 
-`POST /chat` returns `source_type`, `conversation_id`, source message IDs, and
-legacy Discord deep-link fields. The renderer groups selectable scopes into
+`POST /chat` returns one source entry per original message with `source_type`,
+`conversation_id`, one source message ID, and legacy Discord deep-link fields.
+The renderer groups selectable scopes into
 Discord channels, WhatsApp conversations, and any future connector types. Only
 Discord sources with complete guild/channel/message identity render an **Open in
 Discord** action.
@@ -270,9 +286,11 @@ Successful chat turns are persisted through the injected `ChatSessionRepository`
 `chat_sessions` owns the normalized first-question title, original source scope,
 provider/model/reasoning-effort identity, and activity timestamps. Ordered user and assistant
 entries live in `chat_session_messages`; assistant entries retain their grounding
-source payload. A new session and its first two messages, or both messages in a
-continuation, are committed in one PostgreSQL transaction. Continuing with a
-different source, model, or reasoning effort is rejected. Renaming marks the title as user-managed,
+source payload, and session reads expose each entry's existing `created_at`
+timestamp. A new session and its first two messages, or both messages in a
+continuation, are inserted as one cursor batch and committed in one PostgreSQL
+transaction. Continuing with a different source, model, or reasoning effort is
+rejected. Renaming marks the title as user-managed,
 so it is never replaced by automatic title generation.
 
 ## Renderer shell
@@ -307,7 +325,8 @@ Electron Remote calls use its bearer token.
   and optional per-conversation chat provider/model/reasoning effort. An optional `session_id`
   appends the completed turn to a matching persisted session; responses include
   its ID and title.
-- `GET /chat/sessions?limit=10` lists recent session summaries.
+- `GET /chat/sessions?limit=N` lists recent session summaries; the renderer loads
+  20 and initially shows six.
 - `GET /chat/sessions/{id}` returns original context, ordered messages, and
   grounding sources. `PATCH` renames and `DELETE` permanently removes one chat.
   Unknown IDs return `404`; continuation with a changed context returns `409`.

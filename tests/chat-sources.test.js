@@ -14,7 +14,8 @@ test("chat renders grounded source cards and Discord deep links", () => {
   );
 
   assert.match(chatController, /response\.sources/);
-  assert.match(sourceRenderer, /Použité zdroje/);
+  assert.match(sourceRenderer, /Použitý zdroj/);
+  assert.match(sourceRenderer, /authorAccent/);
   assert.match(sourceRenderer, /openDiscordSource/);
   assert.match(sourceRenderer, /source_message_ids/);
   assert.match(sourceRenderer, /\.textContent\s*=/);

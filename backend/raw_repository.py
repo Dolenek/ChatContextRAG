@@ -99,6 +99,28 @@ class PostgresRawMessageRepository:
     def load_session_messages(self, session_id: str) -> List[NormalizedMessage]:
         return list(self.iter_session_messages(session_id))
 
+    def load_messages_by_ids(self, message_ids: Sequence[str]) -> List[NormalizedMessage]:
+        ordered_ids = list(dict.fromkeys(message_ids))
+        if not ordered_ids:
+            return []
+        self.ensure_schema()
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """SELECT m.external_id,m.author,c.content,m.sent_at,m.channel,
+                              m.channel_id,m.guild_id,m.source_type,m.conversation_id,
+                              m.conversation_label,m.container_id,m.container_label,
+                              m.source_metadata,m.message_order
+                       FROM source_messages m
+                       JOIN message_contents c ON c.content_hash=m.content_hash
+                       WHERE m.external_id=ANY(%s)""",
+                    (ordered_ids,),
+                ).fetchall()
+        except psycopg.Error as error:
+            raise ExternalIntegrationError("PostgreSQL source message read failed.") from error
+        messages = {row[0]: NormalizedMessage(*row) for row in rows}
+        return [messages[message_id] for message_id in ordered_ids if message_id in messages]
+
     def iter_session_messages(
         self, session_id: str, page_size: int = 5000,
     ) -> Iterator[NormalizedMessage]:

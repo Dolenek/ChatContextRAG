@@ -48,7 +48,7 @@ window.overviewController = (() => {
   }
 
   function renderOverview(overview, append) {
-    window.contextPanel.renderOverview(overview);
+    window.archiveStatus.render(overview);
     window.indexingControls.render(
       overview.indexing_jobs || [], overview.pending_message_count || 0,
     );

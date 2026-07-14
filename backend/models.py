@@ -110,6 +110,7 @@ class ChatSessionMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     sources: List[ChatSource] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
 
 
 class ChatSessionDetail(ChatSessionSummary):

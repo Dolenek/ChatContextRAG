@@ -12,6 +12,7 @@ from backend.openai_gateway import ChatCompletionProvider, EmbeddingProvider
 from backend.hybrid_repository import PostgresHybridRepository
 from backend.indexing_worker import PersistentIndexingWorker
 from backend.raw_repository import PostgresRawMessageRepository
+from backend.source_context import SourceContextProjector
 from backend.repository import VectorRepository
 from backend.vector_models import RetrievedChunk
 from backend.provider_registry import ProviderRegistry
@@ -123,6 +124,7 @@ class DatabaseChatService:
         default_chat_provider_id: str = "openai",
         default_chat_model: Optional[str] = None,
         chat_session_repository: Optional[ChatSessionRepository] = None,
+        source_context_projector: Optional[SourceContextProjector] = None,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
@@ -135,6 +137,7 @@ class DatabaseChatService:
         self.default_chat_provider_id = default_chat_provider_id
         self.default_chat_model = default_chat_model
         self.chat_session_repository = chat_session_repository
+        self.source_context_projector = source_context_projector
 
     def list_scopes(self) -> ChatScopeList:
         scopes = self.scope_catalog.list_scopes() if self.scope_catalog else []
@@ -151,7 +154,16 @@ class DatabaseChatService:
         return self._sessions().list_recent(limit)
 
     def get_session(self, session_id: str) -> ChatSessionDetail:
-        return self._sessions().get(session_id)
+        session = self._sessions().get(session_id)
+        if not self.source_context_projector:
+            return session
+        messages = [
+            message.model_copy(update={
+                "sources": self.source_context_projector.expand_sources(message.sources),
+            })
+            for message in session.messages
+        ]
+        return session.model_copy(update={"messages": messages})
 
     def rename_session(self, session_id: str, title: str) -> ChatSessionSummary:
         return self._sessions().rename(session_id, title)
@@ -166,7 +178,7 @@ class DatabaseChatService:
             request.question, request.history, retrieved_chunks, request.reasoning_effort,
         )
         return ChatResponse(
-            answer=answer, sources=self._to_sources(retrieved_chunks),
+            answer=answer, sources=self._project_sources(retrieved_chunks),
             chat_provider_id=request.chat_provider_id or self.default_chat_provider_id,
             chat_model=request.chat_model or self.default_chat_model,
             reasoning_effort=request.reasoning_effort,
@@ -194,7 +206,7 @@ class DatabaseChatService:
             request.question, request.history, retrieved_chunks, request.reasoning_effort,
         )
         return ChatResponse(
-            answer=answer, sources=self._to_sources(retrieved_chunks),
+            answer=answer, sources=self._project_sources(retrieved_chunks),
             chat_provider_id=provider_id, chat_model=model,
             reasoning_effort=request.reasoning_effort,
             embedding_index_id=active_index.embedding_index_id,
@@ -226,6 +238,11 @@ class DatabaseChatService:
         if not self.chat_session_repository:
             raise ValueError("Chat session storage is not configured.")
         return self.chat_session_repository
+
+    def _project_sources(self, chunks: List[RetrievedChunk]) -> List[ChatSource]:
+        if self.source_context_projector:
+            return self.source_context_projector.project_chunks(chunks)
+        return self._to_sources(chunks)
 
     @staticmethod
     def _to_sources(chunks: List[RetrievedChunk]) -> List[ChatSource]:

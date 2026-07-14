@@ -26,6 +26,7 @@ def test_new_turn_is_created_with_two_ordered_messages_in_one_connection() -> No
     assert [row[2] for row in connection.message_rows] == ["user", "assistant"]
     assert [row[1] for row in connection.message_rows] == [0, 1]
     assert connection.context_entries == 1
+    assert connection.cursor_batches == 1
 
 
 def test_continuation_rejects_a_different_scope_or_model() -> None:
@@ -91,11 +92,28 @@ class ScriptedCursor:
         return self.rows
 
 
+class ScriptedBatchCursor:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_arguments):
+        return False
+
+    def executemany(self, query, parameters):
+        assert "INSERT INTO chat_session_messages" in query
+        self.connection.cursor_batches += 1
+        self.connection.message_rows.extend(parameters)
+
+
 class ScriptedConnection:
     def __init__(self, existing=False):
         self.existing = existing
         self.message_rows = []
         self.context_entries = 0
+        self.cursor_batches = 0
         self.timestamp = datetime(2026, 7, 14, tzinfo=timezone.utc)
         self.session_row = (
             "session-1", "Původní název", "discord", "general",
@@ -128,6 +146,5 @@ class ScriptedConnection:
             ))
         raise AssertionError(f"Unexpected SQL: {normalized}")
 
-    def executemany(self, query, parameters):
-        assert "INSERT INTO chat_session_messages" in query
-        self.message_rows.extend(parameters)
+    def cursor(self):
+        return ScriptedBatchCursor(self)

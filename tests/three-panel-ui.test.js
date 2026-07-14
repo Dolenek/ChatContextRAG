@@ -42,6 +42,10 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   const shellCss = read("renderer/shell.css");
   const panelCss = read("renderer/panels.css");
   assert.match(html, /id="primary-navigation" class="navigation-rail"/);
+  assert.match(html, /class="sidebar-brand"/);
+  assert.match(html, /class="app-header"/);
+  assert.match(html, /id="archive-header-status"/);
+  assert.match(html, /id="chat-scope-select"/);
   assert.match(html, /id="navigation-toggle"/);
   assert.match(html, /class="rail-label">Zdroje a importy/);
   assert.match(html, /aria-controls="left-drawer" aria-expanded="false"/);
@@ -50,8 +54,8 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.match(html, /id="context-panel"/);
   assert.match(html, /id="chat-screen" class="workspace-screen chat-screen"/);
   assert.doesNotMatch(html, /id="home-screen"/);
-  assert.match(shellCss, /@media \(max-width: 1100px\)/);
-  assert.match(shellCss, /@media \(max-width: 700px\)/);
+  assert.match(shellCss, /@media \(max-width: 1199px\)/);
+  assert.match(shellCss, /@media \(max-width: 760px\)/);
   assert.match(shellCss, /prefers-reduced-motion: reduce/);
   assert.match(shellCss, /var\(--rail-expanded-width\)/);
   assert.match(shellCss, /\.context-panel\.open/);
@@ -129,47 +133,60 @@ test("narrow navigation is transient and Discord restores the desktop preference
   assert.equal(desktop.elements.get("#navigation-toggle").disabled, false);
 });
 
-test("right panel renders sources and a safe zero-index state", () => {
+test("right panel previews four sources and archive status handles zero state", () => {
   const elements = new Map([
     ["#context-list", new FakeElement()], ["#context-empty", new FakeElement()],
+    ["#open-context-detail", new FakeElement()], ["#context-count", new FakeElement()],
+    ["#context-toggle-count", new FakeElement()], ["#context-detail-label", new FakeElement()],
     ["#index-percent", new FakeElement()], ["#index-raw-count", new FakeElement()],
     ["#indexed-count", new FakeElement()], ["#index-chunk-count", new FakeElement()],
     ["#database-size", new FakeElement()], ["#index-last-update", new FakeElement()],
     [".index-progress", new FakeElement()], ["#index-progress-bar", new FakeElement()],
+    ["#archive-status-label", new FakeElement()],
+    ["#archive-header-progress-bar", new FakeElement()],
   ]);
   const sourceCard = new FakeElement("source");
   const context = {
     document: { querySelector: (selector) => elements.get(selector) },
-    window: { chatSources: { createChatSourceCard: () => sourceCard } },
+    window: {
+      chatSources: { createChatSourceCard: () => sourceCard },
+      contextDetailModal: { setSources: () => {} },
+    },
   };
   vm.runInNewContext(read("renderer/context-panel.js"), context);
-  context.window.contextPanel.showSources([{ content: "grounded" }]);
-  context.window.contextPanel.renderOverview({
+  vm.runInNewContext(read("renderer/archive-status.js"), context);
+  context.window.contextPanel.showSources(
+    Array.from({ length: 6 }, () => ({ content: "grounded" })),
+  );
+  context.window.archiveStatus.render({
     raw_message_count: 0, indexed_message_count: 0, total_chunks: 0,
     database_size: "0 bytes", pending_message_count: 0, indexing_jobs: [],
   });
 
-  assert.deepEqual(elements.get("#context-list").children, [sourceCard]);
+  assert.equal(elements.get("#context-list").children.length, 4);
   assert.equal(elements.get("#context-empty").classList.contains("hidden"), true);
+  assert.equal(elements.get("#context-count").textContent, "6");
+  assert.equal(elements.get("#context-detail-label").textContent,
+    "Zobrazit kompletní kontext (6)");
   assert.equal(elements.get("#index-percent").textContent, "—");
   assert.equal(elements.get("#index-progress-bar").style.width, "0%");
 
-  context.window.contextPanel.renderOverview({
+  context.window.archiveStatus.render({
     raw_message_count: 100, indexed_message_count: 50, total_chunks: 12,
     database_size: "1 MB", pending_message_count: 50,
     indexing_jobs: [{ status: "queued" }, { status: "running" }],
   });
   assert.equal(elements.get("#index-last-update").textContent,
-    "Indexace právě probíhá · ve frontě: 1");
+    "Indexace probíhá · ve frontě: 1");
 });
 
 test("embedded Discord reserves the expanded import drawer", () => {
   const { calculateDiscordBounds } = require("../electron/discord-view");
   assert.deepEqual(calculateDiscordBounds(1240, 820), {
-    x: 360, y: 30, width: 880, height: 790,
+    x: 392, y: 82, width: 848, height: 738,
   });
   assert.deepEqual(calculateDiscordBounds(840, 620), {
-    x: 360, y: 30, width: 480, height: 590,
+    x: 392, y: 82, width: 448, height: 538,
   });
 });
 
@@ -209,7 +226,7 @@ function createShellFixture(options = {}) {
   };
   const window = {
     localStorage,
-    matchMedia: (query) => ({ matches: options.narrow && query.includes("700px") }),
+    matchMedia: (query) => ({ matches: options.narrow && query.includes("760px") }),
     addEventListener: () => {},
   };
   const context = { document, window };
