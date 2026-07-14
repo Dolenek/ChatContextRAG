@@ -61,7 +61,7 @@
 .message-meta span { color: var(--muted); }
 .message-card p { display: -webkit-box; margin: 6px 0 0; overflow: hidden; color: var(--muted-strong); font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
-.context-section { min-height: 130px; }
+.context-section { min-height: 130px; margin-bottom: 16px; }
 .context-empty { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 20px; text-align: center; color: var(--muted); }
 .context-empty span { color: #8782ff; font-size: 24px; }
 .context-empty p { margin: 0; font-size: 11px; line-height: 1.5; }
@@ -77,7 +77,7 @@
 .chat-source-card p { display: -webkit-box; margin: 9px 0 0; overflow: hidden; color: #aeb7cc; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 5; white-space: pre-wrap; }
 .source-open-button { margin-top: 9px; border: 0; border-radius: 6px; padding: 5px 7px; color: #bdbaff; background: var(--violet-soft); font-size: 9px; }
 
-.index-panel { margin-top: 16px; padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: rgba(17, 24, 39, 0.76); }
+.index-panel { margin-top: auto; padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: rgba(17, 24, 39, 0.76); }
 .index-panel .section-heading > strong { color: #d6d4ff; font-size: 17px; }
 .index-progress { height: 7px; overflow: hidden; margin: 13px 0; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
 .index-progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f5ae9, #8681ff); transition: width 250ms ease; }
@@ -93,11 +93,6 @@
 .indexing-progress { height: 5px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
 .indexing-progress > span { display: block; min-width: 2px; height: 100%; background: var(--violet); }
 .job-action { border: 0; border-radius: 6px; padding: 4px 6px; color: #cfcdff; background: var(--violet-soft); font-size: 8px; }
-.privacy-card { display: grid; grid-template-columns: 31px 1fr; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
-.privacy-card > svg { width: 31px; height: 31px; padding: 7px; border-radius: 9px; color: var(--green); background: rgba(88, 219, 139, 0.1); }
-.privacy-card h3 { margin: 0; font-size: 11px; }
-.privacy-card p { margin: 5px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
-
 .count-list { display: grid; gap: 6px; max-height: 170px; overflow: auto; }
 .count-list > div { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 10px; }
 .count-list strong { color: #d7dbe7; }

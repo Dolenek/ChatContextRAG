@@ -10,7 +10,8 @@ Rows restore messages, grounding, original scope, and the per-chat model without
 changing the global model default. Row menus use dedicated rename and delete
 dialogs. The source item independently opens an overlay drawer for scope and
 connector workflows, the center switches between chat and database detail, and
-the right panel renders grounding sources plus a compact index snapshot. The
+the right panel renders grounding sources plus a compact index snapshot anchored
+to its bottom edge. The
 chat heading's **Sources** action opens the same drawer. Below 700 px the expanded
 rail is a transient overlay; embedded Discord temporarily forces the compact rail
 and restores the preference when it closes. Settings opens as an accessible

@@ -62,18 +62,6 @@
 .rail-button.active, .rail-button.drawer-active { color: #bab7ff; border-color: rgba(108, 103, 245, 0.34); background: var(--violet-soft); }
 .navigation-toggle { margin-bottom: 4px; }
 .rail-spacer { flex: 0 0 0; }
-
-.local-status {
-  position: relative;
-  width: 100%;
-  height: 34px;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: center;
-  color: var(--green);
-}
-
-.local-status svg { width: 17px; height: 17px; justify-self: center; }
 .rail-label {
   min-width: 0;
   overflow: hidden;
@@ -85,8 +73,6 @@
   white-space: nowrap;
   transition: opacity 130ms ease, transform 130ms ease;
 }
-
-.local-status .rail-label { color: var(--muted); font-size: 10px; }
 
 body:not(.navigation-expanded) .rail-label {
   position: absolute;
@@ -107,8 +93,7 @@ body:not(.navigation-expanded) .rail-label {
 }
 
 body:not(.navigation-expanded) .rail-button:hover .rail-label,
-body:not(.navigation-expanded) .rail-button:focus-visible .rail-label,
-body:not(.navigation-expanded) .local-status:hover .rail-label {
+body:not(.navigation-expanded) .rail-button:focus-visible .rail-label {
   opacity: 1;
   transform: translateX(0);
 }
@@ -157,7 +142,13 @@ body:not(.navigation-expanded) .local-status:hover .rail-label {
 .context-header h2 { margin: 0; font-size: 15px; }
 .context-header .eyebrow { margin-bottom: 4px; }
 .context-header .icon-button { display: none; }
-.context-scroll { min-height: 0; overflow: auto; padding: 13px; }
+.context-scroll {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 13px;
+}
 
 .discord-open .drawer-header .icon-button { visibility: hidden; }
 

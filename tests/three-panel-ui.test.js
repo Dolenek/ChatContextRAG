@@ -40,6 +40,7 @@ class FakeElement {
 test("renderer exposes the three-panel shell and responsive context drawer", () => {
   const html = read("renderer/index.html");
   const shellCss = read("renderer/shell.css");
+  const panelCss = read("renderer/panels.css");
   assert.match(html, /id="primary-navigation" class="navigation-rail"/);
   assert.match(html, /id="navigation-toggle"/);
   assert.match(html, /class="rail-label">Zdroje a importy/);
@@ -54,6 +55,11 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   assert.match(shellCss, /prefers-reduced-motion: reduce/);
   assert.match(shellCss, /var\(--rail-expanded-width\)/);
   assert.match(shellCss, /\.context-panel\.open/);
+  assert.match(shellCss, /\.context-scroll[\s\S]+display: flex[\s\S]+flex-direction: column/);
+  assert.match(panelCss, /\.index-panel \{ margin-top: auto/);
+  assert.doesNotMatch(html, /Data zůstávají (?:lokálně|na serveru)/);
+  assert.doesNotMatch(html, /class="(?:local-status|privacy-card)"/);
+  assert.doesNotMatch(read("renderer/runtime-bridge.js"), /localStatus/);
   assert.match(html, /id="settings-overlay"/);
   assert.doesNotMatch(html, /id="settings-screen"/);
 });

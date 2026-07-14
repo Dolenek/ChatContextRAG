@@ -242,7 +242,8 @@ Electron has no logout action.
 
 Grounding sources for the selected assistant answer appear in the right panel.
 The same panel reports raw and indexed message counts, chunks, database size,
-pending work, and active indexing jobs. Below 1,100 px it becomes a drawer opened
+pending work, and active indexing jobs in a card anchored at the bottom. Below
+1,100 px it becomes a drawer opened
 from the title bar. The source and context areas scroll independently from the
 conversation. Active job rows update without a page reload through live events
 with polling as a fallback. Running jobs are pinned above queued work, and the
