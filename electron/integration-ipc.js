@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { dialog, ipcMain, shell } = require("electron");
 const { DiscordBotController } = require("./discord-bot");
+const { requireDiscordInviteUrl } = require("./discord-url");
 
 class IntegrationIpcController {
   constructor(options) {
@@ -9,6 +10,7 @@ class IntegrationIpcController {
     this.getJson = options.getJson;
     this.postMultipart = options.postMultipart;
     this.getMainWindow = options.getMainWindow;
+    this.ipcMain = options.ipcMain || ipcMain;
     this.selectedWhatsAppPath = null;
     this.bot = new DiscordBotController({
       api: this.botApi(),
@@ -17,20 +19,20 @@ class IntegrationIpcController {
   }
 
   register() {
-    ipcMain.handle("discord-bot:status", () => this.bot.status());
-    ipcMain.handle("discord-bot:connect", (_event, token) => this.bot.connect(token));
-    ipcMain.handle("discord-bot:disconnect", () => this.bot.disconnect());
-    ipcMain.handle("discord-bot:invite", async () => {
-      const url = this.bot.inviteUrl();
+    this.ipcMain.handle("discord-bot:status", () => this.bot.status());
+    this.ipcMain.handle("discord-bot:connect", (_event, token) => this.bot.connect(token));
+    this.ipcMain.handle("discord-bot:disconnect", () => this.bot.disconnect());
+    this.ipcMain.handle("discord-bot:invite", async () => {
+      const url = requireDiscordInviteUrl(this.bot.inviteUrl());
       await shell.openExternal(url);
       return { opened: true };
     });
-    ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
-    ipcMain.handle("whatsapp:preview", (_event, options) =>
+    this.ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
+    this.ipcMain.handle("whatsapp:preview", (_event, options) =>
       this.sendWhatsAppFile("/imports/whatsapp/preview", options));
-    ipcMain.handle("whatsapp:import", (_event, options) =>
+    this.ipcMain.handle("whatsapp:import", (_event, options) =>
       this.sendWhatsAppFile("/imports/whatsapp", options));
-    ipcMain.handle("whatsapp:conversations", () =>
+    this.ipcMain.handle("whatsapp:conversations", () =>
       this.getJson("/ingestion/conversations?source_type=whatsapp"));
   }
 

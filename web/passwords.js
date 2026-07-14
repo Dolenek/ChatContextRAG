@@ -10,17 +10,27 @@ function hashPassword(password, salt = crypto.randomBytes(16)) {
   return `scrypt:${salt.toString("base64url")}:${hash.toString("base64url")}`;
 }
 
-function verifyPassword(password, encodedHash) {
+async function verifyPassword(password, encodedHash) {
   const [algorithm, saltValue, hashValue] = String(encodedHash).split(":");
   if (algorithm !== "scrypt" || !saltValue || !hashValue) return false;
   try {
     const salt = Buffer.from(saltValue, "base64url");
     const expected = Buffer.from(hashValue, "base64url");
-    const actual = crypto.scryptSync(password, salt, expected.length, scryptOptions);
+    if (!salt.length || !expected.length) return false;
+    const actual = await scrypt(password, salt, expected.length);
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
   } catch {
     return false;
   }
+}
+
+function scrypt(password, salt, length) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, length, scryptOptions, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey);
+    });
+  });
 }
 
 module.exports = { hashPassword, verifyPassword };

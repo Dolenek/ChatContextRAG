@@ -16,6 +16,9 @@ from backend.openai_gateway import ExternalIntegrationError, IntegrationConfigur
 from backend.chat_sessions import ChatSessionNotFoundError
 
 
+TEST_INTERNAL_TOKEN = "backend-test-internal-token"
+
+
 class FakeIngestionService:
     def ingest(self, request):
         return ImportResponse(
@@ -188,7 +191,8 @@ def test_chat_defaults_to_deterministic_and_resolves_adaptive_evidence_limit() -
     chat_service = FakeChatService()
     client = TestClient(create_app(
         FakeIngestionService(), chat_service, FakeOverviewService(),
-    ))
+        internal_token=TEST_INTERNAL_TOKEN,
+    ), headers={"X-Chat-Context-Token": TEST_INTERNAL_TOKEN})
 
     legacy = client.post("/chat", json={"question": "old request"})
     adaptive = client.post("/chat", json={
@@ -346,7 +350,8 @@ def test_application_translates_domain_errors_to_stable_http_responses() -> None
     for error, status_code in expected:
         client = TestClient(create_app(
             FakeIngestionService(), RaisingChatService(error), FakeOverviewService(),
-        ))
+            internal_token=TEST_INTERNAL_TOKEN,
+        ), headers={"X-Chat-Context-Token": TEST_INTERNAL_TOKEN})
 
         response = client.post("/chat", json={"question": "what happened?"})
 
@@ -379,8 +384,12 @@ class FakeOversizedUpload:
 
 
 def _client() -> TestClient:
+    application = create_app(
+        FakeIngestionService(), FakeChatService(), FakeOverviewService(),
+        internal_token=TEST_INTERNAL_TOKEN,
+    )
     return TestClient(
-        create_app(FakeIngestionService(), FakeChatService(), FakeOverviewService())
+        application, headers={"X-Chat-Context-Token": TEST_INTERNAL_TOKEN},
     )
 
 

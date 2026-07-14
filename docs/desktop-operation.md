@@ -21,6 +21,10 @@ adopts later model-setting changes.
 **Settings** contains provider keys, chat models, embedding indexes, indexing
 history, and workspace configuration. Electron additionally selects its Local
 or Remote backend target. Closing the modal discards unfinished form values.
+Remote non-loopback HTTP displays a transport warning and cannot be tested or
+saved until it is acknowledged. The acknowledgement applies only to the exact
+normalized origin; changing the scheme, host, or port requires a new one.
+Loopback HTTP targets do not show the warning.
 
 The searchable IANA timezone field defaults to `UTC` for new and migrated
 workspaces. Set it to the archive's intended calendar zone, for example

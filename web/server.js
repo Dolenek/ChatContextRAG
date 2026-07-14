@@ -19,7 +19,9 @@ class WebApplication {
     this.config = config;
     this.auth = overrides.auth || new AuthService(config);
     this.events = overrides.events || new EventHub();
-    this.backend = overrides.backend || new BackendClient(config.apiUrl);
+    this.backend = overrides.backend || new BackendClient(config.apiUrl, {
+      "X-Chat-Context-Token": config.internalToken,
+    });
     const services = overrides.services || createServices(config, this.backend, this.events);
     this.discord = services.discord;
     this.settings = services.settings;
@@ -61,7 +63,12 @@ class WebApplication {
         sendRedirect(response, "/login");
         return;
       }
-      sendJson(response, error.statusCode || 500, { detail: error.message });
+      const unexpectedError = !Number.isInteger(error.statusCode);
+      const statusCode = unexpectedError ? 500 : error.statusCode;
+      if (unexpectedError) console.error("Web request failed", error);
+      const detail = unexpectedError ? "Internal server error." : error.message;
+      const headers = error.retryAfter ? { "Retry-After": String(error.retryAfter) } : {};
+      sendJson(response, statusCode, { detail }, headers);
     }
   }
 
@@ -101,7 +108,7 @@ class WebApplication {
 
   async handleHealth(response) {
     try {
-      await this.backend.get("/health");
+      await this.backend.get("/internal/health");
       sendJson(response, 200, { status: "ok" });
     } catch {
       sendJson(response, 503, { status: "unavailable" });
@@ -110,10 +117,10 @@ class WebApplication {
   }
 
   async handleLogin(request, response) {
-    if (!sameOrigin(request)) throw httpError("Invalid origin.", 403);
+    if (!sameOrigin(request, this.config.trustProxy)) throw httpError("Invalid origin.", 403);
     const input = await readJson(request, 16 * 1024);
-    const session = this.auth.login(
-      input.username, input.password, request.socket.remoteAddress || "unknown",
+    const session = await this.auth.login(
+      input.username, input.password, this.auth.clientAddress(request),
     );
     sendJson(response, 200, { authenticated: true }, {
       "Set-Cookie": this.auth.sessionCookie(session, request),
@@ -167,7 +174,7 @@ async function waitForBackend(backend) {
   let lastError;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await backend.get("/health");
+      await backend.get("/internal/health");
       return;
     } catch (error) {
       lastError = error;

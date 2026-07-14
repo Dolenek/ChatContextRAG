@@ -6,6 +6,7 @@ from typing import Callable, List, Optional
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from backend.api_security import has_valid_internal_token
 from backend.models import SourceMessageInput
 
 LOGGER = logging.getLogger("uvicorn.error")
@@ -138,11 +139,11 @@ class MigrationExportService:
 
 
 def register_migration_export_routes(
-    application: FastAPI, service: MigrationExportService, internal_token: Optional[str],
+    application: FastAPI, service: MigrationExportService, internal_token: str,
 ) -> None:
     def authorize(token: str) -> None:
-        if internal_token and token != internal_token:
-            raise HTTPException(status_code=403, detail="Migration export authorization failed.")
+        if not has_valid_internal_token(token, internal_token):
+            raise HTTPException(status_code=401, detail="Migration export authorization failed.")
 
     @application.post("/internal/migration-exports", response_model=MigrationExportView)
     def create_export(x_chat_context_token: str = Header(default="")) -> MigrationExportView:

@@ -1,9 +1,10 @@
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from backend.api_security import InternalApiSecurityMiddleware
+from backend.api_security import require_internal_token
 from backend.chat_routes import register_chat_routes
 from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.chat_sessions import ChatSessionNotFoundError, PostgresChatSessionRepository
@@ -39,18 +40,14 @@ def create_app(
     overview_service: Optional[DatabaseOverviewService] = None,
     settings_service: Optional[ApplicationSettingsService] = None,
     migration_export_service: Optional[MigrationExportService] = None,
+    internal_token: Optional[str] = None,
 ) -> FastAPI:
     application = FastAPI(title="Chat Context RAG API", version="0.4.0")
-    application.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost", "file://"],
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["*"],
-    )
     services = _resolve_services(
-        ingestion_service, chat_service, overview_service, settings_service,
+        ingestion_service, chat_service, overview_service, settings_service, internal_token,
     )
     active_ingestion, active_chat, active_overview, active_settings, token = services
+    application.add_middleware(InternalApiSecurityMiddleware, internal_token=token)
     _register_exception_handlers(application)
     register_ingestion_routes(
         application, active_ingestion, WhatsAppImportCoordinator(active_ingestion),
@@ -90,10 +87,11 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
 
 def _resolve_services(
-    ingestion_service, chat_service, overview_service, settings_service,
+    ingestion_service, chat_service, overview_service, settings_service, internal_token,
 ) -> tuple:
     if ingestion_service and chat_service and overview_service:
-        return ingestion_service, chat_service, overview_service, settings_service, None
+        token = require_internal_token(internal_token)
+        return ingestion_service, chat_service, overview_service, settings_service, token
     return _build_default_services()
 
 
@@ -170,9 +168,5 @@ def _build_model_stack(settings, raw_repository):
         settings.embedding_batch_size,
         provider_registry=provider_registry, index_repository=index_repository,
     )
-    if not settings.internal_token:
-        indexing_worker.start()
+    indexing_worker.start()
     return provider_registry, index_repository, hybrid_repository, indexing_worker
-
-
-app = create_app()

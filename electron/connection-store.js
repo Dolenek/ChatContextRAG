@@ -1,6 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { writePrivateFile } = require("../runtime/secret-store");
+const {
+  assertRemoteTransportSecurity, requiresInsecureHttpAcknowledgement,
+} = require("./connection-security");
 
 class ConnectionStore {
   constructor(userDataPath, safeStorage) {
@@ -14,6 +17,7 @@ class ConnectionStore {
       mode: state.mode,
       baseUrl: state.baseUrl || "",
       hasToken: Boolean(state.encryptedToken),
+      insecureHttpAcknowledged: isInsecureOriginAcknowledged(state),
     };
   }
 
@@ -25,6 +29,7 @@ class ConnectionStore {
       mode: "remote",
       baseUrl: normalizeServerUrl(state.baseUrl),
       token: this.decrypt(state.encryptedToken),
+      insecureHttpAcknowledged: isInsecureOriginAcknowledged(state),
     };
   }
 
@@ -43,17 +48,29 @@ class ConnectionStore {
     const existing = this.read();
     const remote = this.prepareRemote(input, existing);
     this.write({ ...existing, ...remote, mode: existing.mode });
-    return { baseUrl: remote.baseUrl, hasToken: true };
+    return {
+      baseUrl: remote.baseUrl,
+      hasToken: true,
+      insecureHttpAcknowledged: Boolean(remote.acknowledgedInsecureOrigin),
+    };
   }
 
   resolveRemote(input) {
     const existing = this.read();
     const baseUrl = normalizeServerUrl(input.baseUrl || existing.baseUrl);
-    if (input.token?.trim()) return { baseUrl, token: input.token.trim() };
+    const insecureHttpAcknowledged = acknowledgesOrigin(input, existing, baseUrl);
+    assertRemoteTransportSecurity(baseUrl, insecureHttpAcknowledged);
+    if (input.token?.trim()) {
+      return { baseUrl, token: input.token.trim(), insecureHttpAcknowledged };
+    }
     if (existing.baseUrl !== baseUrl || !existing.encryptedToken) {
       throw new Error("Remote workspace token is required for this server.");
     }
-    return { baseUrl, token: this.decrypt(existing.encryptedToken) };
+    return {
+      baseUrl,
+      token: this.decrypt(existing.encryptedToken),
+      insecureHttpAcknowledged,
+    };
   }
 
   prepareRemote(input, existing) {
@@ -63,7 +80,21 @@ class ConnectionStore {
       ? this.encrypt(input.token.trim())
       : sameServer ? existing.encryptedToken : null;
     if (!encryptedToken) throw new Error("Remote workspace token is required.");
-    return { baseUrl, encryptedToken };
+    const insecureHttpAcknowledged = acknowledgesOrigin(input, existing, baseUrl);
+    assertRemoteTransportSecurity(baseUrl, insecureHttpAcknowledged);
+    const acknowledgedInsecureOrigin = insecureHttpAcknowledged ? baseUrl : null;
+    return { baseUrl, encryptedToken, acknowledgedInsecureOrigin };
+  }
+
+  acknowledgeInsecureOrigin(baseUrl) {
+    const existing = this.read();
+    const normalizedUrl = normalizeServerUrl(baseUrl);
+    if (existing.baseUrl !== normalizedUrl
+      || !requiresInsecureHttpAcknowledgement(normalizedUrl)) {
+      throw new Error("The stored remote HTTP origin cannot be acknowledged.");
+    }
+    this.write({ ...existing, acknowledgedInsecureOrigin: normalizedUrl });
+    return this.getPublic();
   }
 
   encrypt(token) {
@@ -91,6 +122,19 @@ class ConnectionStore {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     writePrivateFile(this.filePath, JSON.stringify(state, null, 2));
   }
+}
+
+function acknowledgesOrigin(input, existing, baseUrl) {
+  if (!requiresInsecureHttpAcknowledgement(baseUrl)) return false;
+  return input.insecureHttpAcknowledged === true
+    || existing.acknowledgedInsecureOrigin === baseUrl;
+}
+
+function isInsecureOriginAcknowledged(state) {
+  if (!state.baseUrl) return false;
+  const baseUrl = normalizeServerUrl(state.baseUrl);
+  return requiresInsecureHttpAcknowledgement(baseUrl)
+    && state.acknowledgedInsecureOrigin === baseUrl;
 }
 
 function normalizeServerUrl(value) {

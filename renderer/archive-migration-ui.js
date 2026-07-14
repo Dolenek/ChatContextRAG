@@ -32,6 +32,9 @@ function migrationConnectionInput() {
     mode: "remote",
     baseUrl: document.querySelector("#connection-url").value.trim(),
     token: document.querySelector("#connection-token").value.trim(),
+    insecureHttpAcknowledged: document.querySelector(
+      "#insecure-http-acknowledged",
+    ).checked,
   };
 }
 
@@ -126,8 +129,12 @@ function renderMigrationStatus(status) {
     "#archive-migration-forget", ["paused", "failed", "interrupted", "completed"].includes(phase),
   );
   const remoteSelected = document.querySelector("#connection-mode").value === "remote";
+  const targetUrl = document.querySelector("#connection-url").value.trim();
+  const missingHttpAcknowledgement = window.connectionSecurity
+    .requiresInsecureHttpAcknowledgement(targetUrl)
+    && !document.querySelector("#insecure-http-acknowledged").checked;
   document.querySelector("#archive-migration-start").disabled = !remoteSelected
-    || !document.querySelector("#connection-url").value.trim();
+    || !targetUrl || missingHttpAcknowledgement;
 }
 
 function renderMigrationProgress(status) {

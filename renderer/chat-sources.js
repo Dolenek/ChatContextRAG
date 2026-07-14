@@ -140,7 +140,7 @@ function createBrandIcon(sourceType) {
   const iconName = sourceType === "whatsapp" ? "whatsapp" : "discord";
   svg.classList.add("brand-icon");
   svg.setAttribute("aria-hidden", "true");
-  use.setAttribute("href", `#icon-${iconName}`);
+  use.setAttribute("href", `assets/icon-sprite.svg#icon-${iconName}`);
   svg.append(use);
   return svg;
 }

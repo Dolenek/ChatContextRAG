@@ -1,18 +1,19 @@
 const { ipcMain } = require("electron");
 
 class ArchiveMigrationIpcController {
-  constructor(migration) {
+  constructor(migration, ipc = ipcMain) {
     this.migration = migration;
+    this.ipcMain = ipc;
   }
 
   register() {
-    ipcMain.handle("migration:inspect", (_event, input) => this.migration.inspect(input));
-    ipcMain.handle("migration:start", (_event, input) => this.migration.start(input));
-    ipcMain.handle("migration:pause", () => this.migration.pause());
-    ipcMain.handle("migration:resume", () => this.migration.resume());
-    ipcMain.handle("migration:status", () => this.migration.getStatus());
-    ipcMain.handle("migration:index", () => this.migration.index());
-    ipcMain.handle("migration:forget", () => this.migration.forget());
+    this.ipcMain.handle("migration:inspect", (_event, input) => this.migration.inspect(input));
+    this.ipcMain.handle("migration:start", (_event, input) => this.migration.start(input));
+    this.ipcMain.handle("migration:pause", () => this.migration.pause());
+    this.ipcMain.handle("migration:resume", () => this.migration.resume());
+    this.ipcMain.handle("migration:status", () => this.migration.getStatus());
+    this.ipcMain.handle("migration:index", () => this.migration.index());
+    this.ipcMain.handle("migration:forget", () => this.migration.forget());
   }
 }
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException, Query
-from typing import Optional
 
+from backend.api_security import has_valid_internal_token
 from backend.models import (
     ActiveEmbeddingIndexUpdate, EmbeddingIndexCreate, EmbeddingIndexUpdate,
     EmbeddingIndexView, EmbeddingSettingsView, IndexingJobView,
@@ -12,7 +12,7 @@ from backend.settings_service import ApplicationSettingsService
 
 def register_settings_routes(
     application: FastAPI, service: ApplicationSettingsService,
-    internal_token: Optional[str],
+    internal_token: str,
 ) -> None:
     _register_provider_routes(application, service, internal_token)
     _register_embedding_routes(application, service)
@@ -36,7 +36,7 @@ def _register_workspace_routes(
 
 def _register_provider_routes(
     application: FastAPI, service: ApplicationSettingsService,
-    internal_token: Optional[str],
+    internal_token: str,
 ) -> None:
     @application.get("/settings/providers", response_model=list[ProviderProfileView])
     def providers() -> list[ProviderProfileView]:
@@ -49,9 +49,9 @@ def _register_provider_routes(
         update: ProviderRegistryUpdate,
         x_chat_context_token: str = Header(default=""),
     ) -> list[ProviderProfileView]:
-        if internal_token and x_chat_context_token != internal_token:
+        if not has_valid_internal_token(x_chat_context_token, internal_token):
             raise HTTPException(
-                status_code=403, detail="Internal provider registry authorization failed.",
+                status_code=401, detail="Internal provider registry authorization failed.",
             )
         return service.replace_custom_providers(update)
 

@@ -1,33 +1,35 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { dialog, ipcMain, shell } = require("electron");
+const { requireDiscordInviteUrl } = require("./discord-url");
 
 class RemoteIntegrationIpcController {
   constructor(options) {
     this.client = options.client;
     this.getMainWindow = options.getMainWindow;
+    this.ipcMain = options.ipcMain || ipcMain;
     this.selectedWhatsAppPath = null;
   }
 
   register() {
-    ipcMain.handle("discord-bot:status", () => this.client.get("/discord-bot/status"));
-    ipcMain.handle("discord-bot:connect", (_event, token) =>
+    this.ipcMain.handle("discord-bot:status", () => this.client.get("/discord-bot/status"));
+    this.ipcMain.handle("discord-bot:connect", (_event, token) =>
       this.client.post("/discord-bot/connect", { token }));
-    ipcMain.handle("discord-bot:disconnect", () =>
+    this.ipcMain.handle("discord-bot:disconnect", () =>
       this.client.post("/discord-bot/disconnect", {}));
-    ipcMain.handle("discord-bot:invite", () => this.openBotInvite());
-    ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
-    ipcMain.handle("whatsapp:preview", (_event, options) =>
+    this.ipcMain.handle("discord-bot:invite", () => this.openBotInvite());
+    this.ipcMain.handle("whatsapp:select", () => this.selectWhatsAppExport());
+    this.ipcMain.handle("whatsapp:preview", (_event, options) =>
       this.sendWhatsAppFile("/imports/whatsapp/preview", options));
-    ipcMain.handle("whatsapp:import", (_event, options) =>
+    this.ipcMain.handle("whatsapp:import", (_event, options) =>
       this.sendWhatsAppFile("/imports/whatsapp", options));
-    ipcMain.handle("whatsapp:conversations", () =>
+    this.ipcMain.handle("whatsapp:conversations", () =>
       this.client.get("/whatsapp/conversations"));
   }
 
   async openBotInvite() {
     const result = await this.client.get("/discord-bot/invite");
-    await shell.openExternal(result.invite_url);
+    await shell.openExternal(requireDiscordInviteUrl(result.invite_url));
     return { opened: true };
   }
 

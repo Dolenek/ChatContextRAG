@@ -82,7 +82,7 @@ def test_internal_provider_registry_requires_bootstrap_token() -> None:
         headers={"X-Chat-Context-Token": "internal-test-token"},
     )
 
-    assert denied.status_code == 403
+    assert denied.status_code == 401
     assert accepted.status_code == 200
     assert len(service.registry_updates) == 1
 

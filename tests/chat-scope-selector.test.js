@@ -10,7 +10,7 @@ test("chat scope selector is wired from UI through Electron to the API", () => {
   const selector = read("renderer/chat-scope-selector.js");
   const chatController = read("renderer/chat-controller.js");
   const preload = read("electron/preload.js");
-  const main = read("electron/main.js");
+  const databaseIpc = read("electron/database-ipc.js");
 
   assert.match(html, /id="chat-scope-select"/);
   assert.match(html, /Všechny uložené zprávy/);
@@ -21,7 +21,7 @@ test("chat scope selector is wired from UI through Electron to the API", () => {
   assert.match(chatController, /getSelectedScope\(\)/);
   assert.match(chatController, /question, requestHistory, scope, chatSelection/);
   assert.match(preload, /getChatScopes/);
-  assert.match(main, /\/chat\/scopes/);
+  assert.match(databaseIpc, /\/chat\/scopes/);
 });
 
 test("changing scope starts a fresh conversation history", () => {

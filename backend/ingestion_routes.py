@@ -23,6 +23,10 @@ def _register_message_routes(application: FastAPI, ingestion_service) -> None:
     def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
+    @application.get("/internal/health", response_model=HealthResponse)
+    def authenticated_health() -> HealthResponse:
+        return HealthResponse(status="ok")
+
     @application.post("/messages/import", response_model=ImportResponse)
     def import_messages(request: ImportRequest) -> ImportResponse:
         return ingestion_service.ingest(request)

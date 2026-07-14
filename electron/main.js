@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
 
 const { BackendClient } = require("../runtime/backend-client");
 const { ArchiveMigrationController } = require("./archive-migration");
@@ -9,16 +9,21 @@ const { BackendProcess, BACKEND_URL } = require("./backend-process");
 const { ChatIpcController } = require("./chat-ipc");
 const { ConnectionIpcController } = require("./connection-ipc");
 const { ConnectionStore } = require("./connection-store");
+const { requiresInsecureHttpAcknowledgement } = require("./connection-security");
+const { DatabaseIpcController } = require("./database-ipc");
 const { DiscordViewController } = require("./discord-view");
 const { IntegrationIpcController } = require("./integration-ipc");
+const { createTrustedIpcMain } = require("./ipc-security");
 const { LocalInfrastructure } = require("./local-infrastructure");
 const { ProviderStore } = require("./provider-store");
 const { RemoteEventForwarder } = require("./remote-event-forwarder");
 const { RemoteIntegrationIpcController } = require("./remote-integration-ipc");
 const { RemoteSettingsIpcController } = require("./remote-settings-ipc");
 const { SettingsIpcController } = require("./settings-ipc");
+const { secureMainWindow } = require("./window-security");
 
 const projectRoot = path.resolve(__dirname, "..");
+const rendererFile = path.join(projectRoot, "renderer", "index.html");
 const backendProcess = new BackendProcess(projectRoot, {
   logDirectory: path.join(app.getPath("userData"), "chat-context", "logs"),
 });
@@ -32,6 +37,7 @@ let mainWindow;
 let remoteEvents;
 let sourceMigrationClient;
 let settingsController;
+const trustedIpcMain = createTrustedIpcMain(ipcMain, () => mainWindow, rendererFile);
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -46,11 +52,13 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: false,
     },
   });
+  secureMainWindow(mainWindow, rendererFile);
   discordController = new DiscordViewController(mainWindow);
   mainWindow.on("resize", () => discordController.resize());
-  await mainWindow.loadFile(path.join(projectRoot, "renderer", "index.html"));
+  await mainWindow.loadFile(rendererFile);
 }
 
 function postJson(endpoint, body, options = {}) {
@@ -74,61 +82,21 @@ function postMultipart(endpoint, form) {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle("runtime:capabilities", () => runtimeCapabilities());
-  ipcMain.handle("discord:open", async () => discordController.open());
-  ipcMain.handle("discord:hide", () => discordController.hide());
-  ipcMain.handle("discord:capture", captureDiscordMessages);
-  ipcMain.handle("discord:scan:start", () => runTrackedDiscordScan(false));
-  ipcMain.handle("discord:scan:resume", () => runTrackedDiscordScan(true));
-  ipcMain.handle("discord:scan:stop", () => {
+  trustedIpcMain.handle("runtime:capabilities", () => runtimeCapabilities());
+  trustedIpcMain.handle("discord:open", async () => discordController.open());
+  trustedIpcMain.handle("discord:hide", () => discordController.hide());
+  trustedIpcMain.handle("discord:capture", captureDiscordMessages);
+  trustedIpcMain.handle("discord:scan:start", () => runTrackedDiscordScan(false));
+  trustedIpcMain.handle("discord:scan:resume", () => runTrackedDiscordScan(true));
+  trustedIpcMain.handle("discord:scan:stop", () => {
     discordController.stopChannelScan();
     return { stopping: true };
   });
-  registerDatabaseHandlers();
-  new ChatIpcController(ipcMain, () => backendClient).register();
-}
-
-function registerDatabaseHandlers() {
-  ipcMain.handle("database:ask", (_event, request) => postJson(
-    "/chat", request, chatRequestOptions(request),
-  ));
-  ipcMain.handle("database:chat-scopes", () => getJson("/chat/scopes"));
-  ipcMain.handle("chat-sessions:list", (_event, limit) =>
-    getJson(`/chat/sessions?limit=${encodeURIComponent(limit)}`));
-  ipcMain.handle("chat-sessions:get", (_event, sessionId) =>
-    getJson(`/chat/sessions/${encodeURIComponent(sessionId)}`));
-  ipcMain.handle("chat-sessions:rename", (_event, input) =>
-    patchJson(`/chat/sessions/${encodeURIComponent(input.sessionId)}`, {
-      title: input.title,
-    }));
-  ipcMain.handle("chat-sessions:delete", (_event, sessionId) =>
-    deleteJson(`/chat/sessions/${encodeURIComponent(sessionId)}`));
-  ipcMain.handle("database:overview", (_event, pagination) => {
-    const parameters = new URLSearchParams(pagination);
-    return getJson(`/database/overview?${parameters}`);
-  });
-  ipcMain.handle("database:status", () => getJson("/database/status"));
-  ipcMain.handle("database:breakdowns", () => getJson("/database/breakdowns"));
-  ipcMain.handle("database:chunks", (_event, pagination) => {
-    const parameters = new URLSearchParams({ limit: pagination.limit });
-    if (pagination.cursor) parameters.set("cursor", pagination.cursor);
-    return getJson(`/database/chunks?${parameters}`);
-  });
-  ipcMain.handle("database:clear", (_event, request) => deleteJson("/database", request));
-  ipcMain.handle("indexing:retry", (_event, jobId) =>
-    postJson(`/indexing/jobs/${jobId}/retry`, {}));
-  ipcMain.handle("indexing:cancel", (_event, jobId) =>
-    postJson(`/indexing/jobs/${jobId}/cancel`, {}));
-  ipcMain.handle("indexing:get", (_event, jobId) => getJson(`/indexing/jobs/${jobId}`));
-  ipcMain.handle("indexing:pending", async () => {
-    const job = await postJson("/indexing/jobs/pending", {});
-    monitorIndexingJob(job.job_id);
-    return job;
-  });
-}
-
-function chatRequestOptions(request) {
-  return request.retrieval_mode === "adaptive" ? { timeoutMs: 130_000 } : {};
+  new DatabaseIpcController({
+    ipcMain: trustedIpcMain, postJson, getJson, patchJson, deleteJson,
+    monitorIndexingJob,
+  }).register();
+  new ChatIpcController(trustedIpcMain, () => backendClient).register();
 }
 
 async function captureDiscordMessages() {
@@ -239,18 +207,21 @@ function runtimeCapabilities() {
 async function configureLocalRuntime() {
   await localInfrastructure.ensureDatabase();
   await backendProcess.start();
-  backendClient = new BackendClient(BACKEND_URL);
+  backendClient = new BackendClient(BACKEND_URL, {
+    "X-Chat-Context-Token": backendProcess.internalToken,
+  });
   sourceMigrationClient = new BackendClient(BACKEND_URL, {
     "X-Chat-Context-Token": backendProcess.internalToken,
   });
   const providerStore = new ProviderStore(app.getPath("userData"), safeStorage);
   settingsController = new SettingsIpcController(
-    providerStore, backendProcess.internalToken, monitorIndexingJob,
+    providerStore, backendProcess.internalToken, monitorIndexingJob, trustedIpcMain,
   );
   settingsController.register();
   await settingsController.initializeRegistry();
   integrationController = new IntegrationIpcController({
     postJson, getJson, postMultipart, getMainWindow: () => mainWindow,
+    ipcMain: trustedIpcMain,
   });
   integrationController.register();
 }
@@ -260,10 +231,12 @@ function configureRemoteRuntime(target) {
   backendClient = new BackendClient(`${target.baseUrl}/api`, {
     Authorization: `Bearer ${target.token}`,
   });
-  settingsController = new RemoteSettingsIpcController(backendClient, monitorIndexingJob);
+  settingsController = new RemoteSettingsIpcController(
+    backendClient, monitorIndexingJob, trustedIpcMain,
+  );
   settingsController.register();
   integrationController = new RemoteIntegrationIpcController({
-    client: backendClient, getMainWindow: () => mainWindow,
+    client: backendClient, getMainWindow: () => mainWindow, ipcMain: trustedIpcMain,
   });
   integrationController.register();
   remoteEvents = new RemoteEventForwarder(target.baseUrl, target.token, () => mainWindow);
@@ -301,15 +274,17 @@ function registerArchiveMigration(connectionStore) {
     recoverSourceBackend: (error) => backendProcess.recoverAfterTimeout(error),
     onProgress: (progress) => mainWindow?.webContents.send("migration:progress", progress),
   });
-  new ArchiveMigrationIpcController(migration).register();
+  new ArchiveMigrationIpcController(migration, trustedIpcMain).register();
 }
 
 async function initializeApplication() {
   const connectionStore = new ConnectionStore(app.getPath("userData"), safeStorage);
   activeTarget = connectionStore.getActive();
+  activeTarget = await acknowledgeLegacyHttpTarget(connectionStore, activeTarget);
   new ConnectionIpcController({
     store: connectionStore,
     restart: () => setTimeout(() => { app.relaunch(); app.exit(0); }, 100),
+    ipcMain: trustedIpcMain,
   }).register();
   registerIpcHandlers();
   if (activeTarget.mode === "local") await configureLocalRuntime();
@@ -318,6 +293,23 @@ async function initializeApplication() {
   await createWindow();
   await integrationController.restoreBot();
   remoteEvents?.start();
+}
+
+async function acknowledgeLegacyHttpTarget(connectionStore, target) {
+  if (target.mode !== "remote" || target.insecureHttpAcknowledged
+    || !requiresInsecureHttpAcknowledgement(target.baseUrl)) return target;
+  const result = await dialog.showMessageBox({
+    type: "warning",
+    title: "Nešifrované připojení",
+    message: "Vzdálený server používá nešifrované HTTP.",
+    detail: "Přihlašovací údaje a obsah archivu mohou být na síti odposlechnuty.",
+    buttons: ["Povolit pro tento server", "Ukončit aplikaci"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (result.response !== 0) throw new Error("Unencrypted remote HTTP was not acknowledged.");
+  connectionStore.acknowledgeInsecureOrigin(target.baseUrl);
+  return connectionStore.getActive();
 }
 
 app.whenReady().then(() => initializeApplication()).catch(async (error) => {

@@ -28,14 +28,22 @@ def test_application_settings_load_environment_overrides(monkeypatch) -> None:
     assert settings.require_openai_api_key() == "secret"
 
 
-def test_application_settings_treat_empty_secrets_as_missing(monkeypatch) -> None:
+def test_application_settings_requires_internal_token(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("CHAT_CONTEXT_INTERNAL_TOKEN", "")
+
+    with pytest.raises(ValueError, match="CHAT_CONTEXT_INTERNAL_TOKEN"):
+        ApplicationSettings.from_environment()
+
+
+def test_application_settings_allows_missing_openai_key(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("CHAT_CONTEXT_INTERNAL_TOKEN", "internal")
 
     settings = ApplicationSettings.from_environment()
 
     assert settings.openai_api_key is None
-    assert settings.internal_token is None
+    assert settings.internal_token == "internal"
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         settings.require_openai_api_key()
 

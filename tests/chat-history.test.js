@@ -43,7 +43,7 @@ test("chat session UI supports restore, read-only fallback, rename, and custom d
 
 test("chat history is bridged through Electron and the web facade", () => {
   const preload = read("electron/preload.js");
-  const main = read("electron/main.js");
+  const databaseIpc = read("electron/database-ipc.js");
   const webBridge = read("renderer/runtime-bridge.js");
   const webRouter = read("web/api-router.js");
 
@@ -53,8 +53,8 @@ test("chat history is bridged through Electron and the web facade", () => {
     assert.match(preload, new RegExp(`${method}:`));
     assert.match(webBridge, new RegExp(`${method}:`));
   }
-  assert.match(main, /chat-sessions:list/);
-  assert.match(main, /chat-sessions:rename/);
+  assert.match(databaseIpc, /chat-sessions:list/);
+  assert.match(databaseIpc, /chat-sessions:rename/);
   assert.match(webRouter, /\["GET \/api\/chat\/sessions", "\/chat\/sessions"\]/);
   assert.match(webRouter, /\["GET", "PATCH", "DELETE"\]/);
 });

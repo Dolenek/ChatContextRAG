@@ -102,6 +102,9 @@ provider, model, embedding-index, indexing-history, workspace-target, and
 web-session behavior. The workspace section also provides a searchable IANA
 timezone field shared by web, Electron Local, and Electron Remote. It controls
 calendar boundaries for future adaptive searches and defaults to `UTC`.
+For a non-loopback HTTP remote target, the section shows an acknowledgement
+control bound to the exact normalized origin and disables connection actions
+until the user accepts it. Loopback and HTTPS targets do not require it.
 
 Workspace reads use an in-memory stale-while-revalidate cache. Database status
 is fresh for five seconds, breakdowns and the first chunk page for 30 seconds,

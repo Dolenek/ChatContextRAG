@@ -28,6 +28,7 @@ test("web configuration validates required secrets, ports, and session duration"
   assert.equal(config.port, 9090);
   assert.equal(config.sessionHours, 6.5);
   assert.equal(config.adminUsername, "admin");
+  assert.equal(config.bindAddress, "127.0.0.1");
   assert.equal(config.trustProxy, true);
 });
 

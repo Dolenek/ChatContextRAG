@@ -125,7 +125,7 @@ window.conversationView = (() => {
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
     avatar.className = "assistant-avatar";
     avatar.setAttribute("aria-hidden", "true");
-    use.setAttribute("href", "#icon-sparkles");
+    use.setAttribute("href", "assets/icon-sprite.svg#icon-sparkles");
     svg.append(use);
     avatar.append(svg);
     return avatar;
@@ -137,7 +137,7 @@ window.conversationView = (() => {
     footer.className = "assistant-footer";
     button.className = "source-recall-button";
     button.type = "button";
-    button.append(createIcon("#icon-shield"), document.createTextNode(
+    button.append(createIcon("assets/icon-sprite.svg#icon-shield"), document.createTextNode(
       `Odpověď podložena ${sources.length} zprávami`), createCaret());
     button.addEventListener("click", () => showSources(sources));
     footer.append(button);

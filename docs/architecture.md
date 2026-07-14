@@ -14,19 +14,35 @@ Electron supplies it through preload IPC; the browser supplies an HTTP/SSE
 adapter before the UI controllers load. Runtime capabilities control whether
 the embedded Discord browser is visible.
 
+The Electron renderer is restricted by a Content Security Policy, cannot
+navigate away from its packaged entry point or create child windows, and every
+privileged IPC call validates both the sending `webContents` and main-frame URL.
+The isolated Discord view accepts only HTTPS navigation on `discord.com` and
+denies browser permission requests by default.
+
 The Linux web profile contains PostgreSQL, an internal FastAPI service, and a
 Node.js gateway. Only the gateway publishes a host port. It serves the renderer,
 owns browser authentication and the long-running Discord bot, keeps provider and
 bot secrets in an encrypted persistent store, and forwards an explicit allowlist
 of operations to FastAPI. The internal provider-registry endpoint is never
-proxied publicly. FastAPI remains the canonical ingestion, retrieval, indexing,
-and database service.
+proxied publicly. The gateway attaches `CHAT_CONTEXT_INTERNAL_TOKEN` to every
+FastAPI request. Electron Local uses its own ephemeral token, and FastAPI
+requires that credential on every route except the public liveness check at
+`/health`. Startup and recovery use the authenticated `/internal/health` route
+so a different loopback process cannot impersonate the managed backend. Browser-origin and
+cross-site fetches are rejected before request-body parsing. FastAPI remains the
+canonical ingestion, retrieval, indexing, and database service.
 
 One admin account authenticates browser sessions. Sessions are time limited and
 use an HttpOnly SameSite cookie plus a per-session CSRF token. Mutations also
-require a same-origin request. Login attempts are rate limited. A separately
-configured bearer token authenticates Electron Remote requests; it remains in
-the Electron main process and is encrypted at rest with `safeStorage`.
+require a same-origin request. Password checks use asynchronous scrypt with at
+most four concurrent checks; excess attempts receive `503` and `Retry-After`.
+The gateway retains at most 256 sessions and 4,096 login-source buckets, pruning
+expired entries before rejecting new capacity. A separately configured bearer
+token authenticates Electron Remote requests; it remains in the Electron main
+process and is encrypted at rest with `safeStorage`. Behind a trusted reverse
+proxy, login limits use the rightmost valid `X-Forwarded-For` address while
+origin checks require the exact forwarded HTTPS scheme and host.
 
 Electron stores a Local or Remote `ConnectionTarget`. Local mode starts the
 loopback PostgreSQL and FastAPI processes and retains the existing encrypted
@@ -37,6 +53,11 @@ directly to the server. Target changes never migrate or dual-write existing raw
 messages automatically, and a failed remote connection never falls back to
 Local implicitly. Electron Local additionally offers an explicit, resumable
 archive migration to a compatible gateway.
+
+Electron requires an explicit acknowledgement before connecting to a remote
+non-loopback HTTP origin. The acknowledgement is stored for that exact
+normalized origin and is invalidated by any scheme, host, or port change.
+Loopback HTTP targets are exempt.
 
 The migration protocol advertises versioned import/export capabilities through
 `RuntimeCapabilities`. Local FastAPI snapshots current message IDs into an

@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 set "BUILD_STAMP=node_modules\.chat-context-rag-build-stamp"
 
-call :require_command node.exe "Node.js 20 nebo novejsi"
+call :require_command node.exe "Node.js 24 nebo novejsi"
 if errorlevel 1 goto :failed
 call :require_command npm.cmd "npm"
 if errorlevel 1 goto :failed
@@ -46,7 +46,7 @@ call npm.cmd install --no-package-lock
 if errorlevel 1 exit /b 1
 where py.exe >nul 2>nul
 if errorlevel 1 goto :skip_python_dependencies
-py.exe -3.9 -m pip install -r backend\requirements.txt
+py.exe -3.12 -m pip install -r backend\requirements.txt
 if errorlevel 1 exit /b 1
 :skip_python_dependencies
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -62,9 +62,9 @@ echo [CHYBA] Neni dostupny %~2. Nainstalujte jej a zkuste to znovu.
 exit /b 1
 
 :validate_runtime_versions
-node.exe -e "process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)"
+node.exe -e "process.exit(Number(process.versions.node.split('.')[0]) >= 24 ? 0 : 1)"
 if errorlevel 1 (
-  echo [CHYBA] ChatContextRAG vyzaduje Node.js 20 nebo novejsi.
+  echo [CHYBA] ChatContextRAG vyzaduje Node.js 24 nebo novejsi.
   exit /b 1
 )
 exit /b 0

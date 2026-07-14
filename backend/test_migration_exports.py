@@ -52,7 +52,7 @@ def test_internal_migration_export_routes_require_token_and_page_snapshots() -> 
         "/internal/migration-exports/export-1", headers=_authorization(),
     )
 
-    assert unauthorized.status_code == 403
+    assert unauthorized.status_code == 401
     assert created.json() == {"export_id": "export-1", "total_messages": 2}
     assert page.json()["messages"][0]["external_id"] == "2"
     assert page.json()["done"] is True

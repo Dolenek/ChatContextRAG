@@ -40,7 +40,10 @@ class BackendProcess {
     this.spawnError = null;
     const child = spawn(
       "py",
-      ["-3.9", "-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "8765"],
+      [
+        "-3.12", "-m", "uvicorn", "backend.app:create_app", "--factory",
+        "--host", "127.0.0.1", "--port", "8765",
+      ],
       {
         cwd: this.projectRoot,
         env: { ...process.env, CHAT_CONTEXT_INTERNAL_TOKEN: this.internalToken },
@@ -103,12 +106,15 @@ class BackendProcess {
 
   async checkHealth(timeoutMs = this.healthTimeoutMs) {
     const checkedAt = new Date().toISOString();
+    const endpoint = `${BACKEND_URL}/internal/health`;
     try {
-      await new BackendClient(BACKEND_URL, {}, { timeoutMs }).get("/health");
-      this.lastHealthStatus = { healthy: true, endpoint: `${BACKEND_URL}/health`, checkedAt };
+      await new BackendClient(BACKEND_URL, {
+        "X-Chat-Context-Token": this.internalToken,
+      }, { timeoutMs }).get("/internal/health");
+      this.lastHealthStatus = { healthy: true, endpoint, checkedAt };
     } catch (error) {
       this.lastHealthStatus = {
-        healthy: false, endpoint: `${BACKEND_URL}/health`, checkedAt, error: error.message,
+        healthy: false, endpoint, checkedAt, error: error.message,
       };
     }
     return this.lastHealthStatus;

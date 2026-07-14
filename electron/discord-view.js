@@ -3,6 +3,7 @@ const {
   buildDiscordChannelContextScript, buildDiscordExtractionScript,
 } = require("./discord-extractor");
 const { DiscordChannelScanner } = require("./discord-channel-scanner");
+const { secureDiscordView } = require("./window-security");
 
 const HEADER_HEIGHT = 82;
 const DISCORD_LEFT_INSET = 392;
@@ -41,11 +42,8 @@ class DiscordViewController {
         sandbox: true,
       },
     });
+    secureDiscordView(view.webContents, persistentSession);
     this.channelScanner = new DiscordChannelScanner(view.webContents);
-    view.webContents.setWindowOpenHandler(({ url }) => {
-      if (url.startsWith("https://discord.com/")) view.webContents.loadURL(url);
-      return { action: "deny" };
-    });
     return view;
   }
 

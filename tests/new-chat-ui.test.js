@@ -23,13 +23,17 @@ test("composer uses multiline keyboard semantics without advertising attachments
 test("Discord and WhatsApp use local SVG sprite icons", () => {
   const html = read("renderer/index.html");
   const sources = read("renderer/chat-sources.js");
+  const sprite = read("renderer/assets/icon-sprite.svg");
 
-  assert.match(html, /id="icon-discord"/);
-  assert.match(html, /id="icon-whatsapp"/);
-  assert.match(html, /use href="#icon-discord"/);
-  assert.match(html, /use href="#icon-whatsapp"/);
+  assert.match(sprite, /id="icon-discord"/);
+  assert.match(sprite, /id="icon-whatsapp"/);
+  assert.match(html, /use href="assets\/icon-sprite\.svg#icon-discord"/);
+  assert.match(html, /use href="assets\/icon-sprite\.svg#icon-whatsapp"/);
   assert.match(sources, /createBrandIcon/);
-  assert.match(sources, /use\.setAttribute\("href", `#icon-\$\{iconName\}`\)/);
+  assert.match(
+    sources,
+    /use\.setAttribute\("href", `assets\/icon-sprite\.svg#icon-\$\{iconName\}`\)/,
+  );
 });
 
 test("conversation view displays persisted timestamps and source recall controls safely", () => {

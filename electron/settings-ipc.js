@@ -4,51 +4,60 @@ const { BACKEND_URL } = require("./backend-process");
 const { readBackendResponse } = require("./backend-response");
 
 class SettingsIpcController {
-  constructor(providerStore, internalToken, monitorJob) {
+  constructor(providerStore, internalToken, monitorJob, ipc = ipcMain) {
     this.providerStore = providerStore;
     this.internalToken = internalToken;
     this.monitorJob = monitorJob;
+    this.ipcMain = ipc;
   }
 
   register() {
-    ipcMain.handle("settings:get", () => this.getSettings());
-    ipcMain.handle("settings:provider:save", (_event, profile) => this.saveProvider(profile));
-    ipcMain.handle("settings:provider:delete", (_event, providerId) =>
+    this.registerProviderHandlers();
+    this.registerIndexHandlers();
+  }
+
+  registerProviderHandlers() {
+    this.ipcMain.handle("settings:get", () => this.getSettings());
+    this.ipcMain.handle("settings:provider:save", (_event, profile) => this.saveProvider(profile));
+    this.ipcMain.handle("settings:provider:delete", (_event, providerId) =>
       this.deleteProvider(providerId));
-    ipcMain.handle("settings:models", (_event, providerId) =>
+    this.ipcMain.handle("settings:models", (_event, providerId) =>
       this.request("GET", `/settings/providers/${encodeURIComponent(providerId)}/models`));
-    ipcMain.handle("settings:chat-default", (_event, selection) =>
+    this.ipcMain.handle("settings:chat-default", (_event, selection) =>
       this.providerStore.setDefaults(selection.providerId, selection.model));
-    ipcMain.handle("settings:chat-model:save", (_event, model) =>
+    this.ipcMain.handle("settings:chat-model:save", (_event, model) =>
       this.saveChatModel(model));
-    ipcMain.handle("settings:chat-model:delete", (_event, model) =>
+    this.ipcMain.handle("settings:chat-model:delete", (_event, model) =>
       this.deleteChatModel(model));
-    ipcMain.handle("settings:workspace:update", (_event, timezoneName) =>
+    this.ipcMain.handle("settings:workspace:update", (_event, timezoneName) =>
       this.request("PUT", "/settings/workspace", { timezone_name: timezoneName }));
-    ipcMain.handle("settings:index:create", async (_event, input) => {
+  }
+
+  registerIndexHandlers() {
+    this.ipcMain.handle("settings:index:create", async (_event, input) => {
       const index = await this.request("POST", "/settings/embedding-indexes", input);
       this.monitorJob(index.active_job_id);
       return index;
     });
-    ipcMain.handle("settings:index:update", (_event, input) =>
+    this.ipcMain.handle("settings:index:update", (_event, input) =>
       this.request("PATCH", `/settings/embedding-indexes/${input.indexId}`, input.update));
-    ipcMain.handle("settings:index:activate", (_event, indexId) =>
+    this.ipcMain.handle("settings:index:activate", (_event, indexId) =>
       this.request("PUT", "/settings/active-embedding-index", {
         embedding_index_id: indexId,
       }));
-    ipcMain.handle("settings:index:sync", async (_event, indexId) => {
+    this.ipcMain.handle("settings:index:sync", async (_event, indexId) => {
       const job = await this.request("POST", `/settings/embedding-indexes/${indexId}/sync`, {});
       this.monitorJob(job.job_id);
       return job;
     });
-    ipcMain.handle("settings:index:rebuild", async (_event, indexId) => {
+    this.ipcMain.handle("settings:index:rebuild", async (_event, indexId) => {
       const index = await this.request(
         "POST", `/settings/embedding-indexes/${indexId}/rebuild`, {},
       );
       this.monitorJob(index.active_job_id);
       return index;
     });
-    ipcMain.handle("settings:index:delete", (_event, indexId) =>
+    this.ipcMain.handle("settings:index:delete", (_event, indexId) =>
       this.request("DELETE", `/settings/embedding-indexes/${indexId}`));
   }
 
@@ -129,7 +138,10 @@ class SettingsIpcController {
   }
 
   async request(method, endpoint, body, extraHeaders = {}) {
-    const options = { method, headers: { ...extraHeaders } };
+    const options = {
+      method,
+      headers: { "X-Chat-Context-Token": this.internalToken, ...extraHeaders },
+    };
     if (body !== undefined) {
       options.headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body);

@@ -15,7 +15,7 @@ function loadWebConfig(environment = process.env) {
     ...required,
     adminUsername: environment.WEB_ADMIN_USERNAME || "admin",
     apiUrl: environment.CHAT_CONTEXT_API_URL || "http://api:8765",
-    bindAddress: environment.WEB_BIND_ADDRESS || "0.0.0.0",
+    bindAddress: environment.WEB_BIND_ADDRESS || "127.0.0.1",
     port: parsePort(environment.WEB_PORT || "8080"),
     projectRoot: path.resolve(__dirname, ".."),
     sessionHours: parsePositive(environment.WEB_SESSION_HOURS || "12", "WEB_SESSION_HOURS"),

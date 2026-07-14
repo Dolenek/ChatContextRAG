@@ -8,7 +8,7 @@ const { ConnectionStore, normalizeServerUrl } = require("../electron/connection-
 const { ProviderStore } = require("../electron/provider-store");
 const { SseClient } = require("../runtime/sse-client");
 const { AesGcmStorage } = require("../web/aes-storage");
-const { AuthService } = require("../web/auth");
+const { AuthService, sameOrigin } = require("../web/auth");
 const { hashPassword } = require("../web/passwords");
 const { WebApplication } = require("../web/server");
 
@@ -70,15 +70,87 @@ test("SSE client parses complete data frames and retains a partial frame", () =>
   assert.equal(remainder, 'data: {"type"');
 });
 
-test("admin login is rate limited after repeated failures", () => {
+test("admin login is rate limited after repeated failures", async () => {
   const auth = new AuthService(testConfig());
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    assert.throws(() => auth.login("admin", "wrong-password", "client"));
+    await assert.rejects(auth.login("admin", "wrong-password", "client"));
   }
-  assert.throws(
-    () => auth.login("admin", "correct horse battery staple", "client"),
+  await assert.rejects(
+    auth.login("admin", "correct horse battery staple", "client"),
     (error) => error.statusCode === 429,
   );
+});
+
+test("trusted proxy login limits use the forwarded client and strict scheme", () => {
+  const auth = new AuthService({ ...testConfig(), trustProxy: true });
+  const request = {
+    headers: {
+      host: "archive.example",
+      origin: "https://archive.example",
+      "x-forwarded-for": "198.51.100.44, 203.0.113.9",
+      "x-forwarded-proto": "https",
+    },
+    socket: { encrypted: false, remoteAddress: "127.0.0.1" },
+  };
+
+  assert.equal(auth.clientAddress(request), "203.0.113.9");
+  assert.equal(sameOrigin(request, true), true);
+  request.headers.origin = "http://archive.example";
+  assert.equal(sameOrigin(request, true), false);
+});
+
+test("authentication bounds password work, sessions, and source tracking", async () => {
+  const passwordCompletions = [];
+  const auth = new AuthService(testConfig(), {
+    verifyPassword: () => new Promise((resolve) => passwordCompletions.push(resolve)),
+    limits: {
+      maxConcurrentPasswordVerifications: 2, maxLoginAttempts: 3, maxSessions: 2,
+    },
+  });
+  const firstLogin = auth.login("admin", "password", "client-a");
+  const secondLogin = auth.login("admin", "password", "client-b");
+  await new Promise((resolve) => setImmediate(resolve));
+  await assert.rejects(
+    auth.login("admin", "password", "client-c"),
+    (error) => error.statusCode === 503 && error.retryAfter === 1,
+  );
+  passwordCompletions.forEach((complete) => complete(false));
+  await assert.rejects(firstLogin, (error) => error.statusCode === 401);
+  await assert.rejects(secondLogin, (error) => error.statusCode === 401);
+
+  const firstSession = auth.createSession();
+  auth.createSession();
+  auth.createSession();
+  assert.equal(auth.sessions.size, 2);
+  assert.equal(auth.sessions.has(firstSession.id), false);
+  assert.throws(() => auth.assertRateLimit("client-d"), (error) => error.statusCode === 429);
+  assert.equal(auth.loginAttempts.size, 3);
+  auth.loginAttempts.values().next().value.resetAt = 0;
+  assert.doesNotThrow(() => auth.assertRateLimit("client-d"));
+  assert.equal(auth.loginAttempts.size, 3);
+});
+
+test("busy authentication responses include Retry-After", async (context) => {
+  const busyError = Object.assign(new Error("Authentication service is busy. Try again."), {
+    statusCode: 503, retryAfter: 1,
+  });
+  const application = new WebApplication(testConfig(), {
+    auth: { clientAddress: () => "client", login: async () => { throw busyError; } },
+    backend: fakeBackend(), services: fakeServices(),
+  });
+  await new Promise((resolve) => application.server.listen(0, "127.0.0.1", resolve));
+  context.after(() => application.server.close());
+  const address = application.server.address();
+  const origin = `http://127.0.0.1:${address.port}`;
+
+  const response = await fetch(`${origin}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({ username: "admin", password: "password" }),
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "1");
 });
 
 test("connection target validates URLs and keeps the token encrypted", () => {
@@ -90,6 +162,7 @@ test("connection target validates URLs and keeps the token encrypted", () => {
 
   assert.deepEqual(store.getPublic(), {
     mode: "remote", baseUrl: "https://server.example", hasToken: true,
+    insecureHttpAcknowledged: false,
   });
   assert.equal(store.getActive().token, "secret");
   store.save({ mode: "local" });
@@ -105,6 +178,23 @@ test("connection target validates URLs and keeps the token encrypted", () => {
   );
   assert.equal(persisted.includes("secret"), false);
   assert.throws(() => normalizeServerUrl("file:///tmp/server"));
+  assert.throws(
+    () => store.save({ mode: "remote", baseUrl: "http://archive.example", token: "token" }),
+    /explicit acknowledgement/,
+  );
+  store.save({
+    mode: "remote", baseUrl: "http://archive.example", token: "token",
+    insecureHttpAcknowledged: true,
+  });
+  assert.equal(store.getPublic().insecureHttpAcknowledged, true);
+  assert.equal(store.getActive().insecureHttpAcknowledged, true);
+  assert.throws(
+    () => store.resolveRemote({ baseUrl: "http://other.example", token: "token" }),
+    /explicit acknowledgement/,
+  );
+  assert.doesNotThrow(() => store.save({
+    mode: "remote", baseUrl: "http://127.0.0.1:8080", token: "token",
+  }));
   fs.rmSync(directory, { recursive: true, force: true });
 });
 

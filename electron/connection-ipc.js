@@ -1,17 +1,19 @@
 const { ipcMain } = require("electron");
 const { BackendClient } = require("../runtime/backend-client");
 const { normalizeServerUrl } = require("./connection-store");
+const { assertRemoteTransportSecurity } = require("./connection-security");
 
 class ConnectionIpcController {
   constructor(options) {
     this.store = options.store;
     this.restart = options.restart;
+    this.ipcMain = options.ipcMain || ipcMain;
   }
 
   register() {
-    ipcMain.handle("connection:get", () => this.store.getPublic());
-    ipcMain.handle("connection:test", (_event, input) => this.test(input));
-    ipcMain.handle("connection:save", async (_event, input) => {
+    this.ipcMain.handle("connection:get", () => this.store.getPublic());
+    this.ipcMain.handle("connection:test", (_event, input) => this.test(input));
+    this.ipcMain.handle("connection:save", async (_event, input) => {
       if (input.mode === "remote") await this.test(input);
       const saved = this.store.save(input);
       this.restart();
@@ -32,6 +34,7 @@ class ConnectionIpcController {
   resolveTarget(input) {
     if (this.store.resolveRemote) return this.store.resolveRemote(input);
     const baseUrl = normalizeServerUrl(input.baseUrl);
+    assertRemoteTransportSecurity(baseUrl, input.insecureHttpAcknowledged === true);
     const token = input.token?.trim() || this.savedRemoteToken();
     if (!token) throw new Error("Remote workspace token is required.");
     return { baseUrl, token };
