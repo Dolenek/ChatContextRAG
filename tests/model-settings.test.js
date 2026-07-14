@@ -138,6 +138,23 @@ test("chat model edit action fills and submits the form with its original identi
   assert.deepEqual(resets, ["upraveným modelem"]);
 });
 
+test("environment fallback model can be promoted while its identity stays locked", async () => {
+  const fixture = createChatModelEditFixture(false);
+  const { elements, saved } = fixture;
+
+  await elements.modelList.children[0].children[2].listeners.click();
+  assert.equal(elements.provider.disabled, true);
+  assert.equal(elements.modelId.disabled, true);
+  elements.effort.value = "medium";
+  await elements.form.listeners.submit({ preventDefault: () => {} });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
+    providerId: "openai", model: "gpt-old", label: "Old", reasoningEffort: "medium",
+  });
+  assert.equal(elements.provider.disabled, false);
+  assert.equal(elements.modelId.disabled, false);
+});
+
 test("keyless local provider remains available for compatible endpoints", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-local-"));
   const store = new ProviderStore(directory, {});
@@ -284,7 +301,7 @@ function fakeUiElement(tagName) {
   };
 }
 
-function createChatModelEditFixture() {
+function createChatModelEditFixture(managed = true) {
   const elements = chatModelEditElements();
   const saved = [];
   const resets = [];
@@ -299,7 +316,7 @@ function createChatModelEditFixture() {
     providers: [{ provider_id: "openai", name: "OpenAI" }],
     chatModels: [{
       provider_id: "openai", model: "gpt-old", label: "Old",
-      reasoning_effort: "high", managed: true,
+      reasoning_effort: "high", managed,
     }],
   });
   return { context, elements, saved, resets, released: () => released };

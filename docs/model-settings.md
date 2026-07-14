@@ -27,6 +27,9 @@ Add the chat model IDs that should be selectable to the **Chat models** section.
 Managed rows can be reopened with **Edit** to change their provider, model ID,
 display name, or reasoning effort. Saving replaces the original row atomically;
 an edited active model remains the active default under its new identity.
+The environment fallback also exposes **Edit**. Its provider and model ID stay
+locked, while saving a display name or reasoning effort promotes it to a managed
+record without changing the `.env` configuration.
 Each saved model may also choose **Reasoning effort**: model default, `none`,
 `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Support depends on the
 model and compatible provider. **Model default** is the safest fallback because

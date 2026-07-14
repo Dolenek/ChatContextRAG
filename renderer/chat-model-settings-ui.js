@@ -28,11 +28,9 @@ window.chatModelSettingsUi = (() => {
     const detail = `${providers.get(model.provider_id) || model.provider_id} · `
       + `${model.model} · reasoning ${reasoning}`;
     const row = createSettingsRow(model.label || model.model, detail);
+    row.append(actionButton("Upravit", () => edit(model)));
     if (model.managed) {
-      row.append(
-        actionButton("Upravit", () => edit(model)),
-        actionButton("Smazat", () => remove(model), "danger-link"),
-      );
+      row.append(actionButton("Smazat", () => remove(model), "danger-link"));
     }
     return row;
   }
@@ -58,7 +56,7 @@ window.chatModelSettingsUi = (() => {
       model: document.querySelector("#chat-model-input").value,
       label: document.querySelector("#chat-model-label").value,
       reasoningEffort: document.querySelector("#chat-model-reasoning-effort").value,
-      ...(editingModel ? {
+      ...(editingModel?.managed ? {
         originalProviderId: editingModel.provider_id,
         originalModel: editingModel.model,
       } : {}),
@@ -82,6 +80,7 @@ window.chatModelSettingsUi = (() => {
     document.querySelector("#chat-model-label").value = model.label || "";
     document.querySelector("#chat-model-reasoning-effort").value =
       model.reasoning_effort || "";
+    setIdentityFieldsLocked(!model.managed);
     updateFormMode();
     document.querySelector("#chat-model-input").focus();
     try { await loadSuggestions(); }
@@ -91,7 +90,13 @@ window.chatModelSettingsUi = (() => {
   function reset() {
     editingModel = null;
     document.querySelector("#chat-model-form").reset();
+    setIdentityFieldsLocked(false);
     updateFormMode();
+  }
+
+  function setIdentityFieldsLocked(locked) {
+    document.querySelector("#chat-model-provider-select").disabled = locked;
+    document.querySelector("#chat-model-input").disabled = locked;
   }
 
   function updateFormMode() {
