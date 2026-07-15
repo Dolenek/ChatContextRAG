@@ -163,34 +163,36 @@
           <header class="workspace-heading overview-heading">
             <div><p class="eyebrow">PŘEHLED DATABÁZE</p><h1>Co je uložené?</h1><p>Statistiky, metadata a vektorové chunky.</p></div>
             <div class="overview-actions">
-              <span id="overview-summary-state" class="overview-summary-state" role="status" aria-live="polite"></span>
               <button id="refresh-overview-button" class="secondary-button" type="button"><svg aria-hidden="true"><use href="assets/icon-sprite.svg#icon-refresh" /></svg><span id="refresh-overview-label">Obnovit</span></button>
               <button id="open-clear-database-button" class="danger-button" type="button"><svg aria-hidden="true"><use href="assets/icon-sprite.svg#icon-trash" /></svg>Vymazat databázi</button>
             </div>
           </header>
-          <div id="overview-stats" class="overview-primary-stats" aria-label="Hlavní statistiky databáze"></div>
-          <div id="overview-status-stats" class="overview-status-stats" aria-label="Stav databáze"></div>
+          <section id="overview-summary" class="overview-dashboard-summary" aria-label="Souhrn databáze"></section>
           <div class="overview-breakdowns">
             <section class="overview-summary-card" aria-labelledby="channels-heading">
               <header class="overview-card-heading"><div><span class="overview-heading-icon tone-blue" aria-hidden="true"><svg><use href="assets/icon-sprite.svg#icon-chat" /></svg></span><h2 id="channels-heading">Konverzace</h2></div><span id="channel-total" class="overview-badge">0 celkem</span></header>
-              <div id="channel-counts" class="count-list overview-count-list"></div>
-              <button id="load-more-channels" class="overview-load-more quiet-button hidden" type="button">Načíst více</button>
+              <div class="overview-table-header overview-count-header" role="row"><span>#</span><span>Název</span><span>Zprávy</span></div>
+              <div id="channel-counts" class="count-list overview-count-list" role="rowgroup"></div>
+              <button id="load-more-channels" class="overview-load-more quiet-button hidden" type="button">Zobrazit dalších 50 konverzací</button>
             </section>
             <section class="overview-summary-card" aria-labelledby="authors-heading">
               <header class="overview-card-heading"><div><span class="overview-heading-icon tone-violet" aria-hidden="true"><svg><use href="assets/icon-sprite.svg#icon-users" /></svg></span><h2 id="authors-heading">Autoři</h2></div><span id="author-total" class="overview-badge">0 celkem</span></header>
-              <div id="author-counts" class="count-list overview-count-list"></div>
-              <button id="load-more-authors" class="overview-load-more quiet-button hidden" type="button">Načíst více</button>
+              <div class="overview-table-header overview-count-header" role="row"><span>#</span><span>Autor</span><span>Zprávy</span></div>
+              <div id="author-counts" class="count-list overview-count-list" role="rowgroup"></div>
+              <button id="load-more-authors" class="overview-load-more quiet-button hidden" type="button">Zobrazit dalších 50 autorů</button>
             </section>
             <section class="overview-summary-card" aria-labelledby="models-heading">
               <header class="overview-card-heading"><div><span class="overview-heading-icon tone-teal" aria-hidden="true"><svg><use href="assets/icon-sprite.svg#icon-cube" /></svg></span><h2 id="models-heading">Embedding modely</h2></div><span id="model-total" class="overview-badge">0 celkem</span></header>
-              <div id="model-counts" class="count-list overview-count-list"></div>
-              <button id="load-more-models" class="overview-load-more quiet-button hidden" type="button">Načíst více</button>
+              <div class="overview-table-header overview-count-header" role="row"><span>#</span><span>Model</span><span>Chunky</span></div>
+              <div id="model-counts" class="count-list overview-count-list" role="rowgroup"></div>
+              <button id="load-more-models" class="overview-load-more quiet-button hidden" type="button">Zobrazit dalších 50 embedding modelů</button>
             </section>
           </div>
           <section class="overview-chunks-section" aria-labelledby="chunks-heading-title">
-            <header class="chunks-heading"><div><p class="eyebrow">DETAIL DATABÁZE</p><h2 id="chunks-heading-title">Uložené chunky</h2></div><p id="chunk-range"></p></header>
-            <div id="database-chunks" class="database-chunks"></div>
-            <button id="load-more-chunks-button" class="secondary-button hidden" type="button">Načíst další</button>
+            <header class="chunks-heading"><div><p class="eyebrow">DETAIL DATABÁZE</p><div class="chunks-title-row"><h2 id="chunks-heading-title">Uložené chunky</h2><span id="chunk-range" class="overview-range-badge"></span></div></div></header>
+            <div class="overview-table-header database-table-header" role="row"><span>ID</span><span>Obsah</span><span>Uloženo</span></div>
+            <div id="database-chunks" class="database-chunks" role="rowgroup"></div>
+            <button id="load-more-chunks-button" class="overview-load-more quiet-button hidden" type="button">Zobrazit dalších 50 záznamů</button>
           </section>
         </section>
 

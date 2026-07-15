@@ -127,12 +127,23 @@ handler, so renderer code has one transport-neutral contract.
 
 The renderer keeps its last locally cached snapshot while the server reports a
 stale or refreshing projection. It displays the generation time and a compact
-freshness label without replacing metric cards or scope rows.
+freshness label in the database archive banner without replacing summary rows
+or scope rows. The banner derives readiness from indexed divided by raw messages,
+clamped to a whole-number percentage between zero and one hundred. An empty
+archive has no readiness percentage.
 
 Before the initial backfill, projected values render as em dashes with
 **Připravuji souhrn…**. Live database size and live indexing jobs remain
 available. A failed refresh leaves the preceding snapshot visible, announces
 the failure, and the existing **Obnovit** action can queue another attempt.
+
+The overview groups projected values into volume, indexing quality, and archive
+time-range cards. Conversation and author breakdowns remain exact raw-message
+counts and are labeled as messages; embedding-model breakdowns are active-index
+chunk counts. All three append offset pages of 50 rows in place. The live chunk
+detail is a bounded scrolling table that shows a compact identifier, content,
+and `updated_at`, and appends cursor pages of 50 rows without replacing the
+already visible rows.
 
 Only the overview controller polls projection state. It requests status every
 eight seconds while a required projection is missing, stale, or refreshing and

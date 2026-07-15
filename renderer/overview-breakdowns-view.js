@@ -2,16 +2,20 @@ window.overviewBreakdownsView = (() => {
   const pageSize = 50;
   const maximumAgeMs = 30000;
   const definitions = {
-    channels: definition("#channel-counts", "#channel-total", "#load-more-channels"),
-    authors: definition("#author-counts", "#author-total", "#load-more-authors"),
+    channels: definition(
+      "#channel-counts", "#channel-total", "#load-more-channels", "konverzací",
+    ),
+    authors: definition(
+      "#author-counts", "#author-total", "#load-more-authors", "autorů",
+    ),
     "embedding-models": definition(
-      "#model-counts", "#model-total", "#load-more-models",
+      "#model-counts", "#model-total", "#load-more-models", "embedding modelů",
     ),
   };
   const states = new Map();
 
-  function definition(container, total, button) {
-    return { container, total, button };
+  function definition(container, total, button, itemLabel) {
+    return { container, total, button, itemLabel };
   }
 
   function initialize() {
@@ -119,6 +123,10 @@ window.overviewBreakdownsView = (() => {
     label.textContent = item.label;
     label.title = item.label;
     count.textContent = formatNumber(item.count);
+    row.setAttribute("role", "row");
+    rank.setAttribute("role", "cell");
+    label.setAttribute("role", "cell");
+    count.setAttribute("role", "cell");
     row.append(rank, label, count);
     return row;
   }
@@ -136,9 +144,11 @@ window.overviewBreakdownsView = (() => {
 
   function updateButton(dimension) {
     const state = states.get(dimension);
-    const button = document.querySelector(definitions[dimension].button);
+    const definition = definitions[dimension];
+    const button = document.querySelector(definition.button);
     button.classList.toggle("hidden", !state.hasMore && !state.failed);
-    button.textContent = state.failed ? "Zkusit znovu" : "Načíst více";
+    button.textContent = state.failed
+      ? "Zkusit znovu" : `Zobrazit dalších 50 ${definition.itemLabel}`;
   }
 
   function setBusy(dimension, busy) {

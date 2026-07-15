@@ -184,34 +184,48 @@ window.overviewController = (() => {
   }
 
   function renderChunkPage(page, append) {
-    const cards = (page.chunks || []).map(createDatabaseChunkCard);
-    if (!append && !cards.length) cards.push(createEmptyState(
+    const rows = (page.chunks || []).map(createDatabaseChunkRow);
+    if (!append && !rows.length) rows.push(createEmptyState(
       "Databáze zatím neobsahuje žádné chunky.",
     ));
     const chunkList = document.querySelector("#database-chunks");
-    append ? chunkList.append(...cards) : chunkList.replaceChildren(...cards);
+    append ? chunkList.append(...rows) : chunkList.replaceChildren(...rows);
     displayedChunkCount = append
       ? displayedChunkCount + (page.chunks || []).length : (page.chunks || []).length;
     nextCursor = page.next_cursor || null;
-    document.querySelector("#load-more-chunks-button")
-      .classList.toggle("hidden", !page.has_more);
+    updateChunkButton(Boolean(page.has_more));
     updateChunkRange();
   }
 
-  function createDatabaseChunkCard(chunk) {
-    const card = document.createElement("article");
-    const header = document.createElement("div");
-    const content = document.createElement("p");
-    const footer = document.createElement("small");
-    const authors = (chunk.authors || []).join(", ") || "Bez autora";
-    const sourceCount = (chunk.source_message_ids || []).length;
-    card.className = "database-chunk-card";
-    header.className = "chunk-meta";
-    header.textContent = `${chunk.channel || "Bez konverzace"} · ${authors} · ${window.overviewMetricsView.formatDate(chunk.started_at)}`;
+  function createDatabaseChunkRow(chunk) {
+    const chunkRow = document.createElement("div");
+    const identifier = document.createElement("span");
+    const content = document.createElement("span");
+    const storedAt = document.createElement("span");
+    chunkRow.className = "database-chunk-row";
+    chunkRow.setAttribute("role", "row");
+    identifier.className = "database-chunk-id";
+    identifier.textContent = compactIdentifier(chunk.chunk_id);
+    identifier.title = chunk.chunk_id;
+    content.className = "database-chunk-content";
     content.textContent = chunk.content;
-    footer.textContent = `${chunk.embedding_model} · ${window.overviewMetricsView.formatNumber(sourceCount)} zdrojových zpráv · ID ${chunk.chunk_id.slice(0, 12)}`;
-    card.append(header, content, footer);
-    return card;
+    storedAt.className = "database-chunk-stored-at";
+    storedAt.textContent = window.overviewMetricsView.formatDate(chunk.updated_at);
+    [identifier, content, storedAt].forEach((cell) => cell.setAttribute("role", "cell"));
+    chunkRow.append(identifier, content, storedAt);
+    return chunkRow;
+  }
+
+  function compactIdentifier(identifier) {
+    const normalizedIdentifier = String(identifier || "");
+    if (normalizedIdentifier.length <= 9) return normalizedIdentifier || "—";
+    return `${normalizedIdentifier.slice(0, 4)}…${normalizedIdentifier.slice(-4)}`;
+  }
+
+  function updateChunkButton(hasMore) {
+    const button = document.querySelector("#load-more-chunks-button");
+    button.classList.toggle("hidden", !hasMore);
+    button.textContent = "Zobrazit dalších 50 záznamů";
   }
 
   function updateChunkRange() {
@@ -237,6 +251,7 @@ window.overviewController = (() => {
     const label = document.createElement("span");
     label.className = "overview-empty-state";
     label.textContent = text;
+    label.setAttribute("role", "status");
     return label;
   }
 
@@ -247,13 +262,15 @@ window.overviewController = (() => {
     refreshButton.classList.toggle("loading", isBusy);
     document.querySelector("#refresh-overview-label").textContent =
       isBusy ? "Načítám…" : "Obnovit";
-    document.querySelector("#load-more-chunks-button").disabled = isBusy;
+    const chunkButton = document.querySelector("#load-more-chunks-button");
+    chunkButton.disabled = isBusy;
+    if (isBusy && !chunkButton.classList.contains("hidden")) {
+      chunkButton.textContent = "Načítám…";
+    } else if (!isBusy) chunkButton.textContent = "Zobrazit dalších 50 záznamů";
   }
 
   function setStatusBusy(isBusy) {
-    document.querySelector("#overview-stats").setAttribute("aria-busy", String(isBusy));
-    document.querySelector("#overview-status-stats")
-      .setAttribute("aria-busy", String(isBusy));
+    document.querySelector("#overview-summary").setAttribute("aria-busy", String(isBusy));
   }
 
   function markDatabaseChanged() {

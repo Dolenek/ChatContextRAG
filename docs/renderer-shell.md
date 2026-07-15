@@ -102,15 +102,25 @@ assistive technology.
 connector workflows. Database remains a central workspace dashboard. Selecting
 it switches the workspace immediately, renders cached status when available,
 and loads the first 50 rows of each breakdown plus the first chunk page in
-parallel. Each breakdown has an independent **Load more** (`Načíst více`) action
-that appends up to 50 rows, keeps existing rows after failure, and becomes its
-own retry action.
-Metric cards, their SVG nodes, and indexing-job rows are created once and then
-reconciled by key, preserving icon identity, focus, progress elements, and the
-last visible snapshot during requests. A subtle summary label announces an
-initial, stale, refreshing, failed, or current projection without clearing the
-cards. Manual refresh queues server work without waiting and retains visible
-data.
+parallel. Its archive banner combines readiness, pending messages, database
+size, and projection freshness. Three compact cards group volume, indexing
+quality, and archive time-range values. Readiness is the bounded whole-number
+ratio of indexed to raw messages; an empty or unavailable projection displays
+an em dash instead of a synthetic percentage.
+
+Conversation and author tables label their projected counts as raw **Messages**,
+while the embedding-model table labels its active-index counts as **Chunks**.
+Each breakdown has an independent **Show next 50** action that appends rows,
+keeps existing rows after failure, and becomes its own retry action. The chunk
+detail uses a bounded scrolling table with compact IDs, single-line content,
+and `updated_at` as its stored timestamp. Its cursor action appends the next 50
+rows and updates the displayed-versus-total label.
+
+Summary rows, their SVG nodes, progress elements, and indexing-job rows are
+created once and reconciled in place, preserving identity, focus, and the last
+visible snapshot during requests. A subtle banner label announces an initial,
+stale, refreshing, failed, or current projection without clearing values.
+Manual refresh queues server work without waiting and retains visible data.
 Settings opens over the current screen as an accessible modal and keeps its
 provider, model, embedding-index, indexing-history, Discord-bot, workspace-target,
 and web-session behavior. Runtime capability controls are hidden until startup
