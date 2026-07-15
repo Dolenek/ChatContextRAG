@@ -14,6 +14,12 @@ class DiscordRouter {
       const input = await readJson(request);
       return this.resolve(response, this.discord.connect(input.token));
     }
+    if (pathname === "/api/discord-bot/pause" && request.method === "POST") {
+      return this.resolve(response, this.discord.pause());
+    }
+    if (pathname === "/api/discord-bot/resume" && request.method === "POST") {
+      return this.resolve(response, this.discord.resume());
+    }
     if (pathname === "/api/discord-bot/disconnect" && request.method === "POST") {
       return this.resolve(response, this.discord.disconnect());
     }

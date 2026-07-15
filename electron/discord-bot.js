@@ -1,6 +1,4 @@
-const {
-  Client, Events, GatewayIntentBits, Partials, PermissionFlagsBits,
-} = require("discord.js");
+const { Events } = require("discord.js");
 const { DiscordBotBatcher } = require("./discord-bot-batcher");
 const { DiscordBotChannelSynchronizer, maximumId } = require("./discord-bot-channel-sync");
 const { discordChannelContext, discordMessageToInput } = require("./discord-bot-message");
@@ -8,6 +6,9 @@ const { DiscordBotCommands } = require("./discord-bot-commands");
 const { DiscordBotAccessPolicy } = require("./discord-bot-access");
 const { DiscordBotDirectory } = require("./discord-bot-directory");
 const { DiscordBotQuestionHandler } = require("./discord-bot-questions");
+const { DiscordBotStateStore } = require("./discord-bot-state-store");
+const { discordBotInviteUrl, discordBotStatus } = require("./discord-bot-status");
+const { createDiscordBotClient } = require("./discord-bot-client");
 
 class DiscordBotController {
   constructor(options) {
@@ -15,7 +16,10 @@ class DiscordBotController {
     this.onProgress = options.onProgress || (() => {});
     this.tokenStore = options.tokenStore || createElectronTokenStore();
     this.client = null;
-    this.states = new Map();
+    this.hasStoredToken = false;
+    this.enabled = false;
+    this.stateStore = new DiscordBotStateStore(this.api);
+    this.states = this.stateStore.states;
     this.lastError = null;
     this.directory = new DiscordBotDirectory({
       api: this.api, getClient: () => this.client,
@@ -31,7 +35,9 @@ class DiscordBotController {
     });
     this.commands = new DiscordBotCommands({
       getState: (id) => this.states.get(id),
+      refreshState: (id) => this.refreshState(id),
       setState: (id, state) => this.states.set(id, state),
+      deleteState: (id) => this.states.delete(id),
       saveState: (state) => this.saveState(state),
       synchronizer: this.synchronizer,
       canManage: (member, guildId) => this.access.permits(member, guildId, "sync"),
@@ -43,9 +49,11 @@ class DiscordBotController {
   }
 
   async restore() {
-    const token = this.tokenStore.load();
-    if (!token) return this.status();
     try {
+      const token = this.tokenStore.load();
+      this.hasStoredToken = Boolean(token);
+      this.enabled = this.hasStoredToken && storedBotEnabled(this.tokenStore);
+      if (!token || !this.enabled) return this.status();
       return await this.connect(token, false);
     } catch (error) {
       this.lastError = error.message;
@@ -66,6 +74,9 @@ class DiscordBotController {
       await client.login(token.trim());
       await ready;
       if (shouldSave) this.tokenStore.save(token);
+      this.tokenStore.setEnabled?.(true);
+      this.hasStoredToken = true;
+      this.enabled = true;
       this.lastError = null;
       await this.loadStates();
       await this.directory.refresh();
@@ -81,22 +92,7 @@ class DiscordBotController {
   }
 
   createClient() {
-    const client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent,
-      ],
-      partials: [Partials.Message, Partials.Channel],
-    });
-    client.on(Events.InteractionCreate, (interaction) => this.commands.handle(interaction));
-    client.on(Events.MessageCreate, (message) => this.handleLiveMessage(message));
-    client.on(Events.MessageCreate, (message) => this.handleQuestion(message));
-    client.on(Events.MessageUpdate, (_oldMessage, message) => this.handleLiveMessage(message));
-    client.on(Events.Error, (error) => {
-      this.lastError = error.message;
-      this.onProgress({ type: "error", error: error.message });
-    });
-    return client;
+    return createDiscordBotClient(this);
   }
 
   async handleLiveMessage(message) {
@@ -108,6 +104,15 @@ class DiscordBotController {
     } catch (error) {
       this.lastError = error.message;
       this.onProgress({ type: "error", conversationId: message.channelId, error: error.message });
+    }
+  }
+
+  async handleInteraction(interaction) {
+    try {
+      await this.commands.handle(interaction);
+    } catch (error) {
+      this.lastError = error.message;
+      this.onProgress({ type: "error", error: error.message });
     }
   }
 
@@ -123,14 +128,15 @@ class DiscordBotController {
   }
 
   async loadStates() {
-    const states = await this.api.listSyncStates("discord");
-    this.states = new Map(states.map((state) => [state.conversation_id, state]));
+    await this.stateStore.load();
   }
 
   async saveState(state) {
-    const saved = await this.api.saveSyncState(state);
-    this.states.set(saved.conversation_id, saved);
-    return saved;
+    return this.stateStore.save(state);
+  }
+
+  async refreshState(channelId) {
+    return this.stateStore.refresh(channelId);
   }
 
   async updateCursor(context, messages) {
@@ -157,36 +163,40 @@ class DiscordBotController {
   }
 
   inviteUrl() {
-    if (!this.client?.isReady()) throw new Error("Nejdřív připojte Discord bota.");
-    return this.client.generateInvite({
-      scopes: ["bot", "applications.commands"],
-      permissions: [
-        PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads,
-        PermissionFlagsBits.AddReactions,
-      ],
-    });
+    return discordBotInviteUrl(this.client);
   }
 
   status() {
-    const states = [...this.states.values()];
-    return {
-      connected: Boolean(this.client?.isReady()),
-      botName: this.client?.user?.tag || null,
-      trackedChannels: states.filter((state) => state.tracking_enabled).length,
-      rawMessages: states.reduce((sum, state) => sum + (state.raw_message_count || 0), 0),
-      indexedMessages: states.reduce(
-        (sum, state) => sum + (state.indexed_message_count || 0), 0,
-      ),
-      lastError: this.lastError,
-    };
+    return discordBotStatus(this);
+  }
+
+  async pause() {
+    if (!this.hasStoredToken) throw new Error("Discord bot nemá uložený token.");
+    await this.disconnect(false);
+    this.tokenStore.setEnabled?.(false);
+    this.enabled = false;
+    this.lastError = null;
+    return this.status();
+  }
+
+  async resume() {
+    if (this.client?.isReady()) return this.status();
+    const token = this.tokenStore.load();
+    if (!token) throw new Error("Discord bot nemá uložený token.");
+    this.hasStoredToken = true;
+    return this.connect(token, false);
   }
 
   async disconnect(forgetToken = true) {
     await this.batcher.flushAll();
     this.client?.destroy();
     this.client = null;
-    if (forgetToken) this.tokenStore.clear();
+    if (forgetToken) {
+      this.tokenStore.clear();
+      this.hasStoredToken = false;
+      this.enabled = false;
+      this.lastError = null;
+    }
     return this.status();
   }
 
@@ -197,7 +207,11 @@ class DiscordBotController {
 
 function createElectronTokenStore() {
   const { DiscordBotTokenStore } = require("./discord-bot-token-store");
-  return new DiscordBotTokenStore();
+  const { ToggleableSecretStore } = require("../runtime/toggleable-secret-store");
+  const secretStore = new DiscordBotTokenStore();
+  return new ToggleableSecretStore(secretStore, `${secretStore.filePath}.state.json`);
 }
+
+function storedBotEnabled(tokenStore) { return tokenStore.isEnabled?.() ?? true; }
 
 module.exports = { DiscordBotController };

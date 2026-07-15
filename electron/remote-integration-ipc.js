@@ -15,6 +15,10 @@ class RemoteIntegrationIpcController {
     this.ipcMain.handle("discord-bot:status", () => this.client.get("/discord-bot/status"));
     this.ipcMain.handle("discord-bot:connect", (_event, token) =>
       this.client.post("/discord-bot/connect", { token }));
+    this.ipcMain.handle("discord-bot:pause", () =>
+      this.client.post("/discord-bot/pause", {}));
+    this.ipcMain.handle("discord-bot:resume", () =>
+      this.client.post("/discord-bot/resume", {}));
     this.ipcMain.handle("discord-bot:disconnect", () =>
       this.client.post("/discord-bot/disconnect", {}));
     this.ipcMain.handle("discord-bot:invite", () => this.openBotInvite());

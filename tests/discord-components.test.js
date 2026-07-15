@@ -133,6 +133,7 @@ test("Discord slash commands enforce permission and report channel status", asyn
   });
   const denied = fakeInteraction({ permitted: false });
   await commands.handle(denied);
+  assert.equal(denied.deferCalls.length, 1);
   assert.match(denied.replies[0].content, /nastavení Discord bota/);
 
   const status = fakeInteraction({ subcommand: "status" });
@@ -143,6 +144,7 @@ test("Discord slash commands enforce permission and report channel status", asyn
   const unrelated = fakeInteraction({ commandName: "other" });
   assert.equal(await commands.handle(unrelated), undefined);
   assert.deepEqual(unrelated.replies, []);
+  assert.deepEqual(unrelated.deferCalls, []);
 });
 
 test("Discord bot controller tracks live messages, cursors, status, and disconnect", async () => {
@@ -174,7 +176,8 @@ test("Discord bot controller tracks live messages, cursors, status, and disconne
   assert.equal(batched.length, 1);
   assert.equal(saved.at(-1).newest_cursor, "105");
   assert.deepEqual(controller.status(), {
-    connected: true, botName: "Bot#0001", trackedChannels: 1,
+    connected: true, hasToken: false, enabled: false,
+    botName: "Bot#0001", trackedChannels: 1,
     rawMessages: 4, indexedMessages: 3, lastError: null,
   });
   await controller.disconnect();
@@ -316,14 +319,18 @@ function fakeChannel(messages, fetches = []) {
 
 function fakeInteraction(options = {}) {
   const replies = [];
+  const deferCalls = [];
   return {
-    replies,
+    replies, deferCalls,
     commandName: options.commandName || "chatcontext", channelId: "20", channel: fakeChannel([]),
     guildId: "10", member: { permitted: options.permitted !== false },
     isChatInputCommand: () => true, inGuild: () => true,
     memberPermissions: { has: () => options.permitted !== false },
     options: { getSubcommand: () => options.subcommand || "status" },
-    reply: async (value) => replies.push(value),
+    deferReply: async (value) => deferCalls.push(value),
+    editReply: async (value) => replies.push(
+      typeof value === "string" ? { content: value } : value,
+    ),
   };
 }
 

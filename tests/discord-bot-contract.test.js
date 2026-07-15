@@ -56,6 +56,7 @@ test("Electron and browser bridges expose the complete Discord settings contract
   const preload = read("electron/preload.js");
   const browser = read("renderer/runtime-bridge.js");
   const methods = [
+    "pauseDiscordBot", "resumeDiscordBot",
     "getDiscordBotSettings", "updateDiscordBotModel", "updateDiscordGuildPermissions",
     "getDiscordGuildRoles", "searchDiscordGuildMembers", "listDiscordBotAnswers",
     "getDiscordSubjectAvailability", "getDiscordBotAnswer",
@@ -71,6 +72,7 @@ test("Electron and browser bridges expose the complete Discord settings contract
 test("Discord settings replaces the source drawer with focused settings modules", () => {
   const html = read("renderer/index.html");
   const settings = read("renderer/discord-bot-settings-ui.js");
+  const subjectSearch = read("renderer/discord-bot-subject-search.js");
   const history = read("renderer/discord-bot-history-ui.js");
 
   assert.doesNotMatch(html, /id="discord-bot-drawer-panel"/);
@@ -78,7 +80,16 @@ test("Discord settings replaces the source drawer with focused settings modules"
   assert.match(html, /id="discord-bot-settings-root"/);
   assert.match(settings, /Správa synchronizace/);
   assert.match(settings, /Pokládání otázek/);
+  assert.match(settings, /Vyhledat roli nebo uživatele/);
+  assert.match(subjectSearch, /searchDiscordGuildMembers/);
+  assert.doesNotMatch(`${settings}${subjectSearch}`, /roleCheckbox|type = "checkbox"/);
+  assert.match(html, /discord-bot-subject-search\.js/);
   assert.match(settings, /Zobrazit historii odpovědí/);
+  assert.match(settings, /discord-bot-settings-toggle/);
+  assert.match(settings, /Vypnout bota/);
+  assert.match(settings, /Zapnout bota/);
+  assert.match(read("web/discord-router.js"), /discord-bot\/pause/);
+  assert.match(read("web/discord-router.js"), /discord-bot\/resume/);
   assert.match(history, /recent_context/);
   assert.match(history, /tool_activity/);
   assert.match(history, /returnFocus\?\.focus/);

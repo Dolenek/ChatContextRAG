@@ -3,8 +3,10 @@ window.discordBotSettingsUi = (() => {
   let showToast = () => {};
   let applicationSettings = null;
   let botSettings = { model: {}, guilds: [], available_guilds: [] };
+  let botRuntimeStatus = { connected: false, hasToken: false, enabled: false };
   let currentGuild = null;
   let availableRoles = [];
+  let subjectSearch = null;
 
   function bind(dependencies) {
     showToast = dependencies.showToast;
@@ -22,7 +24,7 @@ window.discordBotSettingsUi = (() => {
         <section class="settings-card discord-connection-card">
           <div><h3>Připojení</h3><p id="discord-bot-settings-status">Načítám stav…</p></div>
           <div class="discord-token-row"><input id="discord-bot-settings-token" type="password" autocomplete="off" placeholder="Discord bot token" /><button id="discord-bot-settings-connect" class="primary-button" type="button">Připojit</button></div>
-          <div class="settings-form-actions"><button id="discord-bot-settings-invite" class="secondary-button" type="button">Pozvat na server</button><button id="discord-bot-settings-disconnect" class="danger-button" type="button">Odpojit a odstranit token</button></div>
+          <div class="settings-form-actions discord-connection-actions"><button id="discord-bot-settings-invite" class="secondary-button" type="button">Pozvat na server</button><button id="discord-bot-settings-toggle" class="secondary-button" type="button">Zapnout bota</button><button id="discord-bot-settings-disconnect" class="danger-button" type="button">Odpojit a odstranit token</button></div>
           <p class="fine-print">Vyžaduje privileged intents Message Content a Server Members. Bot odpovídá na @mention a reply na svou zprávu.</p>
         </section>
         <section class="settings-card"><h3>Model odpovědí</h3>
@@ -37,8 +39,8 @@ window.discordBotSettingsUi = (() => {
         <section class="settings-card"><h3>Oprávnění serveru</h3><p>Role a uživatelé se sjednocují. Prázdný seznam neopravňuje nikoho; administrátoři nemají výjimku.</p>
           <label for="discord-bot-guild">Server</label><select id="discord-bot-guild"></select>
           <form id="discord-bot-permissions-form" class="discord-permission-grid">
-            <fieldset><legend>Správa synchronizace</legend><div id="discord-sync-subjects"></div><div class="member-search"><input id="discord-sync-member-query" placeholder="Vyhledat uživatele" /><button class="secondary-button" data-member-search="sync" type="button">Hledat</button></div><div id="discord-sync-member-results"></div></fieldset>
-            <fieldset><legend>Pokládání otázek</legend><div id="discord-ask-subjects"></div><div class="member-search"><input id="discord-ask-member-query" placeholder="Vyhledat uživatele" /><button class="secondary-button" data-member-search="ask" type="button">Hledat</button></div><div id="discord-ask-member-results"></div></fieldset>
+            <fieldset><legend>Správa synchronizace</legend><div id="discord-sync-subjects" class="discord-selected-subjects"></div><div class="discord-subject-search"><input id="discord-sync-subject-query" data-subject-query="sync" autocomplete="off" placeholder="Vyhledat roli nebo uživatele" /><button class="secondary-button" data-subject-search="sync" type="button">Hledat</button></div><div id="discord-sync-subject-results" class="discord-subject-results" aria-live="polite"></div></fieldset>
+            <fieldset><legend>Pokládání otázek</legend><div id="discord-ask-subjects" class="discord-selected-subjects"></div><div class="discord-subject-search"><input id="discord-ask-subject-query" data-subject-query="ask" autocomplete="off" placeholder="Vyhledat roli nebo uživatele" /><button class="secondary-button" data-subject-search="ask" type="button">Hledat</button></div><div id="discord-ask-subject-results" class="discord-subject-results" aria-live="polite"></div></fieldset>
             <div class="settings-form-actions discord-permission-actions"><button class="primary-button" type="submit">Uložit oprávnění</button><button id="show-discord-history" class="secondary-button" type="button">Zobrazit historii odpovědí</button></div>
           </form>
         </section>
@@ -47,6 +49,7 @@ window.discordBotSettingsUi = (() => {
 
   function bindConnection() {
     element("discord-bot-settings-connect").addEventListener("click", connect);
+    element("discord-bot-settings-toggle").addEventListener("click", toggleBot);
     element("discord-bot-settings-disconnect").addEventListener("click", disconnect);
     element("discord-bot-settings-invite").addEventListener(
       "click", () => window.chatContext.inviteDiscordBot(),
@@ -61,9 +64,12 @@ window.discordBotSettingsUi = (() => {
   function bindPermissions() {
     element("discord-bot-guild").addEventListener("change", selectGuild);
     element("discord-bot-permissions-form").addEventListener("submit", savePermissions);
-    root.querySelectorAll("[data-member-search]").forEach((button) => {
-      button.addEventListener("click", () => searchMembers(button.dataset.memberSearch));
+    subjectSearch = window.discordBotSubjectSearch.create({
+      root, showToast, getGuild: () => currentGuild, getRoles: () => availableRoles,
+      getSubjects: (capability) => currentGuild?.[`${capability}_subjects`] || [],
+      onAdd: addSubject,
     });
+    subjectSearch.bind();
     element("show-discord-history").addEventListener(
       "click", () => window.discordBotHistoryUi.open(currentGuild?.guild_id),
     );
@@ -86,12 +92,33 @@ window.discordBotSettingsUi = (() => {
 
   async function refreshStatus() {
     const status = await window.chatContext.getDiscordBotStatus();
-    const suffix = status.lastError ? ` · ${status.lastError}` : "";
-    element("discord-bot-settings-status").textContent = status.connected
-      ? `${status.botName} · ${status.trackedChannels} synchronizovaných kanálů${suffix}`
-      : `Bot není připojený${suffix}`;
+    botRuntimeStatus = normalizeBotStatus(status);
+    element("discord-bot-settings-status").textContent = botStatusText(botRuntimeStatus);
+    const toggle = element("discord-bot-settings-toggle");
+    toggle.textContent = botRuntimeStatus.connected ? "Vypnout bota" : "Zapnout bota";
+    toggle.classList.toggle("danger-button", botRuntimeStatus.connected);
+    toggle.classList.toggle("secondary-button", !botRuntimeStatus.connected);
+    toggle.disabled = !botRuntimeStatus.hasToken;
     element("discord-bot-settings-invite").disabled = !status.connected;
-    element("discord-bot-settings-disconnect").disabled = !status.connected;
+    element("discord-bot-settings-disconnect").disabled = !botRuntimeStatus.hasToken;
+  }
+
+  function normalizeBotStatus(status) {
+    return {
+      ...status,
+      hasToken: status.hasToken ?? status.connected,
+      enabled: status.enabled ?? status.connected,
+    };
+  }
+
+  function botStatusText(status) {
+    const suffix = status.lastError ? ` · ${status.lastError}` : "";
+    if (status.connected) {
+      return `${status.botName} · ${status.trackedChannels} synchronizovaných kanálů${suffix}`;
+    }
+    if (status.hasToken && !status.enabled) return `Bot je vypnutý · token je uložený${suffix}`;
+    if (status.hasToken) return `Bot není připojený · token je uložený${suffix}`;
+    return `Bot není připojený${suffix}`;
   }
 
   async function connect() {
@@ -109,6 +136,19 @@ window.discordBotSettingsUi = (() => {
       await window.chatContext.disconnectDiscordBot();
       await refreshStatus();
     }, "Discord bot byl odpojen a token odstraněn.");
+  }
+
+  async function toggleBot() {
+    const shouldResume = !botRuntimeStatus.connected;
+    await run(async () => {
+      if (shouldResume) {
+        await window.chatContext.resumeDiscordBot();
+        await refresh();
+      } else {
+        await window.chatContext.pauseDiscordBot();
+        await refreshStatus();
+      }
+    }, shouldResume ? "Discord bot byl zapnut." : "Discord bot byl vypnut.");
   }
 
   function renderModelOptions() {
@@ -172,6 +212,7 @@ window.discordBotSettingsUi = (() => {
     const guildId = element("discord-bot-guild").value;
     currentGuild = botSettings.guilds.find((guild) => guild.guild_id === guildId)
       || botSettings.available_guilds.find((guild) => guild.guild_id === guildId);
+    subjectSearch.reset();
     if (!currentGuild) return renderPermissionSubjects();
     currentGuild.sync_subjects ||= [];
     currentGuild.ask_subjects ||= [];
@@ -213,70 +254,45 @@ window.discordBotSettingsUi = (() => {
     ["sync", "ask"].forEach((capability) => {
       const subjects = currentGuild?.[`${capability}_subjects`] || [];
       const container = element(`discord-${capability}-subjects`);
-      const liveIds = new Set(availableRoles.map((role) => role.subject_id));
-      const rows = availableRoles.map((role) => roleCheckbox(capability, role, subjects));
-      subjects.filter((subject) => subject.subject_type === "user" || !liveIds.has(subject.subject_id))
-        .forEach((subject) => rows.push(subjectChip(capability, subject)));
+      const rows = subjects.map((subject) => subjectChip(capability, subject));
+      if (!rows.length) rows.push(emptySelectionMessage());
       container.replaceChildren(...rows);
     });
   }
 
-  function roleCheckbox(capability, role, subjects) {
-    const label = document.createElement("label");
-    label.className = "discord-subject-option";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = subjects.some((subject) => subject.subject_id === role.subject_id);
-    checkbox.addEventListener("change", () => toggleRole(capability, role, checkbox.checked));
-    label.append(checkbox, document.createTextNode(role.display_name));
-    return label;
+  function emptySelectionMessage() {
+    const message = document.createElement("span");
+    message.className = "discord-empty-selection";
+    message.textContent = "Nikdo není vybrán.";
+    return message;
   }
 
   function subjectChip(capability, subject) {
     const chip = document.createElement("button");
     chip.className = "discord-subject-chip";
     chip.type = "button";
-    const unavailable = subject.available === false ? " (nedostupný/á)" : "";
-    chip.textContent = `${subject.display_name}${unavailable} ×`;
-    chip.addEventListener("click", () => removeSubject(capability, subject.subject_id));
+    const type = subject.subject_type === "role" ? "Role" : "Uživatel";
+    const unavailable = subject.available === false ? " · nedostupný/á" : "";
+    chip.textContent = `${type} · ${subject.display_name}${unavailable} ×`;
+    chip.addEventListener("click", () => removeSubject(capability, subject));
     return chip;
-  }
-
-  function toggleRole(capability, role, selected) {
-    if (selected) addSubject(capability, { ...role, subject_type: "role" });
-    else removeSubject(capability, role.subject_id);
   }
 
   function addSubject(capability, subject) {
     const subjects = currentGuild[`${capability}_subjects`];
-    if (!subjects.some((item) => item.subject_id === subject.subject_id)) subjects.push(subject);
+    if (!subjects.some((item) => sameSubject(item, subject))) subjects.push(subject);
     renderPermissionSubjects();
+    subjectSearch.clear(capability);
   }
 
-  function removeSubject(capability, subjectId) {
+  function removeSubject(capability, removedSubject) {
     currentGuild[`${capability}_subjects`] = currentGuild[`${capability}_subjects`]
-      .filter((subject) => subject.subject_id !== subjectId);
+      .filter((subject) => !sameSubject(subject, removedSubject));
     renderPermissionSubjects();
   }
 
-  async function searchMembers(capability) {
-    if (!currentGuild) return;
-    const query = element(`discord-${capability}-member-query`).value.trim();
-    const results = await window.chatContext.searchDiscordGuildMembers(currentGuild.guild_id, query);
-    element(`discord-${capability}-member-results`).replaceChildren(
-      ...results.map((member) => memberResult(capability, member)),
-    );
-  }
-
-  function memberResult(capability, member) {
-    const button = document.createElement("button");
-    button.className = "quiet-button discord-member-result";
-    button.type = "button";
-    button.textContent = `+ ${member.display_name}`;
-    button.addEventListener("click", () => addSubject(
-      capability, { ...member, subject_type: "user" },
-    ));
-    return button;
+  function sameSubject(left, right) {
+    return left.subject_type === right.subject_type && left.subject_id === right.subject_id;
   }
 
   async function savePermissions(event) {
@@ -287,7 +303,15 @@ window.discordBotSettingsUi = (() => {
         guild_id: currentGuild.guild_id, guild_name: currentGuild.guild_name,
         sync_subjects: currentGuild.sync_subjects, ask_subjects: currentGuild.ask_subjects,
       });
+      storeGuildSettings(currentGuild);
+      renderPermissionSubjects();
     }, "Oprávnění Discord serveru byla uložena.");
+  }
+
+  function storeGuildSettings(guild) {
+    const index = botSettings.guilds.findIndex((item) => item.guild_id === guild.guild_id);
+    if (index >= 0) botSettings.guilds[index] = guild;
+    else botSettings.guilds.push(guild);
   }
 
   async function run(operation, successMessage) {

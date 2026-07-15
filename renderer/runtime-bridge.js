@@ -245,6 +245,8 @@
     indexPendingMessages: () => api("/indexing/jobs/pending", { method: "POST", body: {} }),
     getDiscordBotStatus: () => api("/discord-bot/status"),
     connectDiscordBot: (token) => api("/discord-bot/connect", { method: "POST", body: { token } }),
+    pauseDiscordBot: () => api("/discord-bot/pause", { method: "POST", body: {} }),
+    resumeDiscordBot: () => api("/discord-bot/resume", { method: "POST", body: {} }),
     disconnectDiscordBot: () => api("/discord-bot/disconnect", { method: "POST", body: {} }),
     inviteDiscordBot,
     getDiscordBotSettings: () => api("/discord-bot/settings"),

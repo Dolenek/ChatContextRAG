@@ -36,6 +36,8 @@ test("new integration cards and isolated IPC are wired without changing old Disc
   assert.match(html, /id="open-discord-bot-button"/);
   assert.match(html, /id="open-whatsapp-button"/);
   assert.match(preload, /connectDiscordBot/);
+  assert.match(preload, /pauseDiscordBot/);
+  assert.match(preload, /resumeDiscordBot/);
   assert.match(preload, /previewWhatsAppExport/);
   assert.match(tokenStore, /safeStorage\.encryptString/);
   assert.doesNotMatch(tokenStore, /\.env/);

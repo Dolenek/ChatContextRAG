@@ -10,6 +10,7 @@ const {
 const { SecretStore } = require("../runtime/secret-store");
 const { SettingsCoordinator } = require("../runtime/settings-coordinator");
 const { SseClient } = require("../runtime/sse-client");
+const { ToggleableSecretStore } = require("../runtime/toggleable-secret-store");
 const { RemoteEventForwarder } = require("../electron/remote-event-forwarder");
 
 test("backend client serializes JSON, preserves headers, and parses empty responses", async (t) => {
@@ -100,6 +101,24 @@ test("secret store encrypts trimmed values, restores them, and clears atomically
     () => new SecretStore(filePath, { isEncryptionAvailable: () => false }).save("x"),
     /unavailable/,
   );
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("toggleable secret store persists enabled state separately from its secret", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-toggleable-secret-"));
+  const stateFile = path.join(directory, "state.json");
+  let secret = "encrypted-token";
+  const store = new ToggleableSecretStore({
+    load: () => secret, save: (value) => { secret = value; }, clear: () => { secret = null; },
+  }, stateFile);
+
+  assert.equal(store.isEnabled(), true);
+  store.setEnabled(false);
+  assert.equal(store.isEnabled(), false);
+  assert.equal(store.load(), "encrypted-token");
+  store.clear();
+  assert.equal(store.load(), null);
+  assert.equal(fs.existsSync(stateFile), false);
   fs.rmSync(directory, { recursive: true, force: true });
 });
 

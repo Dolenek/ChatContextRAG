@@ -24,6 +24,8 @@ class IntegrationIpcController {
   register() {
     this.ipcMain.handle("discord-bot:status", () => this.bot.status());
     this.ipcMain.handle("discord-bot:connect", (_event, token) => this.bot.connect(token));
+    this.ipcMain.handle("discord-bot:pause", () => this.bot.pause());
+    this.ipcMain.handle("discord-bot:resume", () => this.bot.resume());
     this.ipcMain.handle("discord-bot:disconnect", () => this.bot.disconnect());
     this.ipcMain.handle("discord-bot:invite", async () => {
       const url = requireDiscordInviteUrl(this.bot.inviteUrl());

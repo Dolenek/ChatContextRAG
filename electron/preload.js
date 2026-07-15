@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld("chatContext", {
   indexPendingMessages: () => ipcRenderer.invoke("indexing:pending"),
   getDiscordBotStatus: () => ipcRenderer.invoke("discord-bot:status"),
   connectDiscordBot: (token) => ipcRenderer.invoke("discord-bot:connect", token),
+  pauseDiscordBot: () => ipcRenderer.invoke("discord-bot:pause"),
+  resumeDiscordBot: () => ipcRenderer.invoke("discord-bot:resume"),
   disconnectDiscordBot: () => ipcRenderer.invoke("discord-bot:disconnect"),
   inviteDiscordBot: () => ipcRenderer.invoke("discord-bot:invite"),
   getDiscordBotSettings: () => ipcRenderer.invoke("discord-bot:settings"),

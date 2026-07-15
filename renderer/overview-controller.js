@@ -172,7 +172,7 @@ window.overviewController = (() => {
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
     wrapper.className = "overview-metric-icon";
     wrapper.setAttribute("aria-hidden", "true");
-    use.setAttribute("href", `#${iconId}`);
+    use.setAttribute("href", `assets/icon-sprite.svg#${iconId}`);
     svg.append(use);
     wrapper.append(svg);
     return wrapper;

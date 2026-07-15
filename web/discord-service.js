@@ -68,6 +68,14 @@ class DiscordService {
     return this.bot.connect(token);
   }
 
+  pause() {
+    return this.bot.pause();
+  }
+
+  resume() {
+    return this.bot.resume();
+  }
+
   disconnect() {
     return this.bot.disconnect();
   }

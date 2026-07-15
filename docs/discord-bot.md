@@ -25,6 +25,13 @@ requests `ViewChannel`, `ReadMessageHistory`, `SendMessages`,
 `SendMessagesInThreads`, and `AddReactions` together with the bot and application
 command scopes.
 
+**Turn off bot** disconnects the Discord client while retaining the encrypted
+token. **Turn on bot** reconnects with that stored token, so it does not need to
+be entered again. The enabled state persists across application and gateway
+restarts. **Disconnect and remove token** remains a separate destructive action
+that removes both the credential and its enabled state. Ordinary application
+shutdown does not change the configured enabled state.
+
 The **Discord bot** item in **Sources and imports** is a shortcut to this settings
 section. It does not contain a second configuration drawer.
 
@@ -50,9 +57,12 @@ other Discord permissions never bypass these lists. A denied slash command gets
 an ephemeral response. A denied message question causes no AI request and gets
 a 🚫 reaction when the bot can add reactions; otherwise it is ignored.
 
-Role and member selectors store the Discord ID and display name at selection
-time. A deleted or inaccessible subject remains visible as unavailable until an
-administrator removes it. Member lookup requires the Server Members intent.
+Each allowlist has one searchable multi-select for both roles and members. Role
+names are filtered from the connected guild directory and member matches are
+loaded through Discord search. Selected subjects store the Discord ID and
+display name. A deleted or inaccessible subject remains visible as unavailable
+until an administrator removes it. Member lookup requires the Server Members
+intent.
 
 ## Synchronization commands
 
@@ -60,6 +70,12 @@ An authorized member runs `/chatcontext sync` in a guild text channel or thread.
 The first sync imports accessible history in durable 100-message pages and then
 enables live create and edit tracking. `/chatcontext status` reports the room
 state, and `/chatcontext stop` disables live tracking.
+
+Every command is acknowledged ephemerally before permission checks or storage
+work. Status refreshes the durable state and archive counts instead of relying
+only on the runtime cache. Per-room state writes are serialized, so a sync that
+finishes after `stop` cannot re-enable tracking; a later explicit `sync` can
+enable it again.
 
 Interrupted history import resumes its durable ingestion session from the last
 committed page. Startup catches up from the newest stored cursor. Live updates

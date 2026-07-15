@@ -5,6 +5,7 @@ const { ProviderStore } = require("../electron/provider-store");
 const { BackendClient } = require("../runtime/backend-client");
 const { SecretStore } = require("../runtime/secret-store");
 const { SettingsCoordinator } = require("../runtime/settings-coordinator");
+const { ToggleableSecretStore } = require("../runtime/toggleable-secret-store");
 const { AesGcmStorage } = require("./aes-storage");
 const { ApiRouter } = require("./api-router");
 const { AuthService, sameOrigin } = require("./auth");
@@ -163,8 +164,9 @@ function createServices(config, backend, events) {
     providerStore, backend, internalToken: config.internalToken,
     monitorJob: (jobId) => monitor.start(jobId),
   });
-  const tokenStore = new SecretStore(
-    path.join(config.stateDirectory, "discord-bot-token.enc"), encryption,
+  const tokenStore = new ToggleableSecretStore(
+    new SecretStore(path.join(config.stateDirectory, "discord-bot-token.enc"), encryption),
+    path.join(config.stateDirectory, "discord-bot-state.json"),
   );
   const discord = new DiscordService({ backend, events, monitor, tokenStore });
   return { discord, monitor, settings };

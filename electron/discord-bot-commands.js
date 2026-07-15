@@ -4,7 +4,9 @@ const { discordChannelContext } = require("./discord-bot-message");
 class DiscordBotCommands {
   constructor(options) {
     this.getState = options.getState;
+    this.refreshState = options.refreshState || (async (id) => this.getState(id));
     this.setState = options.setState;
+    this.deleteState = options.deleteState || (() => {});
     this.saveState = options.saveState;
     this.synchronizer = options.synchronizer;
     this.canManage = options.canManage || (() => false);
@@ -23,28 +25,36 @@ class DiscordBotCommands {
 
   async handle(interaction) {
     if (!interaction.isChatInputCommand() || interaction.commandName !== "chatcontext") return;
-    if (!interaction.inGuild()
-      || !this.canManage(interaction.member, interaction.guildId)) {
-      await interaction.reply({
-        content: "Pro tento příkaz nemáte oprávnění v nastavení Discord bota.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      if (!interaction.inGuild()
+        || !this.canManage(interaction.member, interaction.guildId)) {
+        await interaction.editReply(
+          "Pro tento příkaz nemáte oprávnění v nastavení Discord bota.",
+        );
+        return;
+      }
+      const subcommand = interaction.options.getSubcommand();
+      if (subcommand === "status") return await this.replyWithStatus(interaction);
+      if (subcommand === "stop") return await this.stop(interaction);
+      return await this.sync(interaction);
+    } catch (error) {
+      await interaction.editReply(`Příkaz selhal: ${error.message}`);
     }
-    const subcommand = interaction.options.getSubcommand();
-    if (subcommand === "status") return this.replyWithStatus(interaction);
-    if (subcommand === "stop") return this.stop(interaction);
-    return this.sync(interaction);
   }
 
   async sync(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const existing = this.getState(interaction.channelId) || {};
+    const enabledState = this.synchronizer.mergeState(
+      discordChannelContext(interaction.channel), existing, { tracking_enabled: true },
+    );
+    this.setState(interaction.channelId, enabledState);
     try {
-      const existing = this.getState(interaction.channelId) || {};
-      const result = existing.backfill_complete
-        ? await this.synchronizer.catchUp(interaction.channel, existing)
-        : await this.synchronizer.syncHistory(interaction.channel, existing);
+      const result = enabledState.backfill_complete
+        ? await this.synchronizer.catchUp(interaction.channel, enabledState)
+        : await this.synchronizer.syncHistory(interaction.channel, enabledState);
       this.setState(interaction.channelId, result.state);
+      await this.refreshState(interaction.channelId);
       await interaction.editReply(
         `Synchronizace dokončena: ${result.imported} zpráv. Živé sledování je aktivní.`,
       );
@@ -59,16 +69,24 @@ class DiscordBotCommands {
     const state = this.synchronizer.mergeState(
       context, existing, { tracking_enabled: false },
     );
-    await this.saveState(state);
-    await interaction.reply({ content: "Živé sledování bylo vypnuto.", flags: MessageFlags.Ephemeral });
+    this.setState(interaction.channelId, state);
+    try {
+      const saved = await this.saveState(state);
+      this.setState(interaction.channelId, saved);
+      await interaction.editReply("Živé sledování bylo vypnuto.");
+    } catch (error) {
+      if (existing.conversation_id) this.setState(interaction.channelId, existing);
+      else this.deleteState(interaction.channelId);
+      throw error;
+    }
   }
 
   async replyWithStatus(interaction) {
-    const state = this.getState(interaction.channelId);
+    const state = await this.refreshState(interaction.channelId);
     const text = !state
       ? "Tento kanál zatím není synchronizovaný."
       : `Sledování: ${state.tracking_enabled ? "aktivní" : "vypnuté"} · historie: ${state.backfill_complete ? "kompletní" : "rozpracovaná"} · raw ${state.raw_message_count || 0} · index ${state.indexed_message_count || 0}${state.last_error ? ` · chyba: ${state.last_error}` : ""}`;
-    await interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
+    await interaction.editReply(text);
   }
 }
 

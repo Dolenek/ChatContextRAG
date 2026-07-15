@@ -67,15 +67,17 @@ includes the source type, conversation, timestamp, deterministically colored
 author, shortened text, and a relative match value from `0.00` to `1.00`. Its
 accessible tooltip exposes the exact raw RRF, cosine, or legacy score.
 Messages loaded as neighboring adaptive context are labeled **Neighboring
-context** and do not display a synthetic match score.
+context** and do not display a synthetic match score. Renderer icons use symbols
+from the shared external `assets/icon-sprite.svg` file; static and dynamically
+created `<use>` elements include the asset path before their symbol fragment.
 
 Cards with retained chunk context expose an inline **Show chunk** control in
 both the preview and complete-context modal. Retrieved chunks show the exact
 context used for that answer; historical records reconstructed from the active
 index are explicitly labeled as current rather than original context. Message
 and chunk text is inserted with DOM text properties rather than interpreted as
-HTML. There is no source-message navigation action. Discord and WhatsApp
-surfaces use local SVG sprite symbols, so brand icons require no runtime request.
+HTML. There is no source-message navigation action. Discord and WhatsApp brand
+icons use the same local SVG sprite and do not depend on third-party assets.
 
 The context modal has `aria-modal`, an explicit label, a focus trap, and focus
 return. It closes from its close button, Escape, or the backdrop. Opening a new

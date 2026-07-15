@@ -70,6 +70,19 @@ test("overview renders status, breakdowns, and chunks from independent requests"
   assert.deepEqual(harness.requests, { status: 1, breakdowns: 1, pages: [[50]] });
 });
 
+test("overview metric icons reference the external SVG sprite", async () => {
+  const harness = createHarness({
+    statuses: [statusFixture()], breakdowns: [breakdownFixture()],
+    pages: [pageFixture()],
+  });
+
+  await harness.controller.refresh();
+
+  const firstCard = harness.elements.get("#overview-stats").children[0];
+  const iconUse = firstCard.children[0].children[0].children[0];
+  assert.equal(iconUse.attributes.href, "assets/icon-sprite.svg#icon-layers");
+});
+
 test("overview appends cursor pages without repeating the first page", async () => {
   const harness = createHarness({
     statuses: [statusFixture({ total_chunks: 2 })],

@@ -125,6 +125,8 @@ test("local integration IPC selects and uploads WhatsApp files and opens bot inv
   assert.equal(multipart[0][1].has("empty"), false);
   assert.deepEqual(await handlers.get("discord-bot:invite")(), { opened: true });
   assert.equal(openedUrls.at(-1), "https://discord.com/oauth2/authorize");
+  assert.equal(handlers.has("discord-bot:pause"), true);
+  assert.equal(handlers.has("discord-bot:resume"), true);
 });
 
 test("remote integration IPC registers the shared gateway contract", async () => {
@@ -139,9 +141,13 @@ test("remote integration IPC registers the shared gateway contract", async () =>
   controller.register();
 
   await handlers.get("discord-bot:connect")(null, "token");
+  await handlers.get("discord-bot:pause")();
+  await handlers.get("discord-bot:resume")();
   await handlers.get("discord-bot:disconnect")();
-  assert.deepEqual(calls.slice(0, 2), [
+  assert.deepEqual(calls.slice(0, 4), [
     ["post", "/discord-bot/connect", { token: "token" }],
+    ["post", "/discord-bot/pause", {}],
+    ["post", "/discord-bot/resume", {}],
     ["post", "/discord-bot/disconnect", {}],
   ]);
   assert.equal(handlers.has("whatsapp:import"), true);
