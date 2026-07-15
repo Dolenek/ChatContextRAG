@@ -7,7 +7,6 @@
   --rail-collapsed-width: 72px;
   --rail-expanded-width: 310px;
   --rail-width: var(--rail-collapsed-width);
-  --rail-brand-center-x: 36px;
   --drawer-width: 320px;
   --context-width: clamp(324px, 28vw, 457px);
   --chat-content-max-width: 784px;
@@ -35,7 +34,7 @@ body {
   background: radial-gradient(circle at 57% 18%, rgba(52, 78, 137, 0.11), transparent 34%), #07111e;
 }
 
-body.navigation-expanded { --rail-width: var(--rail-expanded-width); --rail-brand-center-x: 155px; }
+body.navigation-expanded { --rail-width: var(--rail-expanded-width); }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 button, select { cursor: pointer; }

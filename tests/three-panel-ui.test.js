@@ -82,8 +82,10 @@ test("shell keeps navigation compact and themes native selection menus", () => {
   assert.match(baseCss, /select optgroup \{ color: #b9b6ff; background: #0d1828; \}/);
   assert.match(shellCss, /\.rail-button \{[\s\S]*?min-height: 44px/);
   assert.match(shellCss, /\.navigation-rail\.navigation-rollout-visible \.navigation-toggle/);
-  assert.match(shellCss, /grid-template-columns: minmax\(34px, 1fr\) 42px minmax\(34px, 1fr\)/);
-  assert.match(shellCss, /\.brand-mark \{[^}]*top: 12px/);
+  assert.match(shellCss, /\.sidebar-brand \{[^}]*grid-template-columns: minmax\(0, 1fr\) 34px[^}]*align-items: center/);
+  assert.match(shellCss, /\.brand-mark \{[^}]*grid-column: 1 \/ -1; grid-row: 1; justify-self: center/);
+  assert.match(shellCss, /\.navigation-toggle \{[^}]*grid-column: 2; grid-row: 1; justify-self: end/);
+  assert.doesNotMatch(baseCss, /rail-brand-center-x/);
   assert.match(shellCss, /body:not\(\.navigation-expanded\) \.brand-wordmark \{ display: none; \}/);
   assert.match(shellCss, /body:not\(\.navigation-expanded\) \.brand-symbol \{[^}]*display: block/);
   assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) auto/);

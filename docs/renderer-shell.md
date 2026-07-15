@@ -11,7 +11,10 @@ without a decorative outer border; borders only separate internal regions and
 components.
 
 The expanded rail starts with the transparent Chat Context wordmark asset,
-centered in the free area above the first navigation action. The
+centered across the full rail above the first navigation action. The wordmark
+and the collapse control share one grid row and therefore one vertical center;
+the wordmark spans that grid so its canvas midpoint, optically near the leading
+**C**, remains on the rail centerline independently of the control. The
 same brand mark without text is the Electron and browser favicon. Its
 44 px actions list **New chat**, **Sources and imports**, **Database**, and
 **Settings** before the six most recent persisted chats, the expandable
