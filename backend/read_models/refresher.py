@@ -108,10 +108,10 @@ class PostgresReadModelRefresher:
             "SELECT pg_try_advisory_lock(%s)", (READ_MODEL_ADVISORY_LOCK,),
         ).fetchone()[0])
 
-    @staticmethod
-    def _refresh_archive(connection) -> None:
+    def _refresh_archive(self, connection) -> None:
         row = connection.execute("""SELECT COUNT(*),COUNT(DISTINCT content_hash),
-            COUNT(DISTINCT author),COUNT(DISTINCT (source_type,conversation_id)),
+            COUNT(DISTINCT author),COUNT(DISTINCT (source_type,
+              COALESCE(conversation_id,channel_id,external_id))),
             MIN(sent_at),MAX(sent_at) FROM source_messages""").fetchone()
         connection.execute("""INSERT INTO workspace_read_summary
             (id,raw_message_count,unique_content_count,total_authors,total_conversations,
@@ -123,6 +123,22 @@ class PostgresReadModelRefresher:
               total_conversations=EXCLUDED.total_conversations,
               oldest_message_at=EXCLUDED.oldest_message_at,
               newest_message_at=EXCLUDED.newest_message_at,generated_at=NOW()""", row)
+        self._replace_archive_breakdowns(connection)
+
+    @staticmethod
+    def _replace_archive_breakdowns(connection) -> None:
+        connection.execute("DELETE FROM archive_breakdown_read_model")
+        connection.execute("""INSERT INTO archive_breakdown_read_model
+            (dimension,row_key,label,item_count)
+            SELECT 'channels',source_type||':'||
+              COALESCE(conversation_id,channel_id,external_id),
+              COALESCE(MAX(conversation_label),MAX(channel),'Bez konverzace'),COUNT(*)
+            FROM source_messages
+            GROUP BY source_type,COALESCE(conversation_id,channel_id,external_id)""")
+        connection.execute("""INSERT INTO archive_breakdown_read_model
+            (dimension,row_key,label,item_count)
+            SELECT 'authors',author,author,COUNT(*)
+            FROM source_messages GROUP BY author""")
 
     def _refresh_index(self, connection, index_id: str) -> None:
         if not connection.execute(
@@ -176,17 +192,6 @@ class PostgresReadModelRefresher:
             "DELETE FROM database_breakdown_read_model WHERE embedding_index_id=%s",
             (index_id,),
         )
-        connection.execute("""INSERT INTO database_breakdown_read_model
-            (embedding_index_id,dimension,label,item_count)
-            SELECT %s,'channels',COALESCE(channel,'Bez kanálu'),COUNT(*)
-            FROM rag_chunks WHERE embedding_index_id=%s GROUP BY channel""",
-            (index_id, index_id),
-        )
-        connection.execute("""INSERT INTO database_breakdown_read_model
-            (embedding_index_id,dimension,label,item_count)
-            SELECT %s,'authors',author_name,COUNT(*)
-            FROM rag_chunks,LATERAL UNNEST(authors) author_name
-            WHERE embedding_index_id=%s GROUP BY author_name""", (index_id, index_id))
         connection.execute("""INSERT INTO database_breakdown_read_model
             (embedding_index_id,dimension,label,item_count)
             SELECT %s,'embedding-models',embedding_model,COUNT(*)

@@ -44,8 +44,9 @@ Electron Remote calls use its bearer token.
   projections. `fresh=true` queues active refresh work and returns immediately.
 - `POST /database/read-model/refresh` queues an immediate `active` or `all`
   projection refresh without waiting.
-- `GET /database/breakdowns/{dimension}?limit=N&offset=N` pages channel, author,
-  or embedding-model counts with limits from 1 through 200.
+- `GET /database/breakdowns/{dimension}?limit=N&offset=N` pages exact raw-message
+  counts by conversation or author, or embedding-model counts for the active
+  index, with limits from 1 through 200.
 - `GET /database/breakdowns` retains the combined counts for compatibility.
 - `GET /database/chunks?limit=N&cursor=...` returns active-index chunks with an
   opaque keyset cursor.

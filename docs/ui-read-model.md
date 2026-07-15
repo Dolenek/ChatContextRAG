@@ -17,9 +17,10 @@ The following values are persistent projections:
 | Projection | Contents |
 | --- | --- |
 | `workspace_read_summary` | Raw and unique message counts, author and conversation counts, and the archive time range. |
+| `archive_breakdown_read_model` | Exact raw-message counts per source conversation and author for the whole canonical archive. |
 | `embedding_index_read_summary` | Chunk, indexed-message, and pending-message counts for every embedding index. |
 | `chat_scope_read_model` | Source conversations represented by each published embedding index. |
-| `database_breakdown_read_model` | Per-index channel, author, and embedding-model counts. |
+| `database_breakdown_read_model` | Per-index embedding-model counts. |
 | `read_model_refresh_state` | Projection version, requested and published revisions, state, debounce time, lease, retry, generation time, and private failure detail. |
 
 Chunk pages, active indexing jobs, PostgreSQL database size, provider settings,
@@ -37,8 +38,8 @@ claims its old projection is current.
 - Atomic index publication increments the corresponding index revision.
 - Creating an index creates its empty queued projection state.
 - Activating an index queues an immediate refresh for that index.
-- Deleting an index removes its summary, scope, breakdown, and refresh state by
-  foreign-key cascade.
+- Deleting an index removes its summary, scope, embedding-model breakdown, and
+  refresh state by foreign-key cascade.
 - Clearing the archive publishes zero-valued archive and per-index summaries in
   the clear transaction and removes projected scopes and breakdowns.
 
@@ -65,9 +66,10 @@ also records a durable owner and lease. A different process can recover a
 
 The worker uses a repeatable-read transaction for each projection:
 
-- the archive transaction calculates and publishes the global summary;
-- an index transaction calculates its summary, chat scopes, and all breakdown
-  dimensions, then publishes them together;
+- the archive transaction calculates and publishes the global summary plus exact
+  raw-message breakdowns by conversation and author;
+- an index transaction calculates its summary, chat scopes, and embedding-model
+  breakdown, then publishes them together;
 - readers continue seeing the preceding committed generation until the whole
   transaction commits.
 
@@ -109,7 +111,8 @@ those zeros as real archive totals.
   `{ "scope": "all" }`, queues immediate work, and returns
   `{ "queued": true, "scope": ... }`.
 - `GET /chat/scopes` reads `chat_scope_read_model` for the active index.
-- `GET /database/breakdowns/{dimension}` pages the active index projection.
+- `GET /database/breakdowns/{dimension}` pages exact whole-archive message counts
+  for `channels` and `authors`; `embedding-models` pages the active index projection.
 - Compatibility endpoints `GET /database/overview` and
   `GET /database/breakdowns` assemble their aggregate fields from the same
   projections. Overview chunk rows remain a live paginated read.

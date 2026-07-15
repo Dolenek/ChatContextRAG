@@ -4,7 +4,9 @@ from backend.embedding_index_support import index_view_sql
 from backend.read_models.metadata import metadata_from_state
 from backend.read_models.reader import PostgresReadModelReader
 from backend.read_models.refresher import PostgresReadModelRefresher, RefreshClaim
-from backend.read_models.schema import read_model_schema_statements
+from backend.read_models.schema import (
+    READ_MODEL_SCHEMA_VERSION, read_model_schema_statements,
+)
 from backend.read_models.store import PostgresReadModelStore
 from backend.raw_archive_reset import RawArchiveResetter
 
@@ -44,14 +46,32 @@ def test_schema_contains_every_persistent_projection_and_durable_state() -> None
 
     for table in (
         "workspace_read_summary", "embedding_index_read_summary",
-        "chat_scope_read_model", "database_breakdown_read_model",
+        "chat_scope_read_model", "archive_breakdown_read_model",
+        "database_breakdown_read_model",
         "read_model_refresh_state",
     ):
         assert f"CREATE TABLE IF NOT EXISTS {table}" in schema
     assert "lease_expires_at" in schema
     assert "requested_revision" in schema
     assert "published_revision" in schema
+    assert "WHERE dimension IN ('channels','authors')" in schema
     assert schema.count("REFERENCES embedding_indexes(id) ON DELETE CASCADE") == 4
+
+
+def test_schema_upgrade_marks_incompatible_snapshots_unready() -> None:
+    connection = RecordingConnection()
+
+    PostgresReadModelStore._queue_outdated_schema(connection)
+
+    archive_query, archive_parameters = connection.queries[0]
+    index_query, index_parameters = connection.queries[1]
+    assert "published_revision=0" in archive_query
+    assert "generated_at=NULL" in archive_query
+    assert "projection_kind='archive'" in archive_query
+    assert "published_revision=0" not in index_query
+    assert "projection_kind='index'" in index_query
+    expected_parameters = (READ_MODEL_SCHEMA_VERSION, READ_MODEL_SCHEMA_VERSION)
+    assert archive_parameters == index_parameters == expected_parameters
 
 
 def test_settings_index_query_contains_no_source_aggregate_scan() -> None:
@@ -135,8 +155,8 @@ def test_active_summary_reads_only_small_projection_tables() -> None:
 def test_breakdown_page_carries_projection_metadata() -> None:
     generated_at = datetime(2026, 7, 15, tzinfo=timezone.utc)
     connection = RecordingConnection([
-        QueryResult(("index-1",)), QueryResult(rows=[("Ada", 20, 3), ("Bob", 10, 3)]),
-        QueryResult((30, 115, 5, generated_at)),
+        QueryResult(rows=[("Ada", 20, 3), ("Bob", 10, 3)]),
+        QueryResult((120, 100, 3, 2, None, generated_at)),
         QueryResult((3, 2, "queued", generated_at, None)),
     ])
 
@@ -147,6 +167,22 @@ def test_breakdown_page_carries_projection_metadata() -> None:
     assert [item.label for item in page.items] == ["Ada", "Bob"]
     assert page.total == 3 and page.has_more and page.next_offset == 2
     assert page.summary_ready and page.summary_is_stale and page.summary_refreshing
+    queries = " ".join(query for query, _parameters in connection.queries)
+    assert "FROM archive_breakdown_read_model" in queries
+    assert "FROM rag_chunks" not in queries
+
+
+def test_archive_refresh_counts_messages_instead_of_chunks() -> None:
+    connection = RecordingConnection([
+        QueryResult((120, 100, 3, 2, None, None)),
+    ])
+
+    PostgresReadModelRefresher("unused")._refresh_archive(connection)
+
+    queries = " ".join(query for query, _parameters in connection.queries)
+    assert "SELECT 'channels'" in queries
+    assert "SELECT 'authors',author,author,COUNT(*) FROM source_messages" in queries
+    assert "FROM rag_chunks" not in queries
 
 
 def test_workspace_metadata_tracks_an_inactive_index_for_central_polling() -> None:

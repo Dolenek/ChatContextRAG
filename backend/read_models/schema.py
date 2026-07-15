@@ -1,7 +1,7 @@
 from typing import List
 
 
-READ_MODEL_SCHEMA_VERSION = 1
+READ_MODEL_SCHEMA_VERSION = 2
 ARCHIVE_PROJECTION_KEY = "archive"
 
 
@@ -9,10 +9,13 @@ def read_model_schema_statements() -> List[str]:
     return [
         _refresh_state_table(),
         _workspace_summary_table(),
+        _archive_breakdown_table(),
+        _archive_breakdown_order_index(),
         _index_summary_table(),
         _scope_table(),
         _breakdown_table(),
         _breakdown_order_index(),
+        _remove_legacy_index_breakdowns(),
         _seed_archive_state(),
         _seed_index_states(),
     ]
@@ -51,6 +54,21 @@ def _workspace_summary_table() -> str:
         generated_at TIMESTAMPTZ NOT NULL)"""
 
 
+def _archive_breakdown_table() -> str:
+    return """CREATE TABLE IF NOT EXISTS archive_breakdown_read_model (
+        dimension TEXT NOT NULL CHECK(dimension IN ('channels','authors')),
+        row_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        item_count BIGINT NOT NULL,
+        PRIMARY KEY(dimension,row_key))"""
+
+
+def _archive_breakdown_order_index() -> str:
+    return """CREATE INDEX IF NOT EXISTS archive_breakdown_read_model_order
+        ON archive_breakdown_read_model
+        (dimension,item_count DESC,label,row_key)"""
+
+
 def _index_summary_table() -> str:
     return """CREATE TABLE IF NOT EXISTS embedding_index_read_summary (
         embedding_index_id TEXT PRIMARY KEY REFERENCES embedding_indexes(id) ON DELETE CASCADE,
@@ -84,6 +102,11 @@ def _breakdown_order_index() -> str:
     return """CREATE INDEX IF NOT EXISTS database_breakdown_read_model_order
         ON database_breakdown_read_model
         (embedding_index_id,dimension,item_count DESC,label)"""
+
+
+def _remove_legacy_index_breakdowns() -> str:
+    return """DELETE FROM database_breakdown_read_model
+        WHERE dimension IN ('channels','authors')"""
 
 
 def _seed_archive_state() -> str:

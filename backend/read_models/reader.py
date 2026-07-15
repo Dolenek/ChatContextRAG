@@ -11,6 +11,9 @@ from backend.read_models.metadata import (
 from backend.read_models.schema import ARCHIVE_PROJECTION_KEY
 
 
+ARCHIVE_BREAKDOWN_DIMENSIONS = frozenset({"channels", "authors"})
+
+
 class PostgresReadModelReader:
     def __init__(self, database_dsn: str) -> None:
         self.database_dsn = database_dsn
@@ -74,11 +77,11 @@ class PostgresReadModelReader:
     def breakdown_page(
         self, connection, dimension: str, limit: int, offset: int,
     ) -> DatabaseCountPage:
-        index_id = self.active_index_id(connection)
+        index_id = self._breakdown_index_id(connection, dimension)
         rows = self._breakdown_rows(connection, index_id, dimension, limit, offset)
         total = rows[0][2] if rows else 0
         items = [DatabaseCount(label=row[0], count=row[1]) for row in rows]
-        _, metadata = self.index_summary(connection, index_id)
+        metadata = self._breakdown_metadata(connection, dimension, index_id)
         next_offset = offset + len(items)
         return DatabaseCountPage(
             items=items, total=total, limit=limit, offset=offset,
@@ -88,14 +91,21 @@ class PostgresReadModelReader:
         )
 
     def breakdowns(self, connection, dimension: str) -> list[DatabaseCount]:
-        index_id = self.active_index_id(connection)
-        if not index_id:
-            return []
-        rows = connection.execute("""SELECT label,item_count
-            FROM database_breakdown_read_model
-            WHERE embedding_index_id=%s AND dimension=%s
-            ORDER BY item_count DESC,label""", (index_id, dimension)).fetchall()
+        index_id = self._breakdown_index_id(connection, dimension)
+        rows = self._all_breakdown_rows(connection, index_id, dimension)
         return [DatabaseCount(label=row[0], count=row[1]) for row in rows]
+
+    def _breakdown_metadata(self, connection, dimension, index_id):
+        if dimension in ARCHIVE_BREAKDOWN_DIMENSIONS:
+            _, metadata = self.archive_summary(connection)
+            return metadata
+        _, metadata = self.index_summary(connection, index_id)
+        return metadata
+
+    def _breakdown_index_id(self, connection, dimension) -> Optional[str]:
+        if dimension in ARCHIVE_BREAKDOWN_DIMENSIONS:
+            return None
+        return self.active_index_id(connection)
 
     @staticmethod
     def active_index_id(connection) -> Optional[str]:
@@ -135,6 +145,12 @@ class PostgresReadModelReader:
 
     @staticmethod
     def _breakdown_rows(connection, index_id, dimension, limit, offset):
+        if dimension in ARCHIVE_BREAKDOWN_DIMENSIONS:
+            return connection.execute("""SELECT label,item_count,COUNT(*) OVER()
+                FROM archive_breakdown_read_model WHERE dimension=%s
+                ORDER BY item_count DESC,label,row_key LIMIT %s OFFSET %s""",
+                (dimension, limit, offset),
+            ).fetchall()
         if not index_id:
             return []
         return connection.execute("""SELECT label,item_count,
@@ -143,6 +159,19 @@ class PostgresReadModelReader:
             ORDER BY item_count DESC,label LIMIT %s OFFSET %s""",
             (index_id, dimension, limit, offset),
         ).fetchall()
+
+    @staticmethod
+    def _all_breakdown_rows(connection, index_id, dimension):
+        if dimension in ARCHIVE_BREAKDOWN_DIMENSIONS:
+            return connection.execute("""SELECT label,item_count
+                FROM archive_breakdown_read_model WHERE dimension=%s
+                ORDER BY item_count DESC,label,row_key""", (dimension,)).fetchall()
+        if not index_id:
+            return []
+        return connection.execute("""SELECT label,item_count
+            FROM database_breakdown_read_model
+            WHERE embedding_index_id=%s AND dimension=%s
+            ORDER BY item_count DESC,label""", (index_id, dimension)).fetchall()
 
     @staticmethod
     def _empty_archive() -> dict:

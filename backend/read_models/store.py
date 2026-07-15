@@ -72,6 +72,7 @@ class PostgresReadModelStore:
     def reset(self, connection) -> None:
         self._ensure_index_states(connection)
         connection.execute("DELETE FROM chat_scope_read_model")
+        connection.execute("DELETE FROM archive_breakdown_read_model")
         connection.execute("DELETE FROM database_breakdown_read_model")
         connection.execute("DELETE FROM embedding_index_read_summary")
         connection.execute("""INSERT INTO workspace_read_summary
@@ -128,8 +129,15 @@ class PostgresReadModelStore:
     def _queue_outdated_schema(connection) -> None:
         connection.execute(
             """UPDATE read_model_refresh_state SET schema_version=%s,
-               requested_revision=requested_revision+1,status='queued',
-               requested_at=NOW()-INTERVAL '5 seconds',next_attempt_at=NOW(),
-               last_error=NULL WHERE schema_version<>%s""",
+               requested_revision=requested_revision+1,published_revision=0,
+               status='queued',requested_at=NOW()-INTERVAL '5 seconds',
+               next_attempt_at=NOW(),generated_at=NULL,lease_owner=NULL,
+               lease_expires_at=NULL,last_error=NULL
+               WHERE schema_version<>%s AND projection_kind='archive'""",
+            (READ_MODEL_SCHEMA_VERSION, READ_MODEL_SCHEMA_VERSION),
+        )
+        connection.execute(
+            """UPDATE read_model_refresh_state SET schema_version=%s
+               WHERE schema_version<>%s AND projection_kind='index'""",
             (READ_MODEL_SCHEMA_VERSION, READ_MODEL_SCHEMA_VERSION),
         )

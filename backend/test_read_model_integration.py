@@ -39,6 +39,7 @@ def test_backfill_invalidation_failure_and_atomic_empty_reset() -> None:
         assert summary["raw_message_count"] == 2
         assert summary["pending_message_count"] == 2
         assert metadata.ready and not metadata.stale
+        assert_breakdowns_count_raw_messages(database_dsn)
 
         repository.store_messages(session.session_id, [message("one", "edited")])
         _summary, stale_metadata = read_active_summary(database_dsn)
@@ -92,6 +93,15 @@ def run_every_refresh(database_dsn) -> None:
 def read_active_summary(database_dsn):
     with psycopg.connect(database_dsn) as connection:
         return PostgresReadModelReader(database_dsn).active_summary(connection)
+
+
+def assert_breakdowns_count_raw_messages(database_dsn) -> None:
+    with psycopg.connect(database_dsn) as connection:
+        reader = PostgresReadModelReader(database_dsn)
+        authors = reader.breakdown_page(connection, "authors", 50, 0)
+        channels = reader.breakdown_page(connection, "channels", 50, 0)
+    assert [(item.label, item.count) for item in authors.items] == [("Ada", 2)]
+    assert [(item.label, item.count) for item in channels.items] == [("Read model", 2)]
 
 
 def message(identifier: str, content: str = "original") -> NormalizedMessage:
