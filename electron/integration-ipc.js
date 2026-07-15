@@ -45,6 +45,9 @@ class IntegrationIpcController {
   botApi() {
     return {
       createSession: (context) => this.postJson("/ingestion/sessions", context),
+      getSession: (sessionId) => this.getJson(
+        `/ingestion/sessions/${encodeURIComponent(sessionId)}`,
+      ),
       importMessages: (sessionId, messages) => this.importMessageBatches(sessionId, messages),
       finishSession: (sessionId, reason) =>
         this.postJson(`/ingestion/sessions/${sessionId}/finish`, { reason }),

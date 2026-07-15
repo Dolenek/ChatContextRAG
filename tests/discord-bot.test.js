@@ -47,6 +47,7 @@ test("interrupted backfill resumes the same durable session from its oldest curs
   const imports = [];
   const savedStates = [];
   const finished = [];
+  const checkedSessions = [];
   const message = {
     id: "100", content: "older", attachments: new Map(), embeds: [],
     author: { username: "Ada" }, createdAt: new Date("2026-07-01T10:00:00Z"),
@@ -62,6 +63,10 @@ test("interrupted backfill resumes the same durable session from its oldest curs
     },
   };
   const synchronizer = new DiscordBotChannelSynchronizer({
+    getSession: async (sessionId) => {
+      checkedSessions.push(sessionId);
+      return { session_id: sessionId, status: "running" };
+    },
     createSession: async () => { throw new Error("must reuse active session"); },
     importMessages: async (sessionId, messages) => imports.push([sessionId, messages]),
     finishSession: async (sessionId, reason) => {
@@ -77,9 +82,58 @@ test("interrupted backfill resumes the same durable session from its oldest curs
     backfill_complete: false, tracking_enabled: true,
   });
 
+  assert.deepEqual(checkedSessions, ["session-before-crash"]);
   assert.equal(imports[0][0], "session-before-crash");
   assert.deepEqual(finished[0], ["session-before-crash", "completed"]);
   assert.equal(result.state.oldest_cursor, "100");
   assert.equal(result.state.active_session_id, null);
   assert.equal(savedStates.at(-1).backfill_complete, true);
+});
+
+test("stopped durable session is replaced before history resumes", async () => {
+  const importedSessions = [];
+  const savedStates = [];
+  const channel = {
+    id: "20", name: "general", guildId: "10", guild: { name: "Server" },
+    messages: { fetch: async () => new Map() },
+  };
+  const synchronizer = new DiscordBotChannelSynchronizer({
+    getSession: async (sessionId) => ({ session_id: sessionId, status: "stopped" }),
+    createSession: async () => ({ session_id: "replacement-session" }),
+    importMessages: async (sessionId) => importedSessions.push(sessionId),
+    finishSession: async () => ({ indexing_job_id: "job-2" }),
+    saveState: async (state) => { savedStates.push(state); return state; },
+  });
+
+  const result = await synchronizer.syncHistory(channel, {
+    source_type: "discord", conversation_id: "20", oldest_cursor: "200",
+    active_session_id: "stopped-session", backfill_complete: false,
+  });
+
+  assert.equal(savedStates[0].active_session_id, null);
+  assert.equal(savedStates[1].active_session_id, "replacement-session");
+  assert.equal(result.state.active_session_id, null);
+  assert.deepEqual(importedSessions, []);
+});
+
+test("missing durable session is replaced before synchronization", async () => {
+  const savedStates = [];
+  const synchronizer = new DiscordBotChannelSynchronizer({
+    getSession: async () => {
+      const missingSession = new Error("not found");
+      missingSession.statusCode = 404;
+      throw missingSession;
+    },
+    createSession: async () => ({ session_id: "replacement-session" }),
+    saveState: async (state) => { savedStates.push(state); return state; },
+  });
+
+  const result = await synchronizer.openSession({ conversation_id: "20" }, {
+    conversation_id: "20", active_session_id: "missing-session",
+  });
+
+  assert.deepEqual(savedStates.map((state) => state.active_session_id), [
+    null, "replacement-session",
+  ]);
+  assert.equal(result.session.session_id, "replacement-session");
 });

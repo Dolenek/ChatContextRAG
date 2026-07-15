@@ -130,11 +130,14 @@ the selected workspace.
 The first `sync` walks the complete accessible channel history in 100-message
 pages. Durable sync state stores the oldest and newest cursors, backfill state,
 tracking state, active ingestion session, and the last error. An interrupted
-backfill resumes from its oldest cursor in the same durable ingestion session;
-already committed pages are deduplicated and the final per-index jobs cover the
-complete scan. Startup catches up from the newest cursor before listening for live
-message create and update events. Discord deletes are intentionally ignored,
-because the local database is an archive.
+backfill resumes from its oldest cursor. It reuses the durable ingestion session
+only while the backend reports that session as running; a stopped, completed, or
+missing session is cleared and replaced. Serialized state updates prevent a
+catch-up error from restoring an invalid session ID. Already committed pages are
+deduplicated and the final per-index jobs cover the complete scan. Startup catches
+up from the newest cursor before listening for live message create and update
+events. Discord deletes are intentionally ignored, because the local database is
+an archive.
 
 Live synchronization events are deduplicated by Discord message ID and flushed after 30
 seconds of inactivity, after a hard 60-second limit, or at 100 messages. Each

@@ -157,7 +157,9 @@ class DiscordBotController {
         const result = await this.synchronizer.catchUp(channel, state);
         this.states.set(state.conversation_id, result.state);
       } catch (error) {
-        await this.saveState({ ...state, last_error: error.message });
+        await this.stateStore.update(state.conversation_id, (current) => ({
+          ...current, last_error: error.message,
+        }));
       }
     }
   }

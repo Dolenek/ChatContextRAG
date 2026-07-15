@@ -13,9 +13,19 @@ class DiscordBotStateStore {
   }
 
   save(state) {
-    const channelId = state.conversation_id;
+    return this.enqueue(state.conversation_id, () => this.persist(state));
+  }
+
+  update(channelId, transform) {
+    return this.enqueue(channelId, () => {
+      const current = this.states.get(channelId);
+      return current ? this.persist(transform(current)) : null;
+    });
+  }
+
+  enqueue(channelId, operation) {
     const previousWrite = this.writeQueues.get(channelId) || Promise.resolve();
-    const nextWrite = previousWrite.catch(() => {}).then(() => this.persist(state));
+    const nextWrite = previousWrite.catch(() => {}).then(operation);
     this.writeQueues.set(channelId, nextWrite);
     nextWrite.then(
       () => this.clearWrite(channelId, nextWrite),

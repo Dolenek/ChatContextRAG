@@ -15,6 +15,9 @@ class DiscordService {
   botApi() {
     return {
       createSession: (context) => this.backend.post("/ingestion/sessions", context),
+      getSession: (sessionId) => this.backend.get(
+        `/ingestion/sessions/${encodeURIComponent(sessionId)}`,
+      ),
       importMessages: (sessionId, messages) => this.importBatches(sessionId, messages),
       finishSession: (sessionId, reason) => this.finishSession(sessionId, reason),
       listSyncStates: (sourceType) => this.backend.get(

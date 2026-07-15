@@ -77,11 +77,15 @@ only on the runtime cache. Per-room state writes are serialized, so a sync that
 finishes after `stop` cannot re-enable tracking; a later explicit `sync` can
 enable it again.
 
-Interrupted history import resumes its durable ingestion session from the last
-committed page. Startup catches up from the newest stored cursor. Live updates
-are deduplicated by Discord message ID and close ordinary ingestion sessions so
-ready auto-sync indexes receive durable indexing jobs. Discord deletions are not
-propagated because PostgreSQL is an archive.
+Interrupted history import resumes from the last committed page. Before reusing
+the stored ingestion session, the bot confirms that the backend still reports it
+as running. A stopped, completed, or missing session is cleared and replaced so
+the saved cursor can continue safely. Catch-up errors update the latest serialized
+channel state and cannot restore an invalid session ID. Startup catches up from
+the newest stored cursor. Live updates are deduplicated by Discord message ID and
+close ordinary ingestion sessions so ready auto-sync indexes receive durable
+indexing jobs. Discord deletions are not propagated because PostgreSQL is an
+archive.
 
 ## Question trigger and admission
 

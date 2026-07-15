@@ -18,6 +18,7 @@ test("Discord settings and history paths are shared by local and web transports"
   local.patchJson = async (url, body) => calls.push(["PATCH", url, body]);
   const api = local.botApi();
 
+  api.getSession("session/id");
   api.getDiscordBotSettings();
   api.updateDiscordBotModel({ chat_model: "gpt" });
   api.updateDiscordGuildPermissions({ guild_id: "guild/id" });
@@ -25,13 +26,14 @@ test("Discord settings and history paths are shared by local and web transports"
   api.recordDiscordAnswerDelivery("answer/id", { message_ids: ["1"] });
 
   assert.deepEqual(calls.map((call) => call.slice(0, 2)), [
+    ["GET", "/ingestion/sessions/session%2Fid"],
     ["GET", "/integrations/discord-bot/settings"],
     ["PUT", "/integrations/discord-bot/settings/model"],
     ["PUT", "/integrations/discord-bot/guilds/guild%2Fid/permissions"],
     ["POST", "/integrations/discord-bot/answers"],
     ["PATCH", "/integrations/discord-bot/answers/answer%2Fid/delivery"],
   ]);
-  assert.equal(calls[3][3].timeoutMs, 130_000);
+  assert.equal(calls[4][3].timeoutMs, 130_000);
   assert.equal(historyQuery({ limit: 10, guildId: "10", channelId: "20" }),
     webHistoryQuery({ limit: 10, guildId: "10", channelId: "20" }));
 });

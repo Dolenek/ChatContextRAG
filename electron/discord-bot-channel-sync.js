@@ -3,6 +3,7 @@ const { discordChannelContext, discordMessageToInput } = require("./discord-bot-
 class DiscordBotChannelSynchronizer {
   constructor(options) {
     this.createSession = options.createSession;
+    this.getSession = options.getSession;
     this.importMessages = options.importMessages;
     this.finishSession = options.finishSession;
     this.saveState = options.saveState;
@@ -91,13 +92,28 @@ class DiscordBotChannelSynchronizer {
 
   async openSession(context, state) {
     if (state.active_session_id) {
-      return { session: { session_id: state.active_session_id }, state };
+      const activeSession = await this.loadSession(state.active_session_id);
+      if (activeSession.status === "running") {
+        return { session: { session_id: state.active_session_id }, state };
+      }
+      state = await this.saveState({
+        ...state, active_session_id: null,
+        last_error: `Předchozí ingestion session byla ${activeSession.status}.`,
+      });
     }
     const session = await this.createSession(context);
     const savedState = await this.saveState({
       ...state, active_session_id: session.session_id, last_error: null,
     });
     return { session, state: savedState };
+  }
+
+  async loadSession(sessionId) {
+    try { return await this.getSession(sessionId); }
+    catch (error) {
+      if (error.statusCode === 404) return { status: "missing" };
+      throw error;
+    }
   }
 }
 

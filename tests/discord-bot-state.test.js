@@ -59,6 +59,33 @@ test("Discord state writes cannot re-enable a channel after stop", async () => {
   assert.equal((await controller.refreshState("20")).tracking_enabled, false);
 });
 
+test("background catch-up error preserves the synchronizer's cleared session", async () => {
+  const persisted = [];
+  const controller = createController({
+    saveSyncState: async (state) => {
+      persisted.push({ ...state });
+      return { ...state };
+    },
+  });
+  const staleState = {
+    conversation_id: "20", source_type: "discord", tracking_enabled: true,
+    active_session_id: "stopped-session", backfill_complete: false,
+  };
+  controller.states.set("20", staleState);
+  controller.client = { channels: { fetch: async () => ({ isTextBased: () => true }) } };
+  controller.synchronizer.catchUp = async () => {
+    await controller.saveState({
+      ...staleState, active_session_id: null, last_error: "session stopped",
+    });
+    throw new Error("session stopped");
+  };
+
+  await controller.catchUpTrackedChannels();
+
+  assert.equal(persisted.at(-1).active_session_id, null);
+  assert.equal(controller.states.get("20").active_session_id, null);
+});
+
 test("Discord status refresh loads durable archive counts", async () => {
   const persisted = {
     conversation_id: "20", source_type: "discord", tracking_enabled: true,
