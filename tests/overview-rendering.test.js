@@ -17,6 +17,9 @@ test("overview exposes the compact dashboard structure and responsive styles", (
   assert.match(html, /Model<\/span><span>Chunky/);
   assert.match(html, /ID<\/span><span>Obsah<\/span><span>Uloženo/);
   assert.match(stylesheet, /overview-archive-banner::after/);
+  assert.match(stylesheet, /--overview-metric-row-height: 22px/);
+  assert.match(stylesheet, /min-height: var\(--overview-metric-row-height\)/);
+  assert.match(stylesheet, /font-size: var\(--overview-font-body\)/);
   assert.match(stylesheet, /@media \(max-width: 850px\)/);
   assert.match(stylesheet, /repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(stylesheet, /@media \(max-width: 520px\)/);

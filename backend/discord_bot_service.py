@@ -171,6 +171,10 @@ class DiscordBotService:
             evidence_character_limit=model.evidence_character_limit,
         )
         answer, sources, activities = orchestrator.answer_with_activity(chat_request)
+        warnings.extend(
+            activity.error_code for activity in activities
+            if activity.status == "failed" and activity.error_code
+        )
         return answer, sources, activities, warnings
 
     def _search_chunks(self, query: str, request):

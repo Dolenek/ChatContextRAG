@@ -119,7 +119,9 @@ detail uses a bounded scrolling table with compact IDs, single-line content,
 and `updated_at` as its stored timestamp. Its cursor action appends the next 50
 rows and updates the displayed-versus-total label.
 
-Summary rows, their SVG nodes, progress elements, and indexing-job rows are
+Metric and breakdown rows use body-sized labels and a 22 px minimum vertical
+rhythm so names and values remain legible in the compact cards. Summary rows,
+their SVG nodes, progress elements, and indexing-job rows are
 created once and reconciled in place, preserving identity, focus, and the last
 visible snapshot during requests. A subtle banner label announces an initial,
 stale, refreshing, failed, or current projection without clearing values.
@@ -132,8 +134,9 @@ is available only in Electron. Its Remote selection is labeled **Vzdálený Chat
 Context server** and reveals the server URL and desktop API token fields; the
 Local selection keeps those fields hidden. The Discord bot item in **Sources and imports** is a
 shortcut to that settings section; there is no duplicate connector drawer. Its
-answer-history dialog traps focus, returns focus to its opener, and renders audit
-values as text. The complete surface is documented in
+answer-history action closes Settings before showing the history dialog, so only
+one modal and focus trap remain active. The history dialog returns focus to the
+Settings launcher and renders audit values as text. The complete surface is documented in
 [Discord bot](discord-bot.md). The workspace section also provides a searchable IANA
 timezone field shared by web, Electron Local, and Electron Remote. Web retains
 this Workspace section while omitting only the desktop connection-target card.

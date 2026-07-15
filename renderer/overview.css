@@ -3,6 +3,7 @@
   --overview-font-small: 11px;
   --overview-font-body: 12px;
   --overview-font-heading: 14px;
+  --overview-metric-row-height: 22px;
   padding: 0 clamp(10px, 1.5vw, 20px) 8px;
   background: radial-gradient(circle at 45% -10%, rgba(108, 103, 245, 0.08), transparent 36%);
 }
@@ -118,13 +119,14 @@
 .overview-metric-heading { justify-content: flex-start; }
 .overview-summary-rows { padding-top: 3px; }
 .overview-summary-row {
-  min-height: 17px;
+  min-height: var(--overview-metric-row-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   color: var(--muted-strong);
-  font-size: var(--overview-font-small);
+  font-size: var(--overview-font-body);
+  line-height: 1.4;
 }
 .overview-summary-label { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .overview-summary-label > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -164,14 +166,15 @@
 .overview-count-header > span:last-child { text-align: right; }
 .overview-count-list { max-height: 108px; gap: 0; overflow: auto; padding: 0; }
 .count-list > .overview-count-row {
-  min-height: 15px;
+  min-height: var(--overview-metric-row-height);
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid rgba(151, 164, 201, 0.07);
   color: var(--muted-strong);
-  font-size: var(--overview-font-small);
+  font-size: var(--overview-font-body);
+  line-height: 1.4;
 }
 .overview-count-row:last-child { border-bottom: 0; }
 .overview-count-rank { color: #a5adbe; font-size: var(--overview-font-caption); }

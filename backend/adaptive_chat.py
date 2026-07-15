@@ -111,6 +111,16 @@ class AdaptiveChatOrchestrator:
         except (ValidationError, ValueError):
             self.recorder.skip(call.name, "invalid_arguments")
             return self._error_output(call, "invalid_arguments")
+        except ExternalIntegrationError:
+            if not self.allow_general_knowledge:
+                raise
+            return self._error_output(call, self._optional_failure_code(call.name))
+
+    @staticmethod
+    def _optional_failure_code(tool_name: str) -> str:
+        if tool_name == CONTEXT_TOOL.name:
+            return "archive_context_failed"
+        return "archive_tool_failed"
 
     def _search_output(self, call, registry, deadline) -> AgentToolOutput:
         self._check_deadline(deadline)

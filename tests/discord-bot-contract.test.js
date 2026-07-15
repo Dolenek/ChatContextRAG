@@ -94,6 +94,8 @@ test("Discord settings replaces the source drawer with focused settings modules"
   assert.match(read("web/discord-router.js"), /discord-bot\/resume/);
   assert.match(history, /recent_context/);
   assert.match(history, /tool_activity/);
+  assert.match(history, /settingsOverlay\?\.isOpen\(\)/);
+  assert.match(history, /settingsOverlay\.close\(\)/);
   assert.match(history, /returnFocus\?\.focus/);
 });
 

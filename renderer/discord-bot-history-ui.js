@@ -44,12 +44,17 @@ window.discordBotHistoryUi = (() => {
   }
 
   async function open(guildId = null) {
+    closeSettingsOverlay();
     returnFocus = document.activeElement;
     renderGuildOptions(guildId);
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     find("close-discord-history").focus();
     await loadPage(0);
+  }
+
+  function closeSettingsOverlay() {
+    if (window.settingsOverlay?.isOpen()) window.settingsOverlay.close();
   }
 
   function close() {

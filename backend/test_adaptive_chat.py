@@ -51,6 +51,12 @@ class FakeArchiveTools:
         return self.context_results
 
 
+class FailingContextTools(FakeArchiveTools):
+    def read_context(self, anchor, before_count, after_count, time_range=None):
+        self.actions.append(("context", anchor.source_message_ids[0]))
+        raise ExternalIntegrationError("PostgreSQL context read failed.")
+
+
 def source(message_id, content, origin="search", score=0.8):
     return ChatSource(
         author="Alice", content=content,
@@ -150,6 +156,41 @@ def test_context_and_refined_search_run_in_received_order_then_tools_stop():
     third_tools, third_choice, outputs = provider.session.requests[2]
     assert third_tools == [] and third_choice is None and len(outputs) == 2
     assert [item.evidence_origin for item in sources] == ["search", "context", "search"]
+
+
+def test_discord_policy_recovers_from_optional_context_integration_failure():
+    initial = source("m1", "Initial hit")
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_archive", {"query": "initial"})]),
+        AgentTurn("", [call("context", "read_message_context", {
+            "evidence_id": "E1", "before_count": 1, "after_count": 1,
+        })]),
+        AgentTurn("Evidence is insufficient.", []),
+    ])
+
+    answer, _sources, activity = AdaptiveChatOrchestrator(
+        provider, FailingContextTools({"initial": [initial]}),
+        allow_general_knowledge=True,
+    ).answer_with_activity(adaptive_request())
+
+    tool_error = json.loads(provider.session.requests[2][2][0].output)
+    assert answer == "Evidence is insufficient."
+    assert tool_error["error"] == "archive_context_failed"
+    assert activity[1].status == "failed"
+    assert activity[1].error_code == "archive_context_failed"
+
+
+def test_application_policy_keeps_optional_context_failures_strict():
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_archive", {"query": "initial"})]),
+        AgentTurn("", [call("context", "read_message_context", {
+            "evidence_id": "E1", "before_count": 1, "after_count": 1,
+        })]),
+    ])
+    tools = FailingContextTools({"initial": [source("m1", "Initial hit")]})
+
+    with pytest.raises(ExternalIntegrationError, match="context read failed"):
+        AdaptiveChatOrchestrator(provider, tools).answer(adaptive_request())
 
 
 def test_context_inherits_search_dates_and_audit_records_normalized_range():

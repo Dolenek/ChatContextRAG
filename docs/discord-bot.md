@@ -130,6 +130,11 @@ When no room evidence is relevant, the bot answers from the selected model's
 general knowledge without a prefix, badge, or fallback announcement. Evidence
 that was found but not cited remains visible in the audit as unused. A response
 without a valid linkable citation is internally classified as general knowledge.
+If an optional adaptive context read hits a known database integration failure,
+the model receives a bounded tool error and may still complete the response. The
+audit retains the failed tool step and an `archive_context_failed` warning instead
+of recording the whole answer as failed. Required application-chat retrieval
+remains strict.
 
 This fallback policy belongs only to the Discord bot. `POST /chat` and the
 application composer remain strictly archive-grounded as documented in
@@ -152,7 +157,8 @@ parts already sent, and adds a safe warning without storing Discord payloads.
 
 ## Answer history and deletion
 
-**Show answer history** opens a newest-first paginated audit. It can filter by
+**Show answer history** closes the Settings modal before it opens a newest-first
+paginated audit, preventing overlapping modal focus traps. It can filter by
 guild and room. The detail contains the question and answer, author and trigger,
 model configuration, immutable recent snapshot, all found and cited evidence,
 normalized match scores, bounded tool activity, safe warnings and errors, and
