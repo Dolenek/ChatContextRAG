@@ -1,12 +1,13 @@
-<p align="center">
-  <img src="docs/images/branding/chat-context-wordmark.png" alt="Chat Context" width="720">
-</p>
-
-# Chat Context
-
-A self-hosted web and desktop application for archiving conversations and answering questions with traceable grounding in their content.
-
-[České README](README.md) · [Documentation](docs/architecture.md) · [Public API](docs/api.md)
+<div align="center">
+  <img src="docs/images/branding/chat-context-wordmark.png" alt="Chat Context" width="420">
+  <h1>Chat Context</h1>
+  <p>A self-hosted web and desktop application for archiving conversations and answering questions with traceable grounding in their content.</p>
+  <p>
+    <a href="README.md">České README</a> ·
+    <a href="docs/architecture.md">Documentation</a> ·
+    <a href="docs/api.md">Public API</a>
+  </p>
+</div>
 
 ## Screenshot
 
