@@ -47,6 +47,8 @@ class PostgresHybridRetrieval:
         try:
             with self._connect() as connection:
                 connection.execute("SET LOCAL statement_timeout='10s'")
+                if scope or time_range:
+                    connection.execute("SET LOCAL hnsw.iterative_scan='strict_order'")
                 vector_rows = connection.execute(
                     vector_search_sql(embedding_index_id, dimensions),
                     vector_parameters(query_embedding, scope, time_range),

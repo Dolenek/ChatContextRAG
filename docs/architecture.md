@@ -245,6 +245,8 @@ lifecycle state. Chunks, source links, staging rows, and jobs carry an
 spaces. Embeddings use an unbounded `halfvec` column; every configuration gets
 its own dimension cast and partial HNSW index. A rebuild keeps the published
 generation searchable until its complete staged generation commits.
+Filtered HNSW retrieval uses strict iterative scanning so source and calendar
+constraints do not exhaust the initial approximate candidate window.
 
 When a session includes an edited or overlapping message, the job snapshot also
 includes all messages from affected published chunks. The combined boundary is

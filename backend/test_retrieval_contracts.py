@@ -76,6 +76,28 @@ def test_hybrid_search_rejects_dimensions_outside_pgvector_limit() -> None:
     assert schema_calls == [True]
 
 
+def test_filtered_hybrid_search_enables_iterative_hnsw_scan(monkeypatch) -> None:
+    connection = RecordingSearchConnection()
+    retrieval = PostgresHybridRetrieval("unused", lambda: None)
+    retrieval._connect = lambda: connection
+    monkeypatch.setattr("backend.hybrid_retrieval.register_vector", lambda _connection: None)
+    time_range = resolve_archive_time_range(
+        datetime(2026, 6, 10).date(), datetime(2026, 6, 17).date(), "UTC",
+    )
+
+    results = retrieval.search(
+        "query", [0.1, 0.2], 8,
+        ChatScope(source_type="discord", conversation_id="cirkus"),
+        time_range=time_range, dimensions=2,
+    )
+
+    assert results == []
+    assert connection.queries[:2] == [
+        "SET LOCAL statement_timeout='10s'",
+        "SET LOCAL hnsw.iterative_scan='strict_order'",
+    ]
+
+
 def test_neighbor_context_keeps_only_the_anchor_time_segment() -> None:
     started = datetime(2026, 7, 13, 8, tzinfo=timezone.utc)
     rows = [
@@ -181,3 +203,18 @@ class FakeConnection:
     def execute(self, _query, parameters=None):
         assert parameters
         return FakeResult(self.rows)
+
+
+class RecordingSearchConnection:
+    def __init__(self) -> None:
+        self.queries = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def execute(self, query, parameters=None):
+        self.queries.append(query)
+        return FakeResult([])

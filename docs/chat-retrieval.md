@@ -82,7 +82,10 @@ at most eight temporal buckets. The best reciprocal-rank candidate from each
 non-empty bucket is selected first, then remaining positions are filled by the
 global score. The model still receives at most eight chunks and 48 unique
 messages. Time-aware chunk and canonical-message indexes support these filters;
-retrieval and context statements retain their 10-second timeout.
+retrieval and context statements retain their 10-second timeout. Vector searches
+with a source or calendar filter enable pgvector's strict iterative HNSW scan, so
+the graph traversal continues past globally close rows rejected by server-owned
+filters instead of incorrectly returning an empty candidate set.
 
 ## Evidence and security
 
