@@ -121,6 +121,28 @@ index completion, active-index changes, and chat mutations invalidate their
 affected resources. Cached labels and titles are never persisted to browser
 storage. Concurrent requests for the same resource share one in-flight promise.
 
+Renderer mutations use a shared hybrid interaction policy. Reversible local
+metadata changes—chat-model rows and edits, chat titles, the default model,
+workspace timezone, provider metadata, Discord model settings, auto-sync, and
+the active embedding index—are projected synchronously and rolled back from an
+exact snapshot when the authoritative request fails. Model rows stay out of the
+global selector until the server confirms them. Destructive or external work,
+including deletes, secrets, connection tests and targets, bot lifecycle,
+imports, migrations, and indexing actions, keeps authoritative data unchanged
+while the related row or control alone shows a pending label. Confirmations and
+progress events remain authoritative; the Settings overlay is never globally
+disabled.
+
+The internal `window.interactionCoordinator` supplies two primitives.
+`runLatest` assigns a revision to a keyed read and lets only its newest response
+or error reach the DOM. `runMutation` applies local state synchronously, blocks
+duplicate work for the same key, manages related pending controls, and performs
+commit or exact rollback. A successful mutation updates local state and the
+workspace cache before starting reconciliation in the background. A failed
+reconciliation invalidates the cache and reports a nonblocking warning; it does
+not undo the confirmed mutation. Settings refreshes are revisioned so an older
+server snapshot cannot replace a newer local commit.
+
 Embedded Discord forces the 72 px rail, locks open the 320 px import drawer, and
 starts its `BrowserView` 82 px below the top edge and 392 px from the left. This
 keeps import controls visible while Discord runs in its persistent isolated

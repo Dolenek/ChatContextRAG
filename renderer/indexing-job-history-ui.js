@@ -47,16 +47,25 @@ window.indexingJobHistoryUi = (() => {
     button.type = "button";
     button.className = "settings-action";
     button.textContent = "Spustit znovu";
-    button.addEventListener("click", () => retryJob(jobId));
+    button.addEventListener("click", () => retryJob(jobId, button));
     return button;
   }
 
-  async function retryJob(jobId) {
+  async function retryJob(jobId, button) {
     try {
-      const job = await window.chatContext.retryIndexingJob(jobId);
-      window.indexingControls.applyProgress(job);
-      await refreshSettings();
-      showToast("Indexovací úloha byla znovu zařazena.");
+      await window.interactionCoordinator.runMutation({
+        key: `retry-indexing-job:${jobId}`,
+        controls: [{ element: button, pendingText: "Zařazuji…" }],
+        execute: () => window.chatContext.retryIndexingJob(jobId),
+        commit: (job) => {
+          window.indexingControls.applyProgress(job);
+          showToast("Indexovací úloha byla znovu zařazena.");
+        },
+        reconcile: refreshSettings,
+        reconcileFailed: (error) => showToast(
+          `Úloha je zařazená, obnovení selhalo: ${error.message}`, true,
+        ),
+      });
     } catch (error) {
       showToast(error.message, true);
     }

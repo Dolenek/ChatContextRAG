@@ -26,20 +26,25 @@ window.modelSelector = (() => {
 
   async function prepare(providedSettings = null, force = false) {
     if (providedSettings) {
+      window.interactionCoordinator.supersede("model-selector-settings");
       window.workspaceCache.store("settings", providedSettings);
       applySettings(providedSettings);
       return;
     }
     const cached = window.workspaceCache.peek("settings");
     if (cached) applySettings(cached);
-    const request = window.workspaceCache.load(
-      "settings", window.chatContext.getSettings, 60000, force,
+    const request = window.interactionCoordinator.runLatest(
+      "model-selector-settings",
+      () => window.workspaceCache.load(
+        "settings", window.chatContext.getSettings, 60000, force,
+      ),
+      applySettings,
     );
     if (cached && !force) {
-      void request.then(applySettings).catch((error) => showToast(error.message, true));
+      void request.catch((error) => showToast(error.message, true));
       return;
     }
-    applySettings(await request);
+    await request;
   }
 
   function applySettings(nextSettings) {
@@ -190,29 +195,56 @@ window.modelSelector = (() => {
     button.append(copy, checkmark);
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      void selectModel(model);
+      void selectModel(model, button);
     });
     return button;
   }
 
-  async function selectModel(model) {
-    const previousSelection = selection;
-    const previousPreserveSessionSelection = preserveSessionSelection;
+  async function selectModel(model, button) {
+    try {
+      await window.interactionCoordinator.runMutation({
+        key: "chat-default", controls: [{ element: button, pendingText: "Ukládám…" }],
+        apply: () => projectSelection(model),
+        execute: () => window.chatContext.saveChatDefault(
+          selection.providerId, selection.model,
+        ),
+        commit: commitSelection,
+        rollback: restoreProjectedSelection,
+        reconcile: () => prepare(null, true),
+        reconcileFailed: (error) => {
+          window.workspaceCache.invalidate("settings");
+          showToast(`Model je uložený, obnovení selhalo: ${error.message}`, true);
+        },
+      });
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }
+
+  function projectSelection(model) {
+    const snapshot = { selection, preserveSessionSelection };
     selection = selectionFromModel(model);
     preserveSessionSelection = false;
     window.retrievalModeSelector.applyModel(selection);
     render();
     closeMenu();
-    try {
-      await window.chatContext.saveChatDefault(selection.providerId, selection.model);
-      if (settingsState) settingsState.chatDefaults = { ...selection };
-      resetConversation("novým modelem");
-    } catch (error) {
-      selection = previousSelection;
-      preserveSessionSelection = previousPreserveSessionSelection;
-      render();
-      showToast(error.message, true);
+    return snapshot;
+  }
+
+  function commitSelection() {
+    if (settingsState) {
+      window.interactionCoordinator.supersede("model-selector-settings");
+      settingsState = { ...settingsState, chatDefaults: { ...selection } };
+      window.workspaceCache.store("settings", settingsState);
     }
+    resetConversation("novým modelem");
+  }
+
+  function restoreProjectedSelection(snapshot) {
+    selection = snapshot.selection;
+    preserveSessionSelection = snapshot.preserveSessionSelection;
+    window.retrievalModeSelector.applyModel(selection);
+    render();
   }
 
   function updateChatAvailability() {

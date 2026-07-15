@@ -1,10 +1,10 @@
 window.workspaceTimezoneUi = (() => {
   let showToast = () => {};
-  let refreshSettings = async () => {};
+  let projectTimezone = () => null;
 
   function bind(dependencies) {
     showToast = dependencies.showToast;
-    refreshSettings = dependencies.refreshSettings;
+    projectTimezone = dependencies.projectTimezone;
     if (document.querySelector("#workspace-timezone-form")) return;
     const card = document.createElement("section");
     const heading = document.createElement("h3");
@@ -53,15 +53,19 @@ window.workspaceTimezoneUi = (() => {
 
   async function save(event) {
     event.preventDefault();
-    try {
-      await window.chatContext.updateWorkspaceSettings(
-        document.querySelector("#workspace-timezone").value,
-      );
-      await refreshSettings();
-      showToast("Časová zóna workspace byla uložena.");
-    } catch (error) {
-      showToast(error.message, true);
-    }
+    const timezoneInput = document.querySelector("#workspace-timezone");
+    const timezoneName = timezoneInput.value;
+    await window.settingsMutationUi.run({
+      key: "workspace-timezone", control: event.submitter,
+      pendingText: "Ukládám…", apply: () => projectTimezone(timezoneName),
+      execute: () => window.chatContext.updateWorkspaceSettings(timezoneName),
+      rollback: (previousTimezone) => {
+        projectTimezone(previousTimezone);
+        timezoneInput.value = previousTimezone;
+        timezoneInput.focus();
+      },
+      successMessage: "Časová zóna workspace byla uložena.",
+    });
   }
 
   function timezoneNames() {

@@ -13,7 +13,7 @@ class FakeElement {
     this.attributes = {};
     this.textContent = "";
     this.listeners = {};
-    this.classList = { contains: () => false };
+    this.classList = { contains: () => false, add: () => {}, remove: () => {} };
   }
 
   append(...children) {
@@ -30,6 +30,14 @@ class FakeElement {
 
   setAttribute(name, value) {
     this.attributes[name] = value;
+  }
+
+  getAttribute(name) {
+    return this.attributes[name] ?? null;
+  }
+
+  removeAttribute(name) {
+    delete this.attributes[name];
   }
 }
 
@@ -201,6 +209,9 @@ test("settings history keeps terminal jobs and can retry a cancelled job", async
       querySelector: () => container,
     },
   };
+  vm.runInNewContext(fs.readFileSync(
+    path.join(__dirname, "..", "renderer", "interaction-coordinator.js"), "utf8",
+  ), context);
   vm.runInNewContext(fs.readFileSync(
     path.join(__dirname, "..", "renderer", "indexing-job-history-ui.js"), "utf8",
   ), context);

@@ -91,6 +91,7 @@
     await performTargetAction(
       () => window.chatContext.testConnectionTarget(connectionInput()),
       "Připojení k serveru funguje.",
+      document.querySelector("#test-connection-button"), "Ověřuji…", "connection-test",
     );
   }
 
@@ -99,13 +100,16 @@
     await performTargetAction(
       () => window.chatContext.saveConnectionTarget(connectionInput()),
       "Cíl byl uložen, aplikace se restartuje.",
+      event.submitter, "Připojuji…", "connection-save",
     );
   }
 
-  async function performTargetAction(action, successMessage) {
+  async function performTargetAction(action, successMessage, control, pendingText, key) {
     try {
-      await action();
-      showToast(successMessage);
+      await window.interactionCoordinator.runMutation({
+        key, controls: [{ element: control, pendingText }],
+        execute: action, commit: () => showToast(successMessage),
+      });
     } catch (error) {
       showToast(error.message, true);
     }

@@ -1,9 +1,11 @@
 let indexingKeySettings = null;
 let refreshAllSettings = async () => {};
+let commitIndexingProvider = () => {};
 let showIndexingKeyToast = () => {};
 
 function bindIndexingApiKeyUi(dependencies) {
   refreshAllSettings = dependencies.refreshSettings;
+  commitIndexingProvider = dependencies.commitProvider || (() => {});
   showIndexingKeyToast = dependencies.showToast;
   document.querySelector("#indexing-api-key-form").addEventListener(
     "submit", saveIndexingApiKey,
@@ -43,12 +45,23 @@ async function saveIndexingApiKey(submitEvent) {
     return;
   }
   try {
-    await window.chatContext.saveProvider(providerKeyInput(provider));
-    document.querySelector("#indexing-api-key").value = "";
-    await refreshAllSettings();
-    showIndexingKeyToast(
-      `API klíč pro ${provider.name} byl uložen pro chat i indexing.`,
-    );
+    await window.interactionCoordinator.runMutation({
+      key: `provider-api-key:${providerId}`,
+      controls: [{ element: submitEvent.submitter, pendingText: "Ověřuji…" }],
+      execute: () => window.chatContext.saveProvider(providerKeyInput(provider)),
+      commit: (savedProvider) => {
+        commitIndexingProvider(savedProvider);
+        document.querySelector("#indexing-api-key").value = "";
+        showIndexingKeyToast(
+          `API klíč pro ${provider.name} byl uložen pro chat i indexing.`,
+        );
+      },
+      reconcile: refreshAllSettings,
+      reconcileFailed: (error) => {
+        window.workspaceCache.invalidate("settings");
+        showIndexingKeyToast(`Klíč je uložený, obnovení selhalo: ${error.message}`, true);
+      },
+    });
   } catch (error) { showIndexingKeyToast(error.message, true); }
 }
 

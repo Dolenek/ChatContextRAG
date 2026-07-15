@@ -5,19 +5,30 @@ let prepareSettingsOpen = async () => {};
 function bindSettingsUi(dependencies) {
   showSettingsToast = dependencies.showToast;
   prepareSettingsOpen = dependencies.prepareOpen;
+  window.settingsMutationUi.bind({
+    reconcile: () => refreshSettings({ silent: true }),
+    showToast: showSettingsToast,
+  });
+  window.settingsEntityActions.bind({ updateSettings });
+  window.settingsProviderProjection.bind({
+    getState: () => settingsState, updateSettings, resetForm: resetProviderForm,
+  });
   window.chatModelSettingsUi.bind({
-    loadSuggestions: loadChatModelSuggestions,
-    refreshSettings,
+    commitModel: commitChatModel,
+    deleteModel: commitDeletedChatModel,
+    loadSuggestions: window.settingsModelSuggestions.loadChat,
+    reconcileSettings: () => refreshSettings({ silent: true }),
     resetConversation: dependencies.resetConversation,
     showToast: showSettingsToast,
   });
   window.settingsOverlay.bind({ onClose: resetSettingsDrafts });
   window.workspaceTimezoneUi.bind({
-    refreshSettings, showToast: showSettingsToast,
+    projectTimezone: updateWorkspaceTimezone, showToast: showSettingsToast,
   });
   document.querySelector("#provider-form").addEventListener("submit", saveProvider);
   window.indexingApiKeyUi.bind({
-    refreshSettings, showToast: showSettingsToast,
+    refreshSettings, commitProvider: commitProviderProfile,
+    showToast: showSettingsToast,
   });
   window.indexingJobHistoryUi.bind({
     refreshSettings, showToast: showSettingsToast,
@@ -27,7 +38,7 @@ function bindSettingsUi(dependencies) {
   document.querySelector("#refresh-settings-button").addEventListener("click", refreshSettings);
   document.querySelector("#embedding-provider-select").addEventListener("change", loadEmbeddingModels);
   document.querySelector("#chat-model-provider-select").addEventListener(
-    "change", loadChatModelSuggestions,
+    "change", loadChatModelSuggestionsSafely,
   );
   window.connectionSettingsUi.bind({ showToast: showSettingsToast });
   window.discordBotSettingsUi.bind({ showToast: showSettingsToast });
@@ -40,40 +51,104 @@ async function openSettings(sectionName = "providers") {
   await Promise.all([window.connectionSettingsUi.refresh(), refreshSettings()]);
 }
 
-async function refreshSettings() {
+async function refreshSettings(options = {}) {
   try {
-    const indexingJobs = await loadSettingsState();
-    renderProviders();
-    window.indexingApiKeyUi.render(settingsState);
-    window.chatModelSettingsUi.render(settingsState);
-    window.workspaceTimezoneUi.render(settingsState.workspace);
-    renderIndexes();
-    window.indexingJobHistoryUi.render(indexingJobs);
-    fillProviderSelect("#embedding-provider-select");
-    fillProviderSelect("#chat-model-provider-select");
-    await Promise.all([loadEmbeddingModels(), loadChatModelSuggestions()]);
-    await window.modelSelector.prepare(settingsState);
-    await window.discordBotSettingsUi.refresh(settingsState);
+    return await window.interactionCoordinator.runLatest(
+      "settings-refresh", loadSettingsPayload, applySettingsPayload,
+    );
   } catch (error) {
+    if (options.silent) throw error;
     showSettingsToast(error.message, true);
   }
 }
 
-async function refreshIndexState() {
-  if (!window.settingsOverlay.isOpen()) return;
-  const indexingJobs = await loadSettingsState();
+async function applySettingsPayload(payload) {
+  commitSettingsState(payload.settings);
+  renderProviders();
+  window.indexingApiKeyUi.render(settingsState);
+  window.chatModelSettingsUi.render(settingsState);
+  window.workspaceTimezoneUi.render(settingsState.workspace);
   renderIndexes();
-  window.indexingJobHistoryUi.render(indexingJobs);
+  window.indexingJobHistoryUi.render(payload.indexingJobs);
+  fillProviderSelect("#embedding-provider-select");
+  fillProviderSelect("#chat-model-provider-select");
+  await Promise.all([
+    window.settingsModelSuggestions.loadEmbedding(),
+    window.settingsModelSuggestions.loadChat(),
+  ]);
+  await window.modelSelector.prepare(settingsState);
+  await window.discordBotSettingsUi.refresh(settingsState);
 }
 
-async function loadSettingsState() {
+function commitChatModel(savedModel, originalModel) {
+  if (!settingsState) return;
+  window.interactionCoordinator.supersede("settings-refresh");
+  window.interactionCoordinator.supersede("settings-index-refresh");
+  settingsState = {
+    ...settingsState,
+    chatModels: replaceChatModel(settingsState.chatModels || [], savedModel, originalModel),
+  };
+  window.workspaceCache.store("settings", settingsState);
+  window.chatModelSettingsUi.render(settingsState);
+  void window.modelSelector.prepare(settingsState);
+}
+
+function commitDeletedChatModel(deletedModel) {
+  if (!settingsState) return;
+  window.interactionCoordinator.supersede("settings-refresh");
+  settingsState = {
+    ...settingsState,
+    chatModels: settingsState.chatModels.filter(
+      (model) => modelIdentity(model) !== modelIdentity(deletedModel),
+    ),
+  };
+  window.workspaceCache.store("settings", settingsState);
+  window.chatModelSettingsUi.render(settingsState);
+  void window.modelSelector.prepare(settingsState);
+}
+
+function replaceChatModel(models, savedModel, originalModel) {
+  const originalKey = modelIdentity(originalModel || savedModel);
+  const targetKey = modelIdentity(savedModel);
+  const retained = models.filter((model) => {
+    const key = modelIdentity(model);
+    return key !== originalKey && key !== targetKey;
+  });
+  const originalIndex = models.findIndex((model) => modelIdentity(model) === originalKey);
+  const fallbackIndex = retained.findIndex((model) => !model.managed);
+  const insertionIndex = originalIndex >= 0
+    ? Math.min(originalIndex, retained.length)
+    : fallbackIndex >= 0 ? fallbackIndex : retained.length;
+  retained.splice(insertionIndex, 0, savedModel);
+  return retained;
+}
+
+function modelIdentity(model) {
+  return `${model.provider_id}\u0000${model.model}`;
+}
+
+async function refreshIndexState() {
+  if (!window.settingsOverlay.isOpen()) return;
+  await window.interactionCoordinator.runLatest(
+    "settings-index-refresh", loadSettingsPayload, (payload) => {
+      commitSettingsState(payload.settings);
+      renderIndexes();
+      window.indexingJobHistoryUi.render(payload.indexingJobs);
+    },
+  );
+}
+
+async function loadSettingsPayload() {
   const [nextSettings, status] = await Promise.all([
     window.chatContext.getSettings(),
     window.chatContext.getDatabaseStatus(),
   ]);
+  return { settings: nextSettings, indexingJobs: status.indexing_jobs || [] };
+}
+
+function commitSettingsState(nextSettings) {
   settingsState = nextSettings;
   window.workspaceCache.store("settings", nextSettings);
-  return status.indexing_jobs || [];
 }
 
 function renderProviders() {
@@ -85,15 +160,22 @@ function renderProviders() {
     const row = createSettingsRow(
       provider.name, `${provider.base_url} · ${provider.chat_api} · ${access}`,
     );
+    if (provider._pending) {
+      row.append(createDetail("Ukládám…"));
+      return row;
+    }
     if (provider.builtin) {
       row.append(actionButton(
         provider.has_api_key ? "Změnit API klíč" : "Nastavit klíč pro indexing",
         () => window.indexingApiKeyUi.select(provider.provider_id),
       ));
     } else {
+      const deleteButton = actionButton(
+        "Smazat", () => removeProvider(provider.provider_id, deleteButton), "danger-link",
+      );
       row.append(
         actionButton("Upravit", () => editProvider(provider)),
-        actionButton("Smazat", () => removeProvider(provider.provider_id), "danger-link"),
+        deleteButton,
       );
     }
     return row;
@@ -110,22 +192,34 @@ function renderIndexes() {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = index.auto_sync;
-    checkbox.addEventListener("change", () => updateAutoSync(index, checkbox.checked));
+    checkbox.addEventListener("change", () => updateAutoSync(index, checkbox));
     toggle.append(checkbox, document.createTextNode(" Auto-sync"));
     row.append(toggle);
     if (index.embedding_index_id !== activeId && index.status === "ready") {
-      row.append(actionButton("Aktivovat", () => activateIndex(index.embedding_index_id)));
+      const activateButton = actionButton(
+        "Aktivovat", () => activateIndex(index.embedding_index_id, activateButton),
+      );
+      row.append(activateButton);
     } else if (index.embedding_index_id === activeId) {
       row.classList.add("active-settings-row");
     }
     if (index.pending_message_count && !index.active_job_id) {
-      row.append(actionButton(`Sync ${index.pending_message_count}`, () => syncIndex(index)));
+      const syncButton = actionButton(
+        `Sync ${index.pending_message_count}`, () => syncIndex(index, syncButton),
+      );
+      row.append(syncButton);
     }
     if (!index.active_job_id) {
-      row.append(actionButton("Rebuild", () => rebuildIndex(index)));
+      const rebuildButton = actionButton(
+        "Rebuild", () => rebuildIndex(index, rebuildButton),
+      );
+      row.append(rebuildButton);
     }
     if (index.embedding_index_id !== activeId) {
-      row.append(actionButton("Smazat", () => removeIndex(index), "danger-link"));
+      const deleteButton = actionButton(
+        "Smazat", () => removeIndex(index, deleteButton), "danger-link",
+      );
+      row.append(deleteButton);
     }
     if (index.last_error && !index.active_job_id) {
       row.append(createDetail(index.last_error, "error-detail"));
@@ -137,36 +231,73 @@ function renderIndexes() {
 
 async function saveProvider(submitEvent) {
   submitEvent.preventDefault();
-  try {
-    await window.chatContext.saveProvider({
-      providerId: document.querySelector("#provider-id").value || undefined,
-      name: document.querySelector("#provider-name").value,
-      baseUrl: document.querySelector("#provider-base-url").value,
-      apiKey: document.querySelector("#provider-api-key").value,
-      chatApi: document.querySelector("#provider-chat-api").value,
-    });
-    resetProviderForm();
-    await refreshSettings();
-    showSettingsToast("Provider byl uložen.");
-  } catch (error) { showSettingsToast(error.message, true); }
+  const providerInput = window.settingsProviderProjection.readForm();
+  await window.settingsMutationUi.run({
+    key: `save-provider:${providerInput.providerId || "new"}`,
+    control: submitEvent.submitter, pendingText: "Ukládám…",
+    apply: () => window.settingsProviderProjection.projectPending(providerInput),
+    execute: () => window.chatContext.saveProvider(providerInput),
+    commit: window.settingsProviderProjection.commit,
+    rollback: window.settingsProviderProjection.rollback,
+    successMessage: "Provider byl uložen.",
+  });
 }
 
 async function createIndex(submitEvent) {
   submitEvent.preventDefault();
   const dimensionsValue = document.querySelector("#embedding-dimensions").value;
-  try {
-    const created = await window.chatContext.createEmbeddingIndex({
-      name: document.querySelector("#embedding-index-name").value,
-      provider_id: document.querySelector("#embedding-provider-select").value,
-      model: document.querySelector("#embedding-model-input").value,
-      requested_dimensions: dimensionsValue ? Number(dimensionsValue) : null,
-      auto_sync: document.querySelector("#embedding-auto-sync").checked,
-    });
-    submitEvent.target.reset();
-    window.overviewController.markDatabaseChanged();
-    await refreshSettings();
-    showSettingsToast(`Index ${created.name} byl vytvořen.`);
-  } catch (error) { showSettingsToast(error.message, true); }
+  const indexInput = {
+    name: document.querySelector("#embedding-index-name").value,
+    provider_id: document.querySelector("#embedding-provider-select").value,
+    model: document.querySelector("#embedding-model-input").value,
+    requested_dimensions: dimensionsValue ? Number(dimensionsValue) : null,
+    auto_sync: document.querySelector("#embedding-auto-sync").checked,
+  };
+  await window.settingsMutationUi.run({
+    key: "create-embedding-index", control: submitEvent.submitter,
+    pendingText: "Zařazuji…", execute: () => window.chatContext.createEmbeddingIndex(indexInput),
+    commit: (created) => commitCreatedIndex(created, submitEvent.target),
+    databaseChanged: () => window.overviewController.markDatabaseChanged(),
+    successMessage: (created) => `Index ${created.name} byl vytvořen.`,
+  });
+}
+
+function commitCreatedIndex(created, form) {
+  updateSettings((state) => ({ ...state, embeddings: {
+    ...state.embeddings,
+    indexes: [...state.embeddings.indexes.filter(
+      (index) => index.embedding_index_id !== created.embedding_index_id,
+    ), created],
+  } }));
+  form.reset();
+}
+
+function commitProviderProfile(savedProvider) {
+  updateSettings((state) => ({ ...state, providers: [
+    ...state.providers.filter(
+      (provider) => provider.provider_id !== savedProvider.provider_id,
+    ),
+    savedProvider,
+  ] }));
+}
+
+function updateSettings(project) {
+  const previousState = settingsState;
+  window.interactionCoordinator.supersede("settings-refresh");
+  settingsState = project(settingsState);
+  window.workspaceCache.store("settings", settingsState);
+  renderProviders();
+  renderIndexes();
+  void window.modelSelector?.prepare(settingsState);
+  return previousState;
+}
+
+function updateWorkspaceTimezone(timezoneName) {
+  const previousTimezone = settingsState.workspace.timezone_name;
+  updateSettings((state) => ({ ...state, workspace: {
+    ...state.workspace, timezone_name: timezoneName,
+  } }));
+  return previousTimezone;
 }
 
 function editProvider(provider) {
@@ -188,29 +319,12 @@ function resetSettingsDrafts() {
   document.querySelector("#provider-id").value = "";
   document.querySelector("#connection-token").value = "";
 }
-async function removeProvider(id) { await runAndRefresh(() => window.chatContext.deleteProvider(id), "Provider byl smazán."); }
-async function activateIndex(id) { await runAndRefresh(() => window.chatContext.activateEmbeddingIndex(id), "Aktivní index byl změněn."); }
-async function syncIndex(index) { await runAndRefresh(() => window.chatContext.syncEmbeddingIndex(index.embedding_index_id), "Synchronizace byla zařazena."); }
-async function rebuildIndex(index) {
-  if (!confirm(`Znovu embedovat všechny raw zprávy pro ${index.name}?`)) return;
-  await runAndRefresh(
-    () => window.chatContext.rebuildEmbeddingIndex(index.embedding_index_id),
-    "Rebuild byl zařazen.",
-  );
-}
-async function removeIndex(index) { if (confirm(`Smazat index ${index.name}? Raw zprávy zůstanou zachované.`)) await runAndRefresh(() => window.chatContext.deleteEmbeddingIndex(index.embedding_index_id), "Index byl smazán."); }
-async function updateAutoSync(index, enabled) { await runAndRefresh(() => window.chatContext.updateEmbeddingIndex(index.embedding_index_id, { auto_sync: enabled }), "Auto-sync byl změněn."); }
-
-async function runAndRefresh(operation, message) {
-  try {
-    await operation();
-    window.overviewController.markDatabaseChanged();
-    window.workspaceCache.invalidate("settings");
-    await refreshSettings();
-    showSettingsToast(message);
-  }
-  catch (error) { showSettingsToast(error.message, true); }
-}
+function removeProvider(...args) { return window.settingsEntityActions.removeProvider(...args); }
+function activateIndex(...args) { return window.settingsEntityActions.activateIndex(...args); }
+function syncIndex(...args) { return window.settingsEntityActions.syncIndex(...args); }
+function rebuildIndex(...args) { return window.settingsEntityActions.rebuildIndex(...args); }
+function removeIndex(...args) { return window.settingsEntityActions.removeIndex(...args); }
+function updateAutoSync(...args) { return window.settingsEntityActions.updateAutoSync(...args); }
 
 function fillProviderSelect(selector) {
   const select = document.querySelector(selector);
@@ -226,23 +340,13 @@ function fillProviderSelect(selector) {
 }
 
 async function loadEmbeddingModels() {
-  await loadModels(document.querySelector("#embedding-provider-select").value, "#embedding-model-options");
+  try { await window.settingsModelSuggestions.loadEmbedding(); }
+  catch (error) { showSettingsToast(error.message, true); }
 }
 
-async function loadChatModelSuggestions() {
-  await loadModels(
-    document.querySelector("#chat-model-provider-select").value,
-    "#chat-model-options",
-  );
-}
-
-async function loadModels(providerId, datalistSelector) {
-  if (!providerId) return;
-  const result = await window.chatContext.listProviderModels(providerId);
-  const options = result.models.map((model) => {
-    const option = document.createElement("option"); option.value = model; return option;
-  });
-  document.querySelector(datalistSelector).replaceChildren(...options);
+async function loadChatModelSuggestionsSafely() {
+  try { await window.settingsModelSuggestions.loadChat(); }
+  catch (error) { showSettingsToast(error.message, true); }
 }
 
 function createSettingsRow(title, detail) {

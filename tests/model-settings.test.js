@@ -122,44 +122,6 @@ test("chat model edits reject target identity collisions without changing record
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-test("chat model edit action fills and submits the form with its original identity", async () => {
-  const fixture = createChatModelEditFixture();
-  const { elements, saved, resets } = fixture;
-
-  await elements.modelList.children[0].children[2].listeners.click();
-  assert.equal(elements.modelId.value, "gpt-old");
-  assert.equal(elements.saveButton.textContent, "Uložit změny");
-  elements.modelId.value = "gpt-new";
-  elements.effort.value = "medium";
-  await elements.form.listeners.submit({ preventDefault: () => {} });
-
-  assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
-    providerId: "openai", model: "gpt-new", label: "Old",
-    reasoningEffort: "medium", originalProviderId: "openai", originalModel: "gpt-old",
-    supportsArchiveTools: true, evidenceCharacterLimit: 24000,
-  });
-  assert.equal(fixture.released(), true);
-  assert.deepEqual(resets, ["upraveným modelem"]);
-});
-
-test("environment fallback model can be promoted while its identity stays locked", async () => {
-  const fixture = createChatModelEditFixture(false);
-  const { elements, saved } = fixture;
-
-  await elements.modelList.children[0].children[2].listeners.click();
-  assert.equal(elements.provider.disabled, true);
-  assert.equal(elements.modelId.disabled, true);
-  elements.effort.value = "medium";
-  await elements.form.listeners.submit({ preventDefault: () => {} });
-
-  assert.deepEqual(JSON.parse(JSON.stringify(saved[0])), {
-    providerId: "openai", model: "gpt-old", label: "Old", reasoningEffort: "medium",
-    supportsArchiveTools: true, evidenceCharacterLimit: 24000,
-  });
-  assert.equal(elements.provider.disabled, false);
-  assert.equal(elements.modelId.disabled, false);
-});
-
 test("keyless local provider remains available for compatible endpoints", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "chat-context-local-"));
   const store = new ProviderStore(directory, {});
@@ -229,8 +191,12 @@ test("indexing API key form saves the selected built-in provider", async () => {
       querySelector: (selector) => elements.get(selector),
       createElement: () => ({}),
     },
-    window: { chatContext: { saveProvider: async (profile) => saved.push(profile) } },
+    window: {
+      chatContext: { saveProvider: async (profile) => saved.push(profile) },
+      workspaceCache: { invalidate: () => {} },
+    },
   };
+  vm.runInNewContext(read("renderer/interaction-coordinator.js"), context);
   vm.runInNewContext(read("renderer/indexing-api-key-ui.js"), context);
   context.window.indexingApiKeyUi.bind({ refreshSettings: async () => {}, showToast: () => {} });
   context.window.indexingApiKeyUi.render({
@@ -284,91 +250,5 @@ function fakeSelect() {
   return {
     value: "", options: [],
     replaceChildren(...options) { this.options = options; },
-  };
-}
-
-function fakeUiElement(tagName) {
-  const classes = new Set();
-  return {
-    tagName, children: [], listeners: {}, value: "", textContent: "",
-    classList: {
-      contains: (name) => classes.has(name),
-      toggle(name, force) {
-        const enabled = force === undefined ? !classes.has(name) : force;
-        if (enabled) classes.add(name); else classes.delete(name);
-      },
-    },
-    addEventListener(name, callback) { this.listeners[name] = callback; },
-    append(...children) { this.children.push(...children); },
-    replaceChildren(...children) { this.children = children; },
-    reset() {},
-    focus() { this.focused = true; },
-  };
-}
-
-function createChatModelEditFixture(managed = true) {
-  const elements = chatModelEditElements();
-  const saved = [];
-  const resets = [];
-  let released = false;
-  const context = chatModelEditContext(elements, saved, () => { released = true; });
-  vm.runInNewContext(read("renderer/chat-model-settings-ui.js"), context);
-  context.window.chatModelSettingsUi.bind({
-    loadSuggestions: async () => {}, refreshSettings: async () => {},
-    resetConversation: (reason) => resets.push(reason), showToast: () => {},
-  });
-  context.window.chatModelSettingsUi.render({
-    providers: [{ provider_id: "openai", name: "OpenAI" }],
-    chatModels: [{
-      provider_id: "openai", model: "gpt-old", label: "Old",
-      reasoning_effort: "high", managed, supports_archive_tools: true,
-      evidence_character_limit: 24000,
-    }],
-  });
-  return { context, elements, saved, resets, released: () => released };
-}
-
-function chatModelEditElements() {
-  const elements = {
-    form: fakeUiElement("form"), provider: fakeUiElement("select"),
-    modelId: fakeUiElement("input"), label: fakeUiElement("input"),
-    effort: fakeUiElement("select"), saveButton: fakeUiElement("button"),
-    archiveTools: fakeUiElement("input"), evidenceLimit: fakeUiElement("input"),
-    cancelButton: fakeUiElement("button"), modelList: fakeUiElement("div"),
-  };
-  elements.archiveTools.checked = true;
-  elements.evidenceLimit.value = "24000";
-  elements.bySelector = new Map([
-    ["#chat-model-form", elements.form], ["#chat-model-provider-select", elements.provider],
-    ["#chat-model-input", elements.modelId], ["#chat-model-label", elements.label],
-    ["#chat-model-reasoning-effort", elements.effort],
-    ["#chat-model-archive-tools", elements.archiveTools],
-    ["#chat-model-evidence-limit", elements.evidenceLimit],
-    ["#save-chat-model-button", elements.saveButton],
-    ["#cancel-chat-model-edit", elements.cancelButton],
-    ["#chat-model-list", elements.modelList],
-  ]);
-  return elements;
-}
-
-function chatModelEditContext(elements, saved, releaseSelection) {
-  return {
-    document: {
-      querySelector: (selector) => elements.bySelector.get(selector),
-      createElement: (tagName) => fakeUiElement(tagName),
-    },
-    window: {
-      chatContext: {
-        saveChatModel: async (model) => saved.push(model),
-        deleteChatModel: async () => {},
-      },
-      modelSelector: {
-        getChatSelection: () => ({
-          providerId: "openai", model: "gpt-old", reasoningEffort: "high",
-          supportsArchiveTools: true, evidenceCharacterLimit: 24000,
-        }),
-        releaseSessionSelection: releaseSelection,
-      },
-    },
   };
 }

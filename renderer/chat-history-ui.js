@@ -30,22 +30,25 @@ window.chatHistoryUi = (() => {
       summaries = cached;
       render();
     }
-    const request = window.workspaceCache.load(
-      "chat-sessions", () => window.chatContext.listChatSessions(20), 60000, force,
-    );
+    const request = loadLatestSessions(force);
     if (cached && !force) {
-      void request.then((sessions) => {
-        summaries = sessions;
-        render();
-      }).catch((error) => dependencies.showToast?.(error.message, true));
+      void request.catch((error) => dependencies.showToast?.(error.message, true));
       return;
     }
-    try {
-      summaries = await request;
-      render();
-    } catch (error) {
+    try { await request; }
+    catch (error) {
       dependencies.showToast?.(error.message, true);
     }
+  }
+
+  function loadLatestSessions(force) {
+    return window.interactionCoordinator.runLatest(
+      "chat-history-refresh",
+      () => window.workspaceCache.load(
+        "chat-sessions", () => window.chatContext.listChatSessions(20), 60000, force,
+      ),
+      (sessions) => { summaries = sessions; render(); },
+    );
   }
 
   function render() {
@@ -163,11 +166,17 @@ window.chatHistoryUi = (() => {
     event.preventDefault();
     const title = renameInput.value.trim();
     if (!title || !pendingSession) return;
+    const session = pendingSession;
     try {
-      await window.chatContext.renameChatSession(pendingSession.session_id, title);
-      closeDialogs();
-      window.workspaceCache.invalidate("chat-sessions");
-      await refresh(true);
+      await window.interactionCoordinator.runMutation({
+        key: `rename-chat:${session.session_id}`,
+        controls: [{ element: event.submitter, pendingText: "Ukládám…" }],
+        apply: () => projectRename(session, title),
+        execute: () => window.chatContext.renameChatSession(session.session_id, title),
+        rollback: restoreRename,
+        reconcile: () => refresh(true),
+        reconcileFailed: showReconcileFailure,
+      });
     } catch (error) {
       dependencies.showToast?.(error.message, true);
     }
@@ -177,14 +186,55 @@ window.chatHistoryUi = (() => {
     if (!pendingSession) return;
     const deletedId = pendingSession.session_id;
     try {
-      await window.chatContext.deleteChatSession(deletedId);
-      closeDialogs();
-      if (deletedId === activeSessionId) dependencies.startNewChat();
-      window.workspaceCache.invalidate("chat-sessions");
-      await refresh(true);
+      await window.interactionCoordinator.runMutation({
+        key: `delete-chat:${deletedId}`,
+        controls: [{
+          element: document.querySelector("#confirm-delete-chat"), pendingText: "Mažu…",
+        }],
+        execute: () => window.chatContext.deleteChatSession(deletedId),
+        commit: () => commitDelete(deletedId),
+        reconcile: () => refresh(true),
+        reconcileFailed: showReconcileFailure,
+      });
     } catch (error) {
       dependencies.showToast?.(error.message, true);
     }
+  }
+
+  function projectRename(session, title) {
+    const snapshot = { summaries, session, draftTitle: renameInput.value };
+    summaries = summaries.map((summary) => summary.session_id === session.session_id
+      ? { ...summary, title } : summary);
+    storeProjectedSummaries();
+    closeDialogs();
+    render();
+    return snapshot;
+  }
+
+  function restoreRename(snapshot) {
+    summaries = snapshot.summaries;
+    storeProjectedSummaries();
+    render();
+    showRenameDialog(snapshot.session);
+    renameInput.value = snapshot.draftTitle;
+  }
+
+  function commitDelete(deletedId) {
+    summaries = summaries.filter((summary) => summary.session_id !== deletedId);
+    storeProjectedSummaries();
+    closeDialogs();
+    render();
+    if (deletedId === activeSessionId) dependencies.startNewChat();
+  }
+
+  function showReconcileFailure(error) {
+    window.workspaceCache.invalidate("chat-sessions");
+    dependencies.showToast?.(`Změna je uložená, obnovení selhalo: ${error.message}`, true);
+  }
+
+  function storeProjectedSummaries() {
+    window.interactionCoordinator.supersede("chat-history-refresh");
+    window.workspaceCache.store("chat-sessions", summaries);
   }
 
   function setActiveSession(sessionId) {

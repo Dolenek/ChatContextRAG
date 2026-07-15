@@ -35,10 +35,18 @@ Each saved model may also choose **Reasoning effort**: model default, `none`,
 `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Support depends on the
 model and compatible provider. **Model default** is the safest fallback because
 it omits the parameter entirely. Explicit effort is sent as `reasoning.effort`
-for Responses or `reasoning_effort` for Chat Completions.
+for Responses or `reasoning_effort` for Chat Completions. Reasoning effort,
+Archive tools, and Evidence limit expose their guidance as dotted-underlined
+tooltip terms instead of permanent form copy. The tooltip is available on
+pointer hover, keyboard focus, and tap, and closes on blur, an outside click, a
+second tap, or Escape. Each control references a hidden description through
+`aria-describedby`; the description uses `role="tooltip"`.
 Model fields load suggestions from the provider's `/models` endpoint and still
 accept a model ID typed by hand, which also supports local servers that do not
-list models. The selector at the bottom-right of the chat composer groups saved
+list models. Changing a provider clears its suggestions immediately and marks
+the model input busy. Suggestions use latest-response-wins coordination per
+field, so a slower response for a previously selected provider cannot overwrite
+the current provider's list. The selector at the bottom-right of the chat composer groups saved
 models by provider. The chat screen remembers the last selection, and changing
 it starts a fresh visible chat history. `OPENAI_CHAT_MODEL` remains available as
 an unmanaged fallback even when it has not been added manually.
@@ -51,6 +59,14 @@ Models without archive-tool support expose deterministic retrieval only. A model
 marked as supported that returns an invalid tool protocol fails explicitly; the
 backend never falls back to deterministic retrieval. The full behavior is in
 [Chat retrieval and archive tools](chat-retrieval.md).
+
+Chat-model create and edit operations project a noninteractive **Saving…** row
+before the request completes. The global chat selector receives the model only
+after the server confirms it, without waiting for a complete Settings reload.
+On failure the previous rows, form values, editing identity, active selection,
+and focus are restored. A confirmed change remains visible if the subsequent
+background reconciliation fails; the settings cache is invalidated and a
+nonblocking warning is shown instead.
 
 The model does not receive source scope or timezone as writable tool arguments.
 Scope always comes from the chat request. The workspace's validated IANA

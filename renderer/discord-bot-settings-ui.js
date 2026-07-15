@@ -51,9 +51,7 @@ window.discordBotSettingsUi = (() => {
     element("discord-bot-settings-connect").addEventListener("click", connect);
     element("discord-bot-settings-toggle").addEventListener("click", toggleBot);
     element("discord-bot-settings-disconnect").addEventListener("click", disconnect);
-    element("discord-bot-settings-invite").addEventListener(
-      "click", () => window.chatContext.inviteDiscordBot(),
-    );
+    element("discord-bot-settings-invite").addEventListener("click", invite);
   }
 
   function bindModelForm() {
@@ -78,13 +76,16 @@ window.discordBotSettingsUi = (() => {
   async function refresh(nextApplicationSettings = applicationSettings) {
     applicationSettings = nextApplicationSettings;
     try {
-      const [settings] = await Promise.all([
-        window.chatContext.getDiscordBotSettings(), refreshStatus(),
-      ]);
-      botSettings = settings;
-      renderModelOptions();
-      renderGuilds();
-      await loadSelectedGuild();
+      await window.interactionCoordinator.runLatest(
+        "discord-settings-refresh",
+        () => Promise.all([window.chatContext.getDiscordBotSettings(), refreshStatus()]),
+        async ([settings]) => {
+          botSettings = settings;
+          renderModelOptions();
+          renderGuilds();
+          await loadSelectedGuild();
+        },
+      );
     } catch (error) {
       showToast(error.message, true);
     }
@@ -124,31 +125,40 @@ window.discordBotSettingsUi = (() => {
   async function connect() {
     const tokenInput = element("discord-bot-settings-token");
     if (!tokenInput.value.trim()) return showToast("Vložte Discord bot token.", true);
-    await run(async () => {
-      await window.chatContext.connectDiscordBot(tokenInput.value.trim());
-      tokenInput.value = "";
-      await refresh();
-    }, "Discord bot je připojený.");
+    await run({
+      key: "discord-connect", control: element("discord-bot-settings-connect"),
+      pendingText: "Připojuji…",
+      execute: () => window.chatContext.connectDiscordBot(tokenInput.value.trim()),
+      commit: () => { tokenInput.value = ""; }, reconcile: refresh,
+      successMessage: "Discord bot je připojený.",
+    });
   }
 
   async function disconnect() {
-    await run(async () => {
-      await window.chatContext.disconnectDiscordBot();
-      await refreshStatus();
-    }, "Discord bot byl odpojen a token odstraněn.");
+    await run({
+      key: "discord-disconnect", control: element("discord-bot-settings-disconnect"),
+      pendingText: "Odpojuji…", execute: window.chatContext.disconnectDiscordBot,
+      reconcile: refreshStatus, successMessage: "Discord bot byl odpojen a token odstraněn.",
+    });
   }
 
   async function toggleBot() {
     const shouldResume = !botRuntimeStatus.connected;
-    await run(async () => {
-      if (shouldResume) {
-        await window.chatContext.resumeDiscordBot();
-        await refresh();
-      } else {
-        await window.chatContext.pauseDiscordBot();
-        await refreshStatus();
-      }
-    }, shouldResume ? "Discord bot byl zapnut." : "Discord bot byl vypnut.");
+    await run({
+      key: "discord-toggle", control: element("discord-bot-settings-toggle"),
+      pendingText: shouldResume ? "Připojuji…" : "Vypínám…",
+      execute: shouldResume
+        ? window.chatContext.resumeDiscordBot : window.chatContext.pauseDiscordBot,
+      reconcile: shouldResume ? refresh : refreshStatus,
+      successMessage: shouldResume ? "Discord bot byl zapnut." : "Discord bot byl vypnut.",
+    });
+  }
+
+  async function invite() {
+    await run({
+      key: "discord-invite", control: element("discord-bot-settings-invite"),
+      pendingText: "Otevírám…", execute: window.chatContext.inviteDiscordBot,
+    });
   }
 
   function renderModelOptions() {
@@ -179,14 +189,27 @@ window.discordBotSettingsUi = (() => {
     event.preventDefault();
     const [chatProviderId, chatModel] = JSON.parse(element("discord-bot-model").value);
     const adaptive = element("discord-bot-retrieval").value === "adaptive";
-    await run(async () => {
-      botSettings.model = await window.chatContext.updateDiscordBotModel({
+    const modelInput = {
         chat_provider_id: chatProviderId, chat_model: chatModel,
         reasoning_effort: element("discord-bot-reasoning").value || null,
         retrieval_mode: adaptive ? "adaptive" : "deterministic",
         evidence_character_limit: adaptive ? Number(element("discord-bot-evidence-limit").value) : null,
-      });
-    }, "Model Discord bota byl uložen.");
+    };
+    await run({
+      key: "discord-model", control: event.submitter, pendingText: "Ukládám…",
+      apply: () => {
+        const previousModel = botSettings.model;
+        botSettings.model = modelInput;
+        return previousModel;
+      },
+      execute: () => window.chatContext.updateDiscordBotModel(modelInput),
+      commit: (savedModel) => {
+        window.interactionCoordinator.supersede("discord-settings-refresh");
+        botSettings.model = savedModel;
+      },
+      rollback: (previousModel) => { botSettings.model = previousModel; renderModelOptions(); },
+      successMessage: "Model Discord bota byl uložen.",
+    });
   }
 
   function updateEvidenceVisibility() {
@@ -298,14 +321,22 @@ window.discordBotSettingsUi = (() => {
   async function savePermissions(event) {
     event.preventDefault();
     if (!currentGuild) return;
-    await run(async () => {
-      currentGuild = await window.chatContext.updateDiscordGuildPermissions({
+    const permissionInput = {
         guild_id: currentGuild.guild_id, guild_name: currentGuild.guild_name,
         sync_subjects: currentGuild.sync_subjects, ask_subjects: currentGuild.ask_subjects,
-      });
-      storeGuildSettings(currentGuild);
-      renderPermissionSubjects();
-    }, "Oprávnění Discord serveru byla uložena.");
+    };
+    await run({
+      key: `discord-permissions:${currentGuild.guild_id}`,
+      control: event.submitter, pendingText: "Ukládám…",
+      execute: () => window.chatContext.updateDiscordGuildPermissions(permissionInput),
+      commit: (savedGuild) => {
+        window.interactionCoordinator.supersede("discord-settings-refresh");
+        currentGuild = savedGuild;
+        storeGuildSettings(currentGuild);
+        renderPermissionSubjects();
+      },
+      successMessage: "Oprávnění Discord serveru byla uložena.",
+    });
   }
 
   function storeGuildSettings(guild) {
@@ -314,8 +345,22 @@ window.discordBotSettingsUi = (() => {
     else botSettings.guilds.push(guild);
   }
 
-  async function run(operation, successMessage) {
-    try { await operation(); showToast(successMessage); }
+  async function run(options) {
+    try {
+      await window.interactionCoordinator.runMutation({
+        key: options.key,
+        controls: [{ element: options.control, pendingText: options.pendingText }],
+        apply: options.apply, execute: options.execute,
+        commit: (result, snapshot) => {
+          options.commit?.(result, snapshot);
+          if (options.successMessage) showToast(options.successMessage);
+        },
+        rollback: options.rollback, reconcile: options.reconcile,
+        reconcileFailed: (error) => showToast(
+          `Změna je uložená, ale obnovení selhalo: ${error.message}`, true,
+        ),
+      });
+    }
     catch (error) { showToast(error.message, true); }
   }
 
