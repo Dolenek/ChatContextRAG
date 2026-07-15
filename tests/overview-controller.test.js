@@ -103,6 +103,7 @@ test("breakdown pagination appends a local page and retains its button", async (
   });
   await harness.controller.refresh();
   const button = harness.elements.get(authorButton);
+  assert.equal(button.textContent, "Načíst více");
 
   await harness.breakdowns.loadNext("authors");
 

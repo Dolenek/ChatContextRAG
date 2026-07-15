@@ -138,7 +138,7 @@ window.overviewBreakdownsView = (() => {
     const state = states.get(dimension);
     const button = document.querySelector(definitions[dimension].button);
     button.classList.toggle("hidden", !state.hasMore && !state.failed);
-    button.textContent = state.failed ? "Zkusit znovu" : "Zobrazit další";
+    button.textContent = state.failed ? "Zkusit znovu" : "Načíst více";
   }
 
   function setBusy(dimension, busy) {

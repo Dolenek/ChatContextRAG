@@ -102,8 +102,9 @@ assistive technology.
 connector workflows. Database remains a central workspace dashboard. Selecting
 it switches the workspace immediately, renders cached status when available,
 and loads the first 50 rows of each breakdown plus the first chunk page in
-parallel. Each breakdown has an independent **Show more** action that appends up
-to 50 rows, keeps existing rows after failure, and becomes its own retry action.
+parallel. Each breakdown has an independent **Load more** (`Načíst více`) action
+that appends up to 50 rows, keeps existing rows after failure, and becomes its
+own retry action.
 Metric cards, their SVG nodes, and indexing-job rows are created once and then
 reconciled by key, preserving icon identity, focus, progress elements, and the
 last visible snapshot during requests. A subtle summary label announces an

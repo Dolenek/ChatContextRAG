@@ -1,6 +1,8 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
-from backend.app import create_app
+from backend.app import _build_ingestion_service, create_app
 
 
 TEST_INTERNAL_TOKEN = "lifecycle-test-internal-token"
@@ -47,3 +49,16 @@ def test_read_model_lifespan_accepts_async_hooks() -> None:
         assert overview_service.events == ["async-start"]
 
     assert overview_service.events == ["async-start", "async-close"]
+
+
+def test_ingestion_service_uses_worker_owned_by_runtime_storage() -> None:
+    raw_repository = object()
+    indexing_worker = object()
+    storage = SimpleNamespace(
+        raw_repository=raw_repository, indexing_worker=indexing_worker,
+    )
+
+    service = _build_ingestion_service(storage)
+
+    assert service.raw_repository is raw_repository
+    assert service.indexing_worker is indexing_worker

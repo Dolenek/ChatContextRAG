@@ -167,7 +167,7 @@ def _build_default_services() -> tuple:
         settings.embedding_batch_size,
     )
     chat_provider = OpenAIChatCompletionProvider(settings.openai_api_key, settings.chat_model)
-    ingestion = MessageIngestionService(SourceMessageNormalizer(), raw_repository, indexing_worker)
+    ingestion = _build_ingestion_service(storage)
     workspace_settings = PostgresWorkspaceSettingsRepository(
         raw_repository.ensure_schema, raw_repository.open_connection,
     )
@@ -193,6 +193,12 @@ def _build_default_services() -> tuple:
     return (
         ingestion, chat, overview, settings_service, discord_bot,
         settings.internal_token,
+    )
+
+
+def _build_ingestion_service(storage: RuntimeStorage) -> MessageIngestionService:
+    return MessageIngestionService(
+        SourceMessageNormalizer(), storage.raw_repository, storage.indexing_worker,
     )
 
 
