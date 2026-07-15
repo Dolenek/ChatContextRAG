@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -96,6 +97,20 @@ test("Electron dependency stays on the supported v43 release line", () => {
 
   assert.equal(manifest.devDependencies.electron, "^43.1.1");
   assert.equal(lockfile.packages["node_modules/electron"].version, "43.1.1");
+});
+
+test("sandboxed preload avoids unavailable Node built-ins", () => {
+  const projectRoot = path.resolve(__dirname, "..");
+  const preloadSource = fs.readFileSync(
+    path.join(projectRoot, "electron", "preload.js"), "utf8",
+  );
+  const mainSource = fs.readFileSync(
+    path.join(projectRoot, "electron", "main.js"), "utf8",
+  );
+
+  assert.match(mainSource, /sandbox:\s*true/);
+  assert.doesNotMatch(preloadSource, /require\(["']node:/);
+  assert.match(preloadSource, /globalThis\.crypto\.randomUUID\(\)/);
 });
 
 function fakeWebContents() {

@@ -1,6 +1,6 @@
-from backend.chat_scope_catalog import PostgresChatScopeCatalog
 from backend.hybrid_retrieval import PostgresHybridRetrieval
 from backend.models import ChatScope
+from backend.read_models.reader import PostgresReadModelReader
 from backend.services import DatabaseChatService
 
 
@@ -48,16 +48,44 @@ def test_hybrid_queries_filter_vector_and_fulltext_candidates() -> None:
     assert "source_messages" in fulltext_query
 
 
-def test_scope_catalog_reads_normalized_messages_from_only_the_active_index() -> None:
-    query = PostgresChatScopeCatalog._scope_sql()
-    scope = PostgresChatScopeCatalog._to_scope(
-        ("discord", "20", "general", "10", 12),
-    )
+def test_scope_catalog_reads_only_the_active_index_projection() -> None:
+    connection = ScopeConnection()
 
-    assert "rag_chunk_messages" in query
-    assert "active_embedding_index_id=link.embedding_index_id" in query
-    assert "source_messages" in query
-    assert "conversation_chunks" not in query
-    assert "UNNEST" not in query
-    assert scope.conversation_id == "20"
-    assert scope.message_count == 12
+    result = PostgresReadModelReader("unused").scopes(connection)
+
+    queries = " ".join(connection.queries)
+    assert "chat_scope_read_model" in queries
+    assert "rag_chunk_messages" not in queries
+    assert "source_messages" not in queries
+    assert result.scopes[0].conversation_id == "20"
+    assert result.scopes[0].message_count == 12
+
+
+class QueryResult:
+    def __init__(self, row=None, rows=None) -> None:
+        self.row = row
+        self.rows = rows or []
+
+    def fetchone(self):
+        return self.row
+
+    def fetchall(self):
+        return self.rows
+
+
+class ScopeConnection:
+    def __init__(self) -> None:
+        self.queries = []
+
+    def execute(self, query, _parameters=None):
+        normalized = " ".join(query.split())
+        self.queries.append(normalized)
+        if "active_embedding_index_id" in normalized:
+            return QueryResult(("index-1",))
+        if "chat_scope_read_model" in normalized:
+            return QueryResult(rows=[("discord", "20", "general", "server", 12)])
+        if "embedding_index_read_summary" in normalized:
+            return QueryResult((2, 12, 0, None))
+        if "read_model_refresh_state" in normalized:
+            return QueryResult((1, 1, "ready", None, None))
+        raise AssertionError(normalized)

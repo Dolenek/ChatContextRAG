@@ -7,6 +7,7 @@ from backend.models import (
     DatabaseBreakdowns, DatabaseChunkPage, DatabaseCountPage,
     DatabaseOverview, DatabaseStatus,
 )
+from backend.database_models import ReadModelRefreshRequest, ReadModelRefreshResponse
 
 
 def register_database_routes(application, overview_service) -> None:
@@ -27,6 +28,16 @@ def _register_overview_routes(application: FastAPI, overview_service) -> None:
         fresh: bool = Query(default=False),
     ) -> DatabaseStatus:
         return overview_service.get_status(fresh)
+
+    @application.post(
+        "/database/read-model/refresh", response_model=ReadModelRefreshResponse,
+    )
+    def refresh_read_model(
+        request: ReadModelRefreshRequest,
+    ) -> ReadModelRefreshResponse:
+        return ReadModelRefreshResponse(
+            **overview_service.refresh_read_model(request.scope),
+        )
 
     @application.get("/database/breakdowns", response_model=DatabaseBreakdowns)
     def database_breakdowns() -> DatabaseBreakdowns:

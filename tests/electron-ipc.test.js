@@ -108,10 +108,12 @@ test("failed remote connection test does not save, restart, or switch targets", 
 test("database IPC forwards fresh summaries, breakdown pages, and active jobs", async () => {
   handlers.clear();
   const paths = [];
+  const posts = [];
   const controller = new DatabaseIpcController({
     ipcMain: electronMock.ipcMain,
     getJson: async (requestPath) => { paths.push(requestPath); return {}; },
-    postJson: async () => ({}), patchJson: async () => ({}),
+    postJson: async (...arguments) => { posts.push(arguments); return {}; },
+    patchJson: async () => ({}),
     deleteJson: async () => ({}), monitorIndexingJob: () => {},
   });
   controller.register();
@@ -121,12 +123,14 @@ test("database IPC forwards fresh summaries, breakdown pages, and active jobs", 
     dimension: "authors", limit: 50, offset: 100,
   });
   await handlers.get("indexing:active")();
+  await handlers.get("database:read-model-refresh")(null, "all");
 
   assert.deepEqual(paths, [
     "/database/status?fresh=true",
     "/database/breakdowns/authors?limit=50&offset=100",
     "/indexing/jobs?status=active",
   ]);
+  assert.deepEqual(posts, [["/database/read-model/refresh", { scope: "all" }]]);
 });
 
 test("archive migration IPC exposes lifecycle operations", async () => {

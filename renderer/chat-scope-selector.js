@@ -8,24 +8,45 @@ let scopeChangeListener = () => {};
 async function refreshChatScopes(force = false) {
   const previousKey = chatScopeSelect.value;
   const cached = window.workspaceCache.peek("chat-scopes");
-  if (cached) renderChatScopes(cached.scopes || [], previousKey);
+  if (cached) renderScopeResponse(cached, previousKey);
   const request = window.workspaceCache.load(
     "chat-scopes", window.chatContext.getChatScopes, 60000, force,
   );
   if (cached && !force) {
     void request.then((response) => {
-      renderChatScopes(response.scopes || [], chatScopeSelect.value);
+      renderScopeResponse(response, chatScopeSelect.value);
     }).catch((error) => window.appUi?.showToast(error.message, true));
     return cached;
   }
   setScopeLoading(true);
   try {
     const response = await request;
-    renderChatScopes(response.scopes || [], previousKey);
+    renderScopeResponse(response, previousKey);
     return response;
   } finally {
     setScopeLoading(false);
   }
+}
+
+function renderScopeResponse(response, preferredKey) {
+  const scopes = response.scopes || [];
+  const keepExisting = response.summary_ready === false && availableChatScopes.size > 0;
+  if (!keepExisting) renderChatScopes(scopes, preferredKey);
+  renderScopeSummaryState(response, keepExisting ? availableChatScopes.size : scopes.length);
+}
+
+function renderScopeSummaryState(response, scopeCount) {
+  if (response.summary_ready === false) {
+    chatScopeStatus.textContent = "Připravuji souhrn…";
+    return;
+  }
+  const baseLabel = scopeCount
+    ? `${scopeCount} dostupných konverzací`
+    : "Zatím není dostupná žádná zaindexovaná konverzace";
+  if (response.summary_error) chatScopeStatus.textContent = `${baseLabel} · obnova selhala`;
+  else if (response.summary_refreshing) chatScopeStatus.textContent = `${baseLabel} · aktualizuji`;
+  else if (response.summary_is_stale) chatScopeStatus.textContent = `${baseLabel} · čeká na obnovu`;
+  else chatScopeStatus.textContent = baseLabel;
 }
 
 function renderChatScopes(scopes, preferredKey) {
@@ -41,9 +62,6 @@ function renderChatScopes(scopes, preferredKey) {
   chatScopeSelect.value = selectedKey;
   renderScopeButtons(scopes, selectedKey);
   updateActiveScopeLabel();
-  chatScopeStatus.textContent = scopes.length
-    ? `${scopes.length} dostupných konverzací`
-    : "Zatím není dostupná žádná zaindexovaná konverzace";
 }
 
 function preserveUnavailableScope(preferredKey) {

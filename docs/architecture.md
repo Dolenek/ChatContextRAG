@@ -10,8 +10,10 @@ for retrieval.
 
 The same renderer runs in three explicit runtime modes: Electron Local,
 Electron Remote, and Web. `window.chatContext` is the stable renderer boundary.
-Electron supplies it through preload IPC; the browser supplies an HTTP/SSE
-adapter before the UI controllers load. At renderer startup, runtime
+Electron supplies it through sandbox-compatible preload IPC; the preload imports
+only Electron's exposed API and uses browser globals instead of unrestricted Node
+built-ins. The browser supplies an HTTP/SSE adapter before the UI controllers load.
+At renderer startup, runtime
 capabilities expose `electron-local`, `electron-remote`, or `web` plus the
 `embeddedDiscord` flag. Desktop-only controls start hidden and are exposed only
 after those capabilities confirm that the current runtime supports them. Web
@@ -286,75 +288,10 @@ web adaptations are documented in [Renderer shell](renderer-shell.md).
 
 ## Public API
 
-The web gateway exposes `/api/auth/login`, logout, session metadata, runtime
-capabilities, and `/api/events`. All workspace routes below are available under
-its authenticated `/api` facade. Browser calls use the session and CSRF token;
-Electron Remote calls use its bearer token.
-
-- `POST /ingestion/sessions` starts a source-neutral raw ingestion session.
-- `POST /messages/import` stores up to 400 normalized source messages.
-- `POST /ingestion/sessions/{id}/finish` normally queues per-index jobs and
-  returns the compatible first job ID plus all job IDs. Internal migration
-  completion may explicitly defer that work.
-- `GET /ingestion/sessions/{id}` reports durable session state and
-  `POST /ingestion/sessions/{id}/index` explicitly queues deferred jobs.
-- `GET /ingestion/conversations` lists raw conversations for a source.
-- `GET /integrations/sync-states` and `POST /integrations/sync-state` persist
-  connector cursors.
-- `/integrations/discord-bot` persists the bot model, strict guild permissions,
-  answer generation and delivery audit, and paginated history. Its complete
-  contract is documented in [Discord bot](discord-bot.md).
-- `POST /imports/whatsapp/preview` validates and previews a multipart export.
-- `POST /imports/whatsapp` imports a validated multipart export and queues it.
-- `GET /indexing/jobs?status=active` returns every queued and running job in one
-  bounded query. `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints
-  manage individual jobs.
-  Job views include source type plus conversation and container labels so the
-  progress UI identifies the imported channel or index-wide maintenance task.
-- `GET /chat/scopes` lists source conversations searchable through the active
-  embedding index by joining normalized chunk links to canonical raw messages.
-- `POST /chat` performs source-scoped deterministic or adaptive RAG with the
-  active embedding index and optional provider, model, reasoning effort, mode,
-  evidence limit, and `session_id`. Completed turns append only to a session
-  with the same fixed context; responses include its ID, title, effective mode,
-  and evidence limit.
-- `POST /chat/stream` performs the same operation and emits NDJSON tool activity
-  before a complete final response. The synchronous route returns the same
-  persisted tool audit without intermediate records.
-- `GET /chat/sessions?limit=N` lists recent session summaries; the renderer loads
-  20 and initially shows six.
-- `GET /chat/sessions/{id}` returns original context, ordered messages, and
-  grounding sources. `PATCH` renames and `DELETE` permanently removes one chat.
-  Unknown IDs return `404`; continuation with a changed context returns `409`.
-- `/settings/providers` lists redacted provider metadata and model suggestions.
-- `/settings/embedding-indexes` manages independent vector indexes, activation,
-  sync, rebuild, and deletion.
-- `GET` and `PUT /settings/workspace` read or update the validated IANA timezone
-  used to interpret structured archive dates.
-- `GET /database/resume-point` remains the local Discord scanner resume endpoint.
-- `GET /database/status` combines cheap live fields, including database size
-  and indexing jobs, with an exact aggregate snapshot cached for 60 seconds.
-  Stale snapshots are served while one background calculation refreshes them.
-  `fresh=true` requests an exact refresh, coalesced for five seconds, and the
-  response exposes `summary_generated_at`, `summary_is_stale`, and
-  `summary_refreshing`. Database deletion invalidates the snapshot.
-- `GET /database/breakdowns/{dimension}?limit=N&offset=N` pages counts for
-  `channels`, `authors`, or `embedding-models`, with limits from 1 through 200.
-  It returns `items`, `total`, `limit`, `offset`, `has_more`, and `next_offset`.
-- `GET /database/breakdowns` retains the combined active-index counts by
-  conversation, author, and embedding model for compatibility.
-- `GET /database/chunks?limit=N&cursor=...` returns active-index chunks ordered
-  by `(updated_at, id)` with an opaque keyset cursor for the next page.
-- `GET /database/overview` retains the combined offset-paginated status,
-  breakdown, and chunk response for compatibility.
-- `DELETE /database` requires `VYMAZAT` and clears imported/indexed source data.
-  Persisted chat history is retained and becomes read-only if its source is gone.
-
-`/api/migrations`, its message and sync-state children, completion, status, and
-index actions are bearer-only gateway routes used by Electron Local. Browser
-sessions receive `403` even with a valid CSRF token. Local
-`/internal/migration-exports` snapshot, page, and cleanup routes require the
-internal token and are not present in the gateway allowlist.
+The authenticated gateway facade, FastAPI route groups, read-model refresh
+behavior, compatibility endpoints, and migration boundary are documented in
+[Public API](api.md). Expensive UI aggregates use the nonblocking persistent
+projection contract in [Persistent UI read model](ui-read-model.md).
 
 ## Extension boundary
 

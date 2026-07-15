@@ -153,6 +153,11 @@ class EmbeddingIndexView(BaseModel):
     active_job_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    summary_ready: bool = True
+    summary_generated_at: Optional[datetime] = None
+    summary_is_stale: bool = False
+    summary_refreshing: bool = False
+    summary_error: Optional[str] = None
 
 
 class EmbeddingSettingsView(BaseModel):

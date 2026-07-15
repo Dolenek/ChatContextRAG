@@ -10,7 +10,8 @@ composer remains anchored when content grows. The shell fills the viewport
 without a decorative outer border; borders only separate internal regions and
 components.
 
-The expanded rail starts with the transparent Chat Context wordmark asset. The
+The expanded rail starts with the transparent Chat Context wordmark asset,
+centered in the free area above the first navigation action. The
 same brand mark without text is the Electron and browser favicon. Its
 44 px actions list **New chat**, **Sources and imports**, **Database**, and
 **Settings** before the six most recent persisted chats, the expandable
@@ -105,9 +106,10 @@ parallel. Each breakdown has an independent **Show more** action that appends up
 to 50 rows, keeps existing rows after failure, and becomes its own retry action.
 Metric cards, their SVG nodes, and indexing-job rows are created once and then
 reconciled by key, preserving icon identity, focus, progress elements, and the
-last visible snapshot during requests. A subtle summary label announces a stale
-or refreshing aggregate without clearing the cards. Manual refresh requests an
-exact server refresh and bypasses renderer freshness windows.
+last visible snapshot during requests. A subtle summary label announces an
+initial, stale, refreshing, failed, or current projection without clearing the
+cards. Manual refresh queues server work without waiting and retains visible
+data.
 Settings opens over the current screen as an accessible modal and keeps its
 provider, model, embedding-index, indexing-history, Discord-bot, workspace-target,
 and web-session behavior. Runtime capability controls are hidden until startup
@@ -128,8 +130,7 @@ control bound to the exact normalized origin and disables connection actions
 until the user accepts it. Loopback and HTTPS targets do not require it.
 
 Workspace reads use an in-memory stale-while-revalidate cache. Database status
-is fresh in the renderer for five seconds; its exact server-side aggregate may
-be up to 60 seconds old while ingestion is active. First breakdown pages and the
+is fresh in the renderer for five seconds. First breakdown pages and the
 first chunk page are fresh for 30 seconds, and scopes, settings, and recent chats
 for 60 seconds. Imports, database clear, index completion, active-index changes,
 and chat mutations invalidate their affected resources. Cached labels and titles
@@ -190,7 +191,11 @@ job request every ten seconds only when a queued or running job has been silent
 for at least twelve seconds and the document is visible. Polling pauses while
 hidden and reconciles immediately on visibility recovery. A job disappearing
 from the active response triggers one debounced exact status refresh. During an
-active job aggregate status is otherwise requested at most once per minute; a
-refresh already in progress is followed up after eight seconds. Running jobs
+active job aggregate status is otherwise requested at most once per minute. When
+the read-model projection is missing, stale, or refreshing, one central status
+poll follows it every eight seconds. A new generation invalidates settings,
+chat scopes, status, and first-breakdown caches before reconciliation. The
+complete projection and metadata contract is documented in
+[Persistent UI read model](ui-read-model.md). Running jobs
 sort before queued jobs, and terminal records stay available in **Indexing
 history**.

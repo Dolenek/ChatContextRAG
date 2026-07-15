@@ -7,6 +7,7 @@ import psycopg
 from backend.models import EmbeddingIndexCreate, EmbeddingIndexUpdate, EmbeddingIndexView
 from backend.openai_gateway import ExternalIntegrationError
 from backend.provider_registry import ProviderRegistry
+from backend.read_models.store import PostgresReadModelStore
 from backend.embedding_index_support import (
     DEFAULT_INDEX_ID, assert_no_active_job, create_index_tables,
     embedding_index_view, index_view_sql, migrate_index_jobs,
@@ -34,11 +35,13 @@ class PostgresEmbeddingIndexRepository:
     def __init__(
         self, database_dsn: str, registry: ProviderRegistry,
         default_model: str, default_dimensions: int,
+        read_model_store: Optional[PostgresReadModelStore] = None,
     ) -> None:
         self.database_dsn = database_dsn
         self.registry = registry
         self.default_model = default_model
         self.default_dimensions = default_dimensions
+        self.read_model_store = read_model_store
         self._initialized = False
         self._lock = threading.Lock()
 
@@ -87,6 +90,8 @@ class PostgresEmbeddingIndexRepository:
                     "UPDATE embedding_indexes SET status='ready',updated_at=NOW() WHERE id=%s",
                     (index_id,),
                 )
+            if self.read_model_store:
+                self.read_model_store.ensure_index_state(connection, index_id)
         return self.get(index_id)
 
     def list(self) -> List[EmbeddingIndexView]:
@@ -129,6 +134,8 @@ class PostgresEmbeddingIndexRepository:
                 "UPDATE rag_application_settings SET active_embedding_index_id=%s WHERE id=1",
                 (index_id,),
             )
+            if self.read_model_store:
+                self.read_model_store.invalidate_index(connection, index_id, immediate=True)
         return view
 
     def update(self, index_id: str, request: EmbeddingIndexUpdate) -> EmbeddingIndexView:
@@ -159,6 +166,8 @@ class PostgresEmbeddingIndexRepository:
                 connection.execute(
                     "DELETE FROM rag_chunks WHERE embedding_index_id=%s", (index_id,),
                 )
+                if self.read_model_store:
+                    self.read_model_store.invalidate_index(connection, index_id)
             return job_id
 
     def delete(self, index_id: str) -> int:

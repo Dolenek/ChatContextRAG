@@ -37,6 +37,8 @@ class DatabaseIpcController {
     });
     this.ipcMain.handle("database:status", (_event, options = {}) =>
       this.getJson(`/database/status${options.fresh ? "?fresh=true" : ""}`));
+    this.ipcMain.handle("database:read-model-refresh", (_event, scope = "active") =>
+      this.postJson("/database/read-model/refresh", { scope }));
     this.ipcMain.handle("database:breakdowns", () => this.getJson("/database/breakdowns"));
     this.ipcMain.handle("database:breakdown-page", (_event, pagination) => {
       const dimension = encodeURIComponent(pagination.dimension);

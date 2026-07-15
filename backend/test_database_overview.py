@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from backend.postgres_overview_reader import (
-    DatabaseDetailReader, DatabaseStatusReader, decode_chunk_cursor,
+    DatabaseDetailReader, DatabaseLiveReader, decode_chunk_cursor,
 )
 
 
@@ -26,8 +26,6 @@ class StatusConnection:
     def execute(self, query, parameters=None):
         normalized = " ".join(query.split())
         self.queries.append((normalized, parameters))
-        if "WITH raw_stats AS" in normalized:
-            return QueryResult((120, 100, 4, 3, None, None, 30, 115))
         if "pg_size_pretty" in normalized:
             return QueryResult(("12 MB",))
         if "FROM indexing_jobs" in normalized:
@@ -47,20 +45,17 @@ class ChunkConnection:
         return QueryResult(rows=self.rows)
 
 
-def test_status_uses_one_primary_aggregate_without_loading_details() -> None:
+def test_live_status_reads_only_database_size_and_recent_jobs() -> None:
     connection = StatusConnection()
 
-    status = DatabaseStatusReader().read(connection)
+    status = DatabaseLiveReader().read(connection)
 
-    assert status.total_chunks == 30
-    assert status.total_source_messages == 120
-    assert status.duplicate_message_count == 20
-    assert status.pending_message_count == 5
-    assert len(connection.queries) == 3
+    assert status["database_size"] == "12 MB"
+    assert status["indexing_jobs"] == []
+    assert len(connection.queries) == 2
     combined_queries = " ".join(query for query, _parameters in connection.queries)
-    assert "LATERAL UNNEST(authors)" not in combined_queries
-    assert "ORDER BY updated_at" not in combined_queries
-    assert "embedding_index_id=(SELECT active_embedding_index_id" in combined_queries
+    assert "source_messages" not in combined_queries
+    assert "rag_chunks" not in combined_queries
 
 
 def test_chunk_page_uses_stable_keyset_cursor_and_active_index() -> None:
@@ -87,30 +82,6 @@ def test_chunk_cursor_is_applied_as_timestamp_and_id_boundary() -> None:
 
     assert connection.parameters[:3] == (updated_at, updated_at, "chunk-2")
     assert "(updated_at,id) < (%s,%s)" in connection.query
-
-
-def test_breakdown_page_limits_payload_and_reports_next_offset() -> None:
-    connection = ChunkConnection([
-        ("Ada", 20, 3), ("Bob", 10, 3),
-    ])
-
-    page = DatabaseDetailReader().read_breakdown_page(
-        connection, "authors", 2, 0,
-    )
-
-    assert [item.label for item in page.items] == ["Ada", "Bob"]
-    assert page.total == 3
-    assert page.has_more is True
-    assert page.next_offset == 2
-    assert connection.parameters == (2, 0)
-    assert "WITH counts AS MATERIALIZED" in connection.query
-
-
-def test_breakdown_page_rejects_unknown_dimension() -> None:
-    with pytest.raises(ValueError, match="Unsupported database breakdown"):
-        DatabaseDetailReader().read_breakdown_page(
-            ChunkConnection([]), "unknown", 50, 0,
-        )
 
 
 @pytest.mark.parametrize("cursor", ["not-base64", "e30", "WyJub3QiLCJhbiIsIm9iamVjdCJd"])

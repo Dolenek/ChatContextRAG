@@ -12,84 +12,22 @@ from backend.models import (
     DatabaseOverview, DatabaseStatus, IndexingJobView,
 )
 from backend.openai_gateway import ExternalIntegrationError
-from backend.status_snapshot_cache import DatabaseSummaryCache
+from backend.read_models.reader import PostgresReadModelReader
+from backend.read_models.store import PostgresReadModelStore
 
 
 ACTIVE_INDEX_SQL = """(SELECT active_embedding_index_id
     FROM rag_application_settings WHERE id=1)"""
 
 
-class DatabaseStatusReader:
-    def read(self, connection: psycopg.Connection) -> DatabaseStatus:
-        return DatabaseStatus(
-            **self.read_summary(connection), **self.read_live(connection),
-        )
-
-    def read_summary(self, connection: psycopg.Connection) -> dict:
-        summary = self._read_primary_summary(connection)
-        if not summary["raw_message_count"] and summary["total_chunks"]:
-            summary.update(self._read_chunk_fallback(connection))
-        return summary
-
-    def read_live(self, connection: psycopg.Connection) -> dict:
+class DatabaseLiveReader:
+    def read(self, connection: psycopg.Connection) -> dict:
         database_size = connection.execute(
             "SELECT pg_size_pretty(pg_database_size(current_database()))"
         ).fetchone()[0]
         return {
             "database_size": database_size,
             "indexing_jobs": self._read_jobs(connection),
-        }
-
-    @staticmethod
-    def _read_primary_summary(connection: psycopg.Connection) -> dict:
-        row = connection.execute(f"""
-            WITH raw_stats AS (
-              SELECT COUNT(*) raw_count, COUNT(DISTINCT content_hash) unique_count,
-                     COUNT(DISTINCT author) author_count,
-                     COUNT(DISTINCT (source_type,conversation_id)) conversation_count,
-                     MIN(sent_at) oldest, MAX(sent_at) newest
-              FROM source_messages
-            ), chunk_stats AS (
-              SELECT COUNT(*) chunk_count FROM rag_chunks
-              WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            ), indexed_stats AS (
-              SELECT COUNT(DISTINCT message_id) indexed_count FROM rag_chunk_messages
-              WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            )
-            SELECT raw_count,unique_count,author_count,conversation_count,oldest,newest,
-                   chunk_count,indexed_count FROM raw_stats,chunk_stats,indexed_stats
-        """).fetchone()
-        raw_count, unique_count, authors, channels, oldest, newest, chunks, indexed = row
-        return {
-            "total_chunks": chunks, "total_source_messages": raw_count,
-            "total_channels": channels, "total_authors": authors,
-            "oldest_message_at": oldest, "newest_message_at": newest,
-            "raw_message_count": raw_count, "unique_content_count": unique_count,
-            "duplicate_message_count": max(0, raw_count - unique_count),
-            "indexed_message_count": indexed,
-            "pending_message_count": max(0, raw_count - indexed),
-        }
-
-    @staticmethod
-    def _read_chunk_fallback(connection: psycopg.Connection) -> dict:
-        row = connection.execute(f"""
-            WITH active_chunks AS MATERIALIZED (
-              SELECT source_message_ids,authors,channel,started_at,ended_at FROM rag_chunks
-              WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            )
-            SELECT
-              (SELECT COUNT(DISTINCT source_id) FROM active_chunks,
-                 LATERAL UNNEST(source_message_ids) source_id),
-              (SELECT COUNT(DISTINCT author_name) FROM active_chunks,
-                 LATERAL UNNEST(authors) author_name),
-              (SELECT COUNT(DISTINCT channel) FROM active_chunks),
-              (SELECT MIN(started_at) FROM active_chunks),
-              (SELECT MAX(ended_at) FROM active_chunks)
-        """).fetchone()
-        return {
-            "total_source_messages": row[0], "total_authors": row[1],
-            "total_channels": row[2], "oldest_message_at": row[3],
-            "newest_message_at": row[4],
         }
 
     @staticmethod
@@ -103,7 +41,7 @@ class DatabaseStatusReader:
               ON idx.id=job.embedding_index_id
             ORDER BY job.created_at DESC LIMIT 10
         """).fetchall()
-        return [DatabaseStatusReader._to_job(row) for row in rows]
+        return [DatabaseLiveReader._to_job(row) for row in rows]
 
     @staticmethod
     def _to_job(row: tuple) -> IndexingJobView:
@@ -116,13 +54,6 @@ class DatabaseStatusReader:
 
 
 class DatabaseDetailReader:
-    def read_breakdowns(self, connection: psycopg.Connection) -> DatabaseBreakdowns:
-        return DatabaseBreakdowns(
-            channels=self._read_counts(connection, self._channel_counts_sql()),
-            authors=self._read_counts(connection, self._author_counts_sql()),
-            embedding_models=self._read_counts(connection, self._model_counts_sql()),
-        )
-
     def read_cursor_page(
         self, connection: psycopg.Connection, limit: int,
         cursor: Optional[Tuple[datetime, str]],
@@ -145,30 +76,6 @@ class DatabaseDetailReader:
             has_more=has_more, next_cursor=next_cursor,
         )
 
-    def read_breakdown_page(
-        self, connection: psycopg.Connection, dimension: str,
-        limit: int, offset: int,
-    ) -> DatabaseCountPage:
-        counts_sql = self._breakdown_counts_sql(dimension)
-        rows = connection.execute(f"""
-            WITH counts AS MATERIALIZED ({counts_sql}),
-            page AS (SELECT label,item_count FROM counts
-              ORDER BY item_count DESC,label LIMIT %s OFFSET %s),
-            total AS (SELECT COUNT(*) item_total FROM counts)
-            SELECT page.label,page.item_count,total.item_total
-            FROM total LEFT JOIN page ON TRUE
-            ORDER BY page.item_count DESC,page.label
-        """, (limit, offset)).fetchall()
-        total = rows[0][2] if rows else 0
-        items = [DatabaseCount(label=row[0], count=row[1])
-                 for row in rows if row[0] is not None]
-        next_offset = offset + len(items)
-        has_more = next_offset < total
-        return DatabaseCountPage(
-            items=items, total=total, limit=limit, offset=offset,
-            has_more=has_more, next_offset=next_offset if has_more else None,
-        )
-
     def read_offset_page(
         self, connection: psycopg.Connection, limit: int, offset: int,
     ) -> List[DatabaseChunkView]:
@@ -179,47 +86,6 @@ class DatabaseDetailReader:
             ORDER BY updated_at DESC,id DESC LIMIT %s OFFSET %s
         """, (limit, offset)).fetchall()
         return [self._to_chunk(row) for row in rows]
-
-    @staticmethod
-    def _read_counts(connection: psycopg.Connection, query: str) -> List[DatabaseCount]:
-        return [DatabaseCount(label=row[0], count=row[1])
-                for row in connection.execute(query).fetchall()]
-
-    @staticmethod
-    def _channel_counts_sql() -> str:
-        return f"""SELECT COALESCE(channel,'Bez kanálu'),COUNT(*) FROM rag_chunks
-            WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            GROUP BY channel ORDER BY COUNT(*) DESC,channel NULLS LAST"""
-
-    @staticmethod
-    def _author_counts_sql() -> str:
-        return f"""SELECT author_name,COUNT(*) FROM rag_chunks,
-            LATERAL UNNEST(authors) author_name
-            WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            GROUP BY author_name ORDER BY COUNT(*) DESC,author_name"""
-
-    @staticmethod
-    def _model_counts_sql() -> str:
-        return f"""SELECT embedding_model,COUNT(*) FROM rag_chunks
-            WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-            GROUP BY embedding_model ORDER BY COUNT(*) DESC,embedding_model"""
-
-    @staticmethod
-    def _breakdown_counts_sql(dimension: str) -> str:
-        queries = {
-            "channels": f"""SELECT COALESCE(channel,'Bez kanálu') label,
-                COUNT(*) item_count FROM rag_chunks
-                WHERE embedding_index_id={ACTIVE_INDEX_SQL} GROUP BY channel""",
-            "authors": f"""SELECT author_name label,COUNT(*) item_count
-                FROM rag_chunks,LATERAL UNNEST(authors) author_name
-                WHERE embedding_index_id={ACTIVE_INDEX_SQL} GROUP BY author_name""",
-            "embedding-models": f"""SELECT embedding_model label,COUNT(*) item_count
-                FROM rag_chunks WHERE embedding_index_id={ACTIVE_INDEX_SQL}
-                GROUP BY embedding_model""",
-        }
-        if dimension not in queries:
-            raise ValueError("Unsupported database breakdown dimension.")
-        return queries[dimension]
 
     @staticmethod
     def _to_chunk(row: tuple) -> DatabaseChunkView:
@@ -233,31 +99,33 @@ class DatabaseDetailReader:
 class PostgresOverviewReader:
     def __init__(
         self, database_dsn: str,
-        summary_cache: Optional[DatabaseSummaryCache] = None,
+        read_model_reader: Optional[PostgresReadModelReader] = None,
+        read_model_store: Optional[PostgresReadModelStore] = None,
     ) -> None:
         self.database_dsn = database_dsn
-        self.status_reader = DatabaseStatusReader()
+        self.live_reader = DatabaseLiveReader()
         self.detail_reader = DatabaseDetailReader()
-        self.summary_cache = summary_cache or DatabaseSummaryCache(
-            self._load_summary, ttl_seconds=60, force_coalesce_seconds=5,
-        )
+        self.read_model_reader = read_model_reader or PostgresReadModelReader(database_dsn)
+        self.read_model_store = read_model_store or PostgresReadModelStore(database_dsn)
 
     def get_status(self, fresh: bool = False) -> DatabaseStatus:
-        summary = self.summary_cache.get(force=fresh)
-        live = self._read(self.status_reader.read_live)
-        return DatabaseStatus(
-            **summary.value, **live, summary_generated_at=summary.generated_at,
-            summary_is_stale=summary.is_stale,
-            summary_refreshing=summary.refreshing,
-        )
+        if fresh:
+            self.read_model_store.request_refresh("active")
+        return self._read(self._status)
 
     def get_breakdowns(self) -> DatabaseBreakdowns:
-        return self._read(lambda connection: self.detail_reader.read_breakdowns(connection))
+        return self._read(lambda connection: DatabaseBreakdowns(
+            channels=self.read_model_reader.breakdowns(connection, "channels"),
+            authors=self.read_model_reader.breakdowns(connection, "authors"),
+            embedding_models=self.read_model_reader.breakdowns(
+                connection, "embedding-models",
+            ),
+        ))
 
     def get_breakdown_page(
         self, dimension: str, limit: int, offset: int,
     ) -> DatabaseCountPage:
-        return self._read(lambda connection: self.detail_reader.read_breakdown_page(
+        return self._read(lambda connection: self.read_model_reader.breakdown_page(
             connection, dimension, limit, offset,
         ))
 
@@ -269,8 +137,14 @@ class PostgresOverviewReader:
 
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
         def assemble(connection: psycopg.Connection) -> DatabaseOverview:
-            status = self.status_reader.read(connection)
-            breakdowns = self.detail_reader.read_breakdowns(connection)
+            status = self._status(connection)
+            breakdowns = DatabaseBreakdowns(
+                channels=self.read_model_reader.breakdowns(connection, "channels"),
+                authors=self.read_model_reader.breakdowns(connection, "authors"),
+                embedding_models=self.read_model_reader.breakdowns(
+                    connection, "embedding-models",
+                ),
+            )
             chunks = self.detail_reader.read_offset_page(connection, limit, offset)
             return DatabaseOverview(
                 **status.model_dump(), **breakdowns.model_dump(), chunks=chunks,
@@ -279,17 +153,12 @@ class PostgresOverviewReader:
             )
         return self._read(assemble)
 
-    def warm_status_cache(self) -> None:
-        self.summary_cache.start_refresh()
-
-    def drop_status_cache(self) -> None:
-        self.summary_cache.drop()
-
-    def close_status_cache(self) -> None:
-        self.summary_cache.close()
-
-    def _load_summary(self) -> dict:
-        return self._read(self.status_reader.read_summary)
+    def _status(self, connection) -> DatabaseStatus:
+        summary, metadata = self.read_model_reader.active_summary(connection)
+        return DatabaseStatus(
+            **summary, **self.live_reader.read(connection),
+            **metadata.public_fields(),
+        )
 
     def _read(self, operation):
         try:

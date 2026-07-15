@@ -35,7 +35,9 @@ function bindSettingsUi(dependencies) {
   });
   document.querySelector("#embedding-index-form").addEventListener("submit", createIndex);
   document.querySelector("#cancel-provider-edit").addEventListener("click", resetProviderForm);
-  document.querySelector("#refresh-settings-button").addEventListener("click", refreshSettings);
+  document.querySelector("#refresh-settings-button").addEventListener(
+    "click", () => refreshSettings({ requestReadModel: true }),
+  );
   document.querySelector("#embedding-provider-select").addEventListener("change", loadEmbeddingModels);
   document.querySelector("#chat-model-provider-select").addEventListener(
     "change", loadChatModelSuggestionsSafely,
@@ -48,11 +50,17 @@ async function openSettings(sectionName = "providers") {
   await prepareSettingsOpen();
   resetSettingsDrafts();
   window.settingsOverlay.open(sectionName);
-  await Promise.all([window.connectionSettingsUi.refresh(), refreshSettings()]);
+  await Promise.all([
+    window.runtimeCapabilitiesUi.refresh()
+      .catch((error) => showSettingsToast(error.message, true)),
+    window.connectionSettingsUi.refresh(),
+    refreshSettings(),
+  ]);
 }
 
 async function refreshSettings(options = {}) {
   try {
+    if (options.requestReadModel) await requestSettingsReadModel();
     return await window.interactionCoordinator.runLatest(
       "settings-refresh", loadSettingsPayload, applySettingsPayload,
     );
@@ -60,6 +68,11 @@ async function refreshSettings(options = {}) {
     if (options.silent) throw error;
     showSettingsToast(error.message, true);
   }
+}
+
+async function requestSettingsReadModel() {
+  await window.chatContext.refreshReadModel("all");
+  void window.overviewController.refreshStatus({ forceClient: true });
 }
 
 async function applySettingsPayload(payload) {
@@ -184,49 +197,73 @@ function renderProviders() {
 
 function renderIndexes() {
   const activeId = settingsState.embeddings.active_embedding_index_id;
-  const rows = settingsState.embeddings.indexes.map((index) => {
-    const label = `${index.model} · ${index.dimensions}D · ${index.chunk_count} chunků`;
-    const row = createSettingsRow(index.name, `${label} · ${index.status}`);
-    const toggle = document.createElement("label");
-    toggle.className = "compact-toggle";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = index.auto_sync;
-    checkbox.addEventListener("change", () => updateAutoSync(index, checkbox));
-    toggle.append(checkbox, document.createTextNode(" Auto-sync"));
-    row.append(toggle);
-    if (index.embedding_index_id !== activeId && index.status === "ready") {
-      const activateButton = actionButton(
-        "Aktivovat", () => activateIndex(index.embedding_index_id, activateButton),
-      );
-      row.append(activateButton);
-    } else if (index.embedding_index_id === activeId) {
-      row.classList.add("active-settings-row");
-    }
-    if (index.pending_message_count && !index.active_job_id) {
-      const syncButton = actionButton(
-        `Sync ${index.pending_message_count}`, () => syncIndex(index, syncButton),
-      );
-      row.append(syncButton);
-    }
-    if (!index.active_job_id) {
-      const rebuildButton = actionButton(
-        "Rebuild", () => rebuildIndex(index, rebuildButton),
-      );
-      row.append(rebuildButton);
-    }
-    if (index.embedding_index_id !== activeId) {
-      const deleteButton = actionButton(
-        "Smazat", () => removeIndex(index, deleteButton), "danger-link",
-      );
-      row.append(deleteButton);
-    }
-    if (index.last_error && !index.active_job_id) {
-      row.append(createDetail(index.last_error, "error-detail"));
-    }
-    return row;
-  });
+  const rows = settingsState.embeddings.indexes.map(
+    (index) => createIndexRow(index, activeId),
+  );
   document.querySelector("#embedding-index-list").replaceChildren(...rows);
+}
+
+function createIndexRow(index, activeId) {
+  const chunkCount = index.summary_ready === false ? "—" : index.chunk_count;
+  const label = `${index.model} · ${index.dimensions}D · ${chunkCount} chunků`;
+  const row = createSettingsRow(index.name, `${label} · ${index.status}`);
+  appendIndexSummaryState(row, index);
+  row.append(createAutoSyncToggle(index));
+  appendIndexActions(row, index, activeId);
+  if (index.last_error && !index.active_job_id) {
+    row.append(createDetail(index.last_error, "error-detail"));
+  }
+  return row;
+}
+
+function createAutoSyncToggle(index) {
+  const toggle = document.createElement("label");
+  const checkbox = document.createElement("input");
+  toggle.className = "compact-toggle";
+  checkbox.type = "checkbox";
+  checkbox.checked = index.auto_sync;
+  checkbox.addEventListener("change", () => updateAutoSync(index, checkbox));
+  toggle.append(checkbox, document.createTextNode(" Auto-sync"));
+  return toggle;
+}
+
+function appendIndexActions(row, index, activeId) {
+  if (index.embedding_index_id !== activeId && index.status === "ready") {
+    const activateButton = actionButton(
+      "Aktivovat", () => activateIndex(index.embedding_index_id, activateButton),
+    );
+    row.append(activateButton);
+  } else if (index.embedding_index_id === activeId) {
+    row.classList.add("active-settings-row");
+  }
+  if (index.summary_ready !== false && index.pending_message_count && !index.active_job_id) {
+    const syncButton = actionButton(
+      `Sync ${index.pending_message_count}`, () => syncIndex(index, syncButton),
+    );
+    row.append(syncButton);
+  }
+  if (!index.active_job_id) {
+    const rebuildButton = actionButton(
+      "Rebuild", () => rebuildIndex(index, rebuildButton),
+    );
+    row.append(rebuildButton);
+  }
+  if (index.embedding_index_id !== activeId) {
+    const deleteButton = actionButton(
+      "Smazat", () => removeIndex(index, deleteButton), "danger-link",
+    );
+    row.append(deleteButton);
+  }
+}
+
+function appendIndexSummaryState(row, index) {
+  if (index.summary_ready === false) {
+    row.append(createDetail("Připravuji souhrn…"));
+  } else if (index.summary_error) {
+    row.append(createDetail("Obnova souhrnu selhala. Zkuste ji spustit znovu.", "error-detail"));
+  } else if (index.summary_refreshing || index.summary_is_stale) {
+    row.append(createDetail("Souhrn se aktualizuje…"));
+  }
 }
 
 async function saveProvider(submitEvent) {

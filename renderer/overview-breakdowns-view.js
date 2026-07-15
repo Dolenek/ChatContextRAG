@@ -69,6 +69,10 @@ window.overviewBreakdownsView = (() => {
   }
 
   function renderPage(dimension, page, append) {
+    if (page.summary_ready === false) {
+      renderProjectionPreparing(dimension);
+      return;
+    }
     const view = definitions[dimension];
     const state = append ? states.get(dimension) : freshState();
     if (!append) states.set(dimension, state);
@@ -82,6 +86,16 @@ window.overviewBreakdownsView = (() => {
     state.hasMore = Boolean(page.has_more);
     state.failed = false;
     document.querySelector(view.total).textContent = `${formatNumber(page.total)} celkem`;
+    updateButton(dimension);
+  }
+
+  function renderProjectionPreparing(dimension) {
+    const view = definitions[dimension];
+    states.set(dimension, freshState());
+    document.querySelector(view.container).replaceChildren(
+      createEmptyLabel("Připravuji souhrn…"),
+    );
+    document.querySelector(view.total).textContent = "—";
     updateButton(dimension);
   }
 

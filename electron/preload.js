@@ -1,5 +1,8 @@
-const { randomUUID } = require("node:crypto");
 const { contextBridge, ipcRenderer } = require("electron");
+
+function createRequestId() {
+  return globalThis.crypto.randomUUID();
+}
 
 function createChatRequest(question, history, scope, chatSelection, sessionId) {
   return {
@@ -16,7 +19,7 @@ function createChatRequest(question, history, scope, chatSelection, sessionId) {
 }
 
 function askDatabaseStreaming(question, history, scope, selection, sessionId, onActivity) {
-  const requestId = randomUUID();
+  const requestId = createRequestId();
   const listener = (_event, progress) => {
     if (progress.requestId === requestId) onActivity(progress.record);
   };
@@ -73,6 +76,8 @@ contextBridge.exposeInMainWorld("chatContext", {
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
   getDatabaseStatus: (options = {}) => ipcRenderer.invoke("database:status", options),
+  refreshReadModel: (scope = "active") =>
+    ipcRenderer.invoke("database:read-model-refresh", scope),
   getDatabaseBreakdowns: () => ipcRenderer.invoke("database:breakdowns"),
   getDatabaseBreakdownPage: (dimension, limit = 50, offset = 0) =>
     ipcRenderer.invoke("database:breakdown-page", { dimension, limit, offset }),

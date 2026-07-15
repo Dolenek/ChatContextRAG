@@ -3,6 +3,7 @@ import uuid
 from typing import Optional
 
 from backend.models import EmbeddingIndexView
+from backend.read_models.metadata import SANITIZED_REFRESH_ERROR
 
 
 DEFAULT_INDEX_ID = "default-openai"
@@ -117,13 +118,20 @@ def assert_no_active_job(connection, index_id: str) -> None:
 def index_view_sql() -> str:
     return """SELECT idx.id,idx.name,idx.provider_id,idx.model,idx.dimensions,
       idx.requested_dimensions,idx.status,idx.auto_sync,
-      (SELECT COUNT(*) FROM rag_chunks chunk WHERE chunk.embedding_index_id=idx.id),
-      (SELECT COUNT(*) FROM source_messages message WHERE NOT EXISTS
-        (SELECT 1 FROM rag_chunk_messages link WHERE link.embedding_index_id=idx.id
-         AND link.message_id=message.external_id)),idx.last_error,
+      COALESCE(summary.chunk_count,0),COALESCE(summary.pending_message_count,0),
+      idx.last_error,
       (SELECT job.id FROM indexing_jobs job WHERE job.embedding_index_id=idx.id
        AND job.status IN ('queued','running') ORDER BY job.created_at LIMIT 1),
-      idx.created_at,idx.updated_at FROM embedding_indexes idx"""
+      idx.created_at,idx.updated_at,
+      summary.embedding_index_id IS NOT NULL AND state.published_revision>0,
+      state.generated_at,
+      state.projection_key IS NULL OR state.requested_revision>state.published_revision
+        OR state.status<>'ready',
+      state.projection_key IS NULL OR state.status IN ('queued','running'),
+      state.last_error IS NOT NULL
+      FROM embedding_indexes idx
+      LEFT JOIN embedding_index_read_summary summary ON summary.embedding_index_id=idx.id
+      LEFT JOIN read_model_refresh_state state ON state.embedding_index_id=idx.id"""
 
 
 def embedding_index_view(row) -> EmbeddingIndexView:
@@ -132,4 +140,7 @@ def embedding_index_view(row) -> EmbeddingIndexView:
         dimensions=row[4], requested_dimensions=row[5], status=row[6],
         auto_sync=row[7], chunk_count=row[8], pending_message_count=row[9],
         last_error=row[10], active_job_id=row[11], created_at=row[12], updated_at=row[13],
+        summary_ready=bool(row[14]), summary_generated_at=row[15],
+        summary_is_stale=bool(row[16]), summary_refreshing=bool(row[17]),
+        summary_error=SANITIZED_REFRESH_ERROR if row[18] else None,
     )

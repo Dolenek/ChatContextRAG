@@ -25,7 +25,7 @@
 }
 
 .sidebar-brand { height: 54px; display: grid; grid-template-columns: minmax(34px, 1fr) 42px minmax(34px, 1fr); align-items: center; margin-bottom: 10px; -webkit-app-region: drag; }
-.brand-mark { position: absolute; top: 21px; left: var(--rail-brand-center-x); width: max-content; height: 48px; display: grid; place-items: center; opacity: 1; transform: translateX(-50%); transition: opacity 130ms ease; }
+.brand-mark { position: absolute; top: 12px; left: var(--rail-brand-center-x); width: max-content; height: 48px; display: grid; place-items: center; opacity: 1; transform: translateX(-50%); transition: opacity 130ms ease; }
 .brand-wordmark { width: auto; height: 48px; display: block; object-fit: contain; }
 .brand-symbol { display: none; }
 .navigation-toggle { grid-column: 3; justify-self: end; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 9px; color: #9fabc0; background: transparent; opacity: 1; transition: opacity 130ms ease; -webkit-app-region: no-drag; }

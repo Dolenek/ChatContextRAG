@@ -283,7 +283,7 @@
               <header class="settings-section-heading"><h2 id="settings-workspace-title">Workspace</h2><p>Spravujte časovou zónu a v desktopové aplikaci také aktivní datový cíl.</p></header>
               <section id="connection-settings-card" class="settings-card hidden" aria-hidden="true">
                 <h3>Připojení workspace</h3><p id="connection-status">Načítám aktivní cíl…</p>
-                <p>Vzdálené připojení používá Chat Context server, který bezpečně zprostředkuje čtení i zápis do databáze.</p>
+                <p>Vzdálené připojení používá Chat Context server. Desktop API token musí odpovídat hodnotě <code>CHAT_CONTEXT_DESKTOP_TOKEN</code> v jeho souboru <code>.env</code>.</p>
                 <form id="connection-form" class="settings-form settings-form-grid">
                   <label for="connection-mode">Režim</label><select id="connection-mode"><option value="local">Lokální workspace na tomto počítači</option><option value="remote">Vzdálený Chat Context server</option></select>
                   <div id="remote-connection-fields" class="remote-connection-fields hidden" aria-hidden="true">

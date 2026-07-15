@@ -24,4 +24,7 @@
   }
 
   window.runtimeCapabilitiesUi = { apply, refresh };
+  void refresh().catch((error) => {
+    console.error("Runtime capabilities could not be loaded.", error);
+  });
 }());

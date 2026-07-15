@@ -58,7 +58,16 @@ test("desktop capability can independently disable the local scanner", () => {
   assert.equal(fixture.scannerPanel.classList.contains("hidden"), true);
 });
 
+test("capabilities are requested as soon as their controller loads", async () => {
+  const fixture = createFixture({ mode: "electron-local", embeddedDiscord: true });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(fixture.capabilityRequests(), 1);
+  assert.equal(fixture.connection.classList.contains("hidden"), false);
+});
+
 function createFixture(capabilities) {
+  let requestCount = 0;
   const connection = new FakeElement();
   const scannerButton = new FakeElement();
   const scannerPanel = new FakeElement();
@@ -74,10 +83,14 @@ function createFixture(capabilities) {
   const context = {
     document,
     Set,
-    window: { chatContext: { getRuntimeCapabilities: async () => capabilities } },
+    window: { chatContext: { getRuntimeCapabilities: async () => {
+      requestCount += 1;
+      return capabilities;
+    } } },
   };
   vm.runInNewContext(controllerSource, context);
   return {
+    capabilityRequests: () => requestCount,
     connection, controller: context.window.runtimeCapabilitiesUi, document,
     runtimeElements: [connection, scannerButton, scannerPanel], scannerButton, scannerPanel,
   };

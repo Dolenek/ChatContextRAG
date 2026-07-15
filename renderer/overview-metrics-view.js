@@ -68,7 +68,8 @@ window.overviewMetricsView = (() => {
 
   function updateCard(definition, status) {
     const entry = cards.get(definition.key);
-    const value = formatValue(definition, status[definition.key]);
+    const unavailable = status.summary_ready === false && definition.key !== "database_size";
+    const value = formatValue(definition, unavailable ? undefined : status[definition.key]);
     entry.value.textContent = value;
     entry.card.setAttribute("aria-label", `${definition.label}: ${value}`);
   }

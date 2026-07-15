@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from backend.embedding_indexes import PostgresEmbeddingIndexRepository
 from backend.index_staging import PostgresIndexStaging
 from backend.hybrid_repository import PostgresHybridRepository
@@ -77,6 +79,35 @@ def test_staging_replaces_links_for_a_whole_batch() -> None:
     assert len(cursor.executemany_calls[0][1]) == 3
 
 
+def test_index_activation_queues_an_immediate_projection_refresh(monkeypatch) -> None:
+    read_models = ReadModelStoreSpy()
+    repository = PostgresEmbeddingIndexRepository(
+        "postgresql://unused", object(), "test-model", 2, read_models,
+    )
+    connection = RecordingConnection()
+    monkeypatch.setattr(repository, "get", lambda _index_id: SimpleNamespace(status="ready"))
+    monkeypatch.setattr(repository, "_connect", lambda: connection)
+
+    repository.activate("index-1")
+
+    assert read_models.invalidations == [("index-1", True)]
+
+
+def test_atomic_index_publication_invalidates_its_projection(monkeypatch) -> None:
+    read_models = ReadModelStoreSpy()
+    staging = PostgresIndexStaging("postgresql://unused", lambda: None, read_models)
+    connection = RecordingConnection(("running", "worker-1"))
+    monkeypatch.setattr(staging, "_connect", lambda: connection)
+    monkeypatch.setattr(staging, "_replace_session_chunks", lambda *_arguments: None)
+
+    committed = staging.commit(
+        "job-1", "session-1", "worker-1", "index-1", "incremental",
+    )
+
+    assert committed is True
+    assert read_models.invalidations == [("index-1", False)]
+
+
 def _repository(monkeypatch, index_state):
     repository = PostgresEmbeddingIndexRepository(
         "postgresql://unused", object(), "test-model", 2,
@@ -109,7 +140,17 @@ class RecordingConnection:
         self.calls.append((" ".join(statement.split()), parameters))
         if statement.lstrip().startswith("SELECT status,auto_sync"):
             return QueryResult(self.index_state)
+        if statement.lstrip().startswith("SELECT status FROM indexing_jobs"):
+            return QueryResult(self.index_state)
         return QueryResult()
+
+
+class ReadModelStoreSpy:
+    def __init__(self) -> None:
+        self.invalidations = []
+
+    def invalidate_index(self, _connection, index_id, immediate=False) -> None:
+        self.invalidations.append((index_id, immediate))
 
 
 class RecordingCursor:

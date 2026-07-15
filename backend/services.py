@@ -10,6 +10,7 @@ from backend.models import (
 )
 from backend.normalization import SourceMessageNormalizer
 from backend.raw_repository import PostgresRawMessageRepository
+from backend.read_models import PostgresReadModelStore, ReadModelRefreshWorker
 from backend.repository import VectorRepository
 
 
@@ -106,9 +107,13 @@ class DatabaseOverviewService:
     def __init__(
         self, repository: VectorRepository,
         raw_repository: Optional[PostgresRawMessageRepository] = None,
+        read_model_store: Optional[PostgresReadModelStore] = None,
+        read_model_worker: Optional[ReadModelRefreshWorker] = None,
     ) -> None:
         self.repository = repository
         self.raw_repository = raw_repository
+        self.read_model_store = read_model_store
+        self.read_model_worker = read_model_worker
 
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
         return self.repository.get_overview(limit, offset)
@@ -135,20 +140,23 @@ class DatabaseOverviewService:
         if self.raw_repository:
             raw_chunks, deleted_messages = self.raw_repository.delete_all()
             deleted_chunks += raw_chunks
-        drop_cache = getattr(self.repository, "drop_database_status_cache", None)
-        if drop_cache:
-            drop_cache()
         return deleted_chunks, deleted_messages
 
-    def warm_status_cache(self) -> None:
-        warm_cache = getattr(self.repository, "warm_database_status_cache", None)
-        if warm_cache:
-            warm_cache()
+    def refresh_read_model(self, scope: str) -> dict:
+        if not self.read_model_store:
+            raise ValueError("Persistent read model is not configured.")
+        self.read_model_store.request_refresh(scope)
+        if self.read_model_worker:
+            self.read_model_worker.wake()
+        return {"queued": True, "scope": scope}
 
-    def close_status_cache(self) -> None:
-        close_cache = getattr(self.repository, "close_database_status_cache", None)
-        if close_cache:
-            close_cache()
+    def start_background_services(self) -> None:
+        if self.read_model_worker:
+            self.read_model_worker.start()
+
+    def close_background_services(self) -> None:
+        if self.read_model_worker:
+            self.read_model_worker.stop()
 
     def get_resume_point(
         self, channel_id: str, channel_name: Optional[str],

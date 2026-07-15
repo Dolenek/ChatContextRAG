@@ -98,6 +98,7 @@ window.overviewController = (() => {
   }
 
   function renderStatus(status) {
+    const previousStatus = latestStatus;
     latestStatus = status;
     window.archiveStatus.render(status);
     window.indexingControls.render(
@@ -107,14 +108,27 @@ window.overviewController = (() => {
     renderSummaryState(status);
     updateChunkRange();
     scheduleStatusRefresh(status);
+    if (projectionFinished(previousStatus, status)) {
+      void refreshProjectionConsumers();
+    }
   }
 
   function renderSummaryState(status) {
     const label = document.querySelector("#overview-summary-state");
-    if (status.summary_refreshing) label.textContent = "Aktualizuji souhrn…";
+    if (status.summary_ready === false) label.textContent = "Připravuji souhrn…";
+    else if (status.summary_error) label.textContent = "Obnova souhrnu selhala";
+    else if (status.summary_refreshing) label.textContent = "Aktualizuji souhrn…";
     else if (status.summary_is_stale) label.textContent = "Souhrn čeká na obnovení";
-    else label.textContent = "";
-    label.setAttribute("aria-busy", String(Boolean(status.summary_refreshing)));
+    else label.textContent = generatedSummaryLabel(status.summary_generated_at);
+    const visiblyBusy = status.summary_ready === false || status.summary_refreshing;
+    label.setAttribute("aria-busy", String(Boolean(visiblyBusy)));
+  }
+
+  function generatedSummaryLabel(generatedAt) {
+    if (!generatedAt) return "";
+    const generatedDate = new Date(generatedAt);
+    if (Number.isNaN(generatedDate.getTime())) return "";
+    return `Souhrn aktualizován ${generatedDate.toLocaleString("cs-CZ")}`;
   }
 
   function scheduleStatusRefresh(status) {
@@ -122,12 +136,37 @@ window.overviewController = (() => {
     if (document.hidden) return;
     const hasActiveJobs = (status.indexing_jobs || []).some((job) =>
       ["queued", "running"].includes(job.status));
-    const delay = status.summary_refreshing ? summaryFollowUpMs
+    const delay = summaryIsPending(status) ? summaryFollowUpMs
       : hasActiveJobs ? summaryRefreshIntervalMs : null;
     if (delay === null) return;
     statusTimer = window.setTimeout(() => {
       void refreshStatus({ forceClient: true });
     }, delay);
+  }
+
+  function summaryIsPending(status) {
+    return status.summary_ready === false
+      || Boolean(status.summary_refreshing || status.summary_is_stale);
+  }
+
+  function projectionFinished(previousStatus, currentStatus) {
+    return Boolean(previousStatus && summaryIsPending(previousStatus)
+      && currentStatus.summary_ready !== false
+      && !summaryIsPending(currentStatus));
+  }
+
+  async function refreshProjectionConsumers() {
+    window.workspaceCache.invalidate(
+      "settings", "chat-scopes", "database-status",
+      ...["channels", "authors", "embedding-models"].map(
+        window.overviewBreakdownsView.pageCacheKey,
+      ),
+    );
+    await Promise.allSettled([
+      window.chatScopeSelector?.refresh(true),
+      window.settingsUi?.refreshIndexState(),
+      window.overviewBreakdownsView.loadInitial(true),
+    ]);
   }
 
   function clearStatusTimer() {
@@ -176,8 +215,10 @@ window.overviewController = (() => {
   }
 
   function updateChunkRange() {
+    const total = latestStatus?.summary_ready === false
+      ? "—" : window.overviewMetricsView.formatNumber(latestStatus?.total_chunks);
     document.querySelector("#chunk-range").textContent =
-      `Zobrazeno ${window.overviewMetricsView.formatNumber(displayedChunkCount)} z ${window.overviewMetricsView.formatNumber(latestStatus?.total_chunks)}`;
+      `Zobrazeno ${window.overviewMetricsView.formatNumber(displayedChunkCount)} z ${total}`;
   }
 
   function renderChunkLoading() {

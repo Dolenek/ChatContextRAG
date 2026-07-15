@@ -7,13 +7,18 @@ from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
 from backend.openai_gateway import ExternalIntegrationError
+from backend.read_models.store import PostgresReadModelStore
 from backend.vector_models import EmbeddedChunk
 
 
 class PostgresIndexStaging:
-    def __init__(self, database_dsn: str, ensure_schema: Callable[[], None]) -> None:
+    def __init__(
+        self, database_dsn: str, ensure_schema: Callable[[], None],
+        read_model_store: PostgresReadModelStore | None = None,
+    ) -> None:
         self.database_dsn = database_dsn
         self.ensure_schema = ensure_schema
+        self.read_model_store = read_model_store
 
     def prepare(self, job_id: str, worker_id: str, embedding_index_id: str) -> None:
         self.ensure_schema()
@@ -70,6 +75,8 @@ class PostgresIndexStaging:
                 self._replace_session_chunks(
                     connection, job_id, session_id, embedding_index_id, job_type,
                 )
+                if self.read_model_store:
+                    self.read_model_store.invalidate_index(connection, embedding_index_id)
                 connection.execute(
                     """UPDATE indexing_jobs SET status='completed',
                        processed_messages=total_messages, finished_at=NOW(), last_error=NULL,

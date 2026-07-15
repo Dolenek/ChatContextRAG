@@ -34,6 +34,11 @@ class DatabaseCountPage(BaseModel):
     offset: int
     has_more: bool = False
     next_offset: Optional[int] = None
+    summary_ready: bool = True
+    summary_generated_at: Optional[datetime] = None
+    summary_is_stale: bool = False
+    summary_refreshing: bool = False
+    summary_error: Optional[str] = None
 
 
 class DatabaseChunkView(BaseModel):
@@ -63,9 +68,11 @@ class DatabaseStatus(BaseModel):
     pending_message_count: int = 0
     database_size: str = "0 bytes"
     indexing_jobs: List[IndexingJobView] = Field(default_factory=list)
+    summary_ready: bool = True
     summary_generated_at: Optional[datetime] = None
     summary_is_stale: bool = False
     summary_refreshing: bool = False
+    summary_error: Optional[str] = None
 
 
 class DatabaseBreakdowns(BaseModel):
@@ -85,3 +92,12 @@ class DatabaseOverview(DatabaseStatus, DatabaseBreakdowns):
     limit: int
     offset: int
     has_more: bool
+
+
+class ReadModelRefreshRequest(BaseModel):
+    scope: Literal["active", "all"] = "active"
+
+
+class ReadModelRefreshResponse(BaseModel):
+    queued: bool
+    scope: Literal["active", "all"]

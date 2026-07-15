@@ -119,6 +119,7 @@ function matchBackendRoute(method, pathname) {
     ["GET /api/chat/sessions", "/chat/sessions"],
     ["POST /api/chat", "/chat"],
     ["GET /api/database/status", "/database/status"],
+    ["POST /api/database/read-model/refresh", "/database/read-model/refresh"],
     ["GET /api/database/breakdowns", "/database/breakdowns"],
     ["GET /api/database/chunks", "/database/chunks"],
     ["GET /api/database/overview", "/database/overview"],

@@ -198,6 +198,46 @@ test("summary freshness state is announced without replacing metrics", async () 
   assert.equal(state.attributes["aria-busy"], "false");
 });
 
+test("first read-model backfill uses placeholders and eight-second polling", async () => {
+  const harness = createHarness({
+    statuses: [statusFixture({ summary_ready: false, summary_refreshing: true })],
+    pages: [pageFixture()],
+    breakdownPages: Object.fromEntries(
+      ["channels", "authors", "embedding-models"].map(
+        (dimension) => [dimension, [countPage([], { summary_ready: false })]],
+      ),
+    ),
+  });
+
+  await harness.controller.refresh();
+
+  assert.equal(metricValues(harness.elements.get("#overview-stats"))[0], "—");
+  assert.equal(harness.elements.get("#chunk-range").textContent, "Zobrazeno 0 z —");
+  assert.equal(harness.elements.get("#overview-summary-state").textContent,
+    "Připravuji souhrn…");
+  assert.equal(harness.elements.get("#channel-total").textContent, "—");
+  assert.equal(harness.scheduledDelays.at(-1), 8000);
+});
+
+test("completed projection refreshes every projection consumer", async () => {
+  const harness = createHarness({
+    statuses: [
+      statusFixture({ summary_is_stale: true, summary_refreshing: true }),
+      statusFixture({ summary_generated_at: "2026-07-15T12:00:00Z" }),
+    ],
+    pages: [pageFixture()],
+  });
+  await harness.controller.refresh();
+
+  await harness.controller.refreshStatus({ forceClient: true });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(harness.requests.chatScopes, 1);
+  assert.equal(harness.requests.settings, 1);
+  assert.equal(harness.requests.breakdownPages.length, 6);
+});
+
 test("workspace cache coalesces requests and revalidates invalidated values", async () => {
   const context = { document: { querySelector: () => new FakeElement() }, window: {} };
   vm.runInNewContext(read("renderer/workspace-state.js"), context);
@@ -241,8 +281,11 @@ test("cache invalidation prevents an old response from becoming fresh", async ()
 
 function createHarness(input) {
   const elements = overviewElements();
-  const requests = { status: 0, breakdownPages: [], pages: [] };
+  const requests = {
+    status: 0, breakdownPages: [], pages: [], chatScopes: 0, settings: 0,
+  };
   const toasts = [];
+  const scheduledDelays = [];
   const breakdownPages = input.breakdownPages || defaultBreakdownPages();
   const context = {
     document: {
@@ -251,7 +294,10 @@ function createHarness(input) {
       createElement: (tagName) => new FakeElement(tagName),
       createElementNS: (_namespace, tagName) => new FakeElement(tagName),
     },
-    window: { setTimeout: () => 1, clearTimeout: () => {} },
+    window: {
+      setTimeout: (_callback, delay) => { scheduledDelays.push(delay); return 1; },
+      clearTimeout: () => {},
+    },
   };
   vm.runInNewContext(read("renderer/workspace-state.js"), context);
   context.window.chatContext = {
@@ -270,6 +316,12 @@ function createHarness(input) {
   };
   context.window.archiveStatus = { render: () => {} };
   context.window.indexingControls = { render: () => {} };
+  context.window.chatScopeSelector = {
+    refresh: async () => { requests.chatScopes += 1; },
+  };
+  context.window.settingsUi = {
+    refreshIndexState: async () => { requests.settings += 1; },
+  };
   context.window.appUi = { showToast: (...arguments_) => toasts.push(arguments_) };
   vm.runInNewContext(read("renderer/overview-metrics-view.js"), context);
   vm.runInNewContext(read("renderer/overview-breakdowns-view.js"), context);
@@ -277,7 +329,7 @@ function createHarness(input) {
   return {
     controller: context.window.overviewController,
     breakdowns: context.window.overviewBreakdownsView,
-    elements, requests, toasts,
+    elements, requests, scheduledDelays, toasts,
   };
 }
 
@@ -309,7 +361,8 @@ function statusFixture(overrides = {}) {
     unique_content_count: 0, duplicate_message_count: 0, indexed_message_count: 0,
     pending_message_count: 0, database_size: "0 bytes", total_channels: 3,
     total_authors: 1, oldest_message_at: null, newest_message_at: null,
-    indexing_jobs: [], summary_is_stale: false, summary_refreshing: false,
+    indexing_jobs: [], summary_ready: true,
+    summary_is_stale: false, summary_refreshing: false,
     ...overrides,
   };
 }

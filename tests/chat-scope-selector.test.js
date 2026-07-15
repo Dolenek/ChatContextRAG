@@ -34,6 +34,14 @@ test("changing scope starts a fresh conversation history", () => {
   assert.match(chatController, /conversationHistory\.length = 0/);
 });
 
+test("scope refresh preserves rows while the first projection is unavailable", () => {
+  const selector = read("renderer/chat-scope-selector.js");
+
+  assert.match(selector, /response\.summary_ready === false && availableChatScopes\.size > 0/);
+  assert.match(selector, /Připravuji souhrn…/);
+  assert.match(selector, /response\.summary_error/);
+});
+
 test("startup loads lightweight status and database navigation paints before waiting", () => {
   const app = read("renderer/app.js");
   const bindings = read("renderer/event-bindings.js");

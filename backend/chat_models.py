@@ -36,6 +36,11 @@ class ChatScopeOption(ChatScope):
 
 class ChatScopeList(BaseModel):
     scopes: List[ChatScopeOption] = Field(default_factory=list)
+    summary_ready: bool = True
+    summary_generated_at: Optional[datetime] = None
+    summary_is_stale: bool = False
+    summary_refreshing: bool = False
+    summary_error: Optional[str] = None
 
 
 class ChatRequest(BaseModel):

@@ -1,6 +1,7 @@
 from typing import List
 
 from backend.discord_bot_schema import discord_bot_schema_statements
+from backend.read_models.schema import read_model_schema_statements
 
 
 def raw_schema_statements(
@@ -15,6 +16,7 @@ def raw_schema_statements(
         + _integration_schema_statements()
         + chat_session_schema_statements()
         + discord_bot_schema_statements()
+        + read_model_schema_statements()
     )
 
 

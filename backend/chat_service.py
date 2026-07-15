@@ -52,7 +52,7 @@ class DatabaseChatService(ChatSessionAccess):
 
     def list_scopes(self) -> ChatScopeList:
         scopes = self.scope_catalog.list_scopes() if self.scope_catalog else []
-        return ChatScopeList(scopes=scopes)
+        return scopes if isinstance(scopes, ChatScopeList) else ChatScopeList(scopes=scopes)
 
     def answer(self, request: ChatRequest, activity_callback=None) -> ChatResponse:
         if self.provider_registry and self.index_repository:

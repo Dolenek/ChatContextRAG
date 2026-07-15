@@ -14,9 +14,11 @@ from backend.models import (
 )
 from backend.openai_gateway import ExternalIntegrationError
 from backend.pending_indexing import PostgresPendingIndexingJobCreator
+from backend.raw_archive_reset import RawArchiveResetter
 from backend.raw_message_writer import RawMessageWriter
 from backend.raw_message_reader import PostgresRawMessageReader
 from backend.raw_schema import raw_schema_statements
+from backend.read_models.store import PostgresReadModelStore
 from backend.vector_models import NormalizedMessage
 
 
@@ -29,10 +31,12 @@ class PostgresRawMessageRepository:
         self, database_dsn: str,
         default_embedding_model: str = "text-embedding-3-small",
         default_embedding_dimensions: int = 1536,
+        read_model_store: Optional[PostgresReadModelStore] = None,
     ) -> None:
         self.database_dsn = database_dsn
         self.default_embedding_model = default_embedding_model
         self.default_embedding_dimensions = default_embedding_dimensions
+        self.read_model_store = read_model_store
         self._initialized = False
         self._lock = threading.Lock()
         self.message_writer = RawMessageWriter()
@@ -50,6 +54,9 @@ class PostgresRawMessageRepository:
             lambda: self.ensure_schema(), lambda: self._connect())
         self.sync_repository = PostgresIntegrationSyncRepository(
             lambda: self.ensure_schema(), lambda: self._connect(),
+        )
+        self.archive_resetter = RawArchiveResetter(
+            self.ensure_schema, self._connect, read_model_store,
         )
 
     def create_session(self, request: IngestionSessionRequest) -> IngestionSessionView:
@@ -81,7 +88,10 @@ class PostgresRawMessageRepository:
         self.ensure_schema()
         try:
             with self._connect() as connection:
-                return self.message_writer.store_messages(connection, session_id, messages)
+                result = self.message_writer.store_messages(connection, session_id, messages)
+                if self.read_model_store:
+                    self.read_model_store.invalidate_all(connection)
+                return result
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL raw message write failed.") from error
 
@@ -179,18 +189,7 @@ class PostgresRawMessageRepository:
         return self.sync_repository.upsert(state)
 
     def delete_all(self) -> tuple:
-        self.ensure_schema()
-        with self._connect() as connection:
-            chunk_count = connection.execute("SELECT COUNT(*) FROM rag_chunks").fetchone()[0]
-            message_count = connection.execute("SELECT COUNT(*) FROM source_messages").fetchone()[0]
-            connection.execute("TRUNCATE rag_staged_chunk_messages, rag_staged_chunks, "
-                               "rag_chunk_messages, rag_chunks, indexing_job_messages, indexing_jobs, "
-                               "ingestion_session_messages, ingestion_sessions, "
-                               "integration_sync_states, source_messages, message_contents CASCADE")
-            connection.execute(
-                "UPDATE embedding_indexes SET status='ready',last_error=NULL,updated_at=NOW()"
-            )
-        return chunk_count, message_count
+        return self.archive_resetter.delete_all()
 
     def delete_session(self, session_id: str) -> None:
         self.ensure_schema()

@@ -12,19 +12,33 @@ from backend.models import (
 )
 from backend.openai_gateway import ExternalIntegrationError
 from backend.postgres_overview_reader import PostgresOverviewReader
+from backend.postgres_vector_sql import (
+    legacy_chunk_index_sql, legacy_chunk_search_sql, legacy_chunk_table_sql,
+    legacy_chunk_upsert_sql, legacy_resume_indexes_sql,
+    oldest_legacy_source_message_sql,
+)
+from backend.read_models.reader import PostgresReadModelReader
+from backend.read_models.store import PostgresReadModelStore
 from backend.repository import VectorRepository
 from backend.vector_models import EmbeddedChunk, RetrievedChunk
 
 
 class PostgresVectorRepository(VectorRepository):
-    def __init__(self, database_dsn: str, dimensions: int) -> None:
+    def __init__(
+        self, database_dsn: str, dimensions: int,
+        read_model_reader: Optional[PostgresReadModelReader] = None,
+        read_model_store: Optional[PostgresReadModelStore] = None,
+    ) -> None:
         if not 1 <= dimensions <= 2000:
             raise ValueError("pgvector dimensions must be between 1 and 2000")
         self.database_dsn = database_dsn
         self.dimensions = dimensions
         self._initialized = False
         self._initialization_lock = threading.Lock()
-        self.overview_reader = PostgresOverviewReader(database_dsn)
+        self.read_model_store = read_model_store or PostgresReadModelStore(database_dsn)
+        self.overview_reader = PostgresOverviewReader(
+            database_dsn, read_model_reader, self.read_model_store,
+        )
 
     def upsert_chunks(self, chunks: Iterable[EmbeddedChunk]) -> int:
         chunk_list = list(chunks)
@@ -33,7 +47,7 @@ class PostgresVectorRepository(VectorRepository):
             with self._connect() as connection:
                 with connection.cursor() as cursor:
                     cursor.executemany(
-                        self._upsert_sql(), [self._to_row(item) for item in chunk_list]
+                        legacy_chunk_upsert_sql(), [self._to_row(item) for item in chunk_list]
                     )
             return len(chunk_list)
         except psycopg.Error as error:
@@ -48,7 +62,7 @@ class PostgresVectorRepository(VectorRepository):
         try:
             with self._connect() as connection:
                 rows = connection.execute(
-                    self._search_sql(), self._search_parameters(vector, limit, scope),
+                    legacy_chunk_search_sql(), self._search_parameters(vector, limit, scope),
                 ).fetchall()
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL vector search failed.") from error
@@ -72,15 +86,8 @@ class PostgresVectorRepository(VectorRepository):
         self._ensure_schema()
         return self.overview_reader.get_breakdown_page(dimension, limit, offset)
 
-    def warm_database_status_cache(self) -> None:
-        self._ensure_schema()
-        self.overview_reader.warm_status_cache()
-
-    def drop_database_status_cache(self) -> None:
-        self.overview_reader.drop_status_cache()
-
-    def close_database_status_cache(self) -> None:
-        self.overview_reader.close_status_cache()
+    def request_read_model_refresh(self, scope: str) -> None:
+        self.read_model_store.request_refresh(scope)
 
     def get_database_chunk_page(
         self, limit: int, cursor: Optional[str],
@@ -122,7 +129,7 @@ class PostgresVectorRepository(VectorRepository):
         try:
             with self._connect() as connection:
                 row = connection.execute(
-                    self._oldest_source_message_sql(), (channel_id, channel_name)
+                    oldest_legacy_source_message_sql(), (channel_id, channel_name)
                 ).fetchone()
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL resume-point query failed.") from error
@@ -142,9 +149,9 @@ class PostgresVectorRepository(VectorRepository):
             with psycopg.connect(self.database_dsn, autocommit=True) as connection:
                 connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
                 register_vector(connection)
-                connection.execute(self._create_table_sql())
-                connection.execute(self._create_index_sql())
-                connection.execute(self._create_resume_indexes_sql())
+                connection.execute(legacy_chunk_table_sql(self.dimensions))
+                connection.execute(legacy_chunk_index_sql())
+                connection.execute(legacy_resume_indexes_sql())
         except psycopg.Error as error:
             raise ExternalIntegrationError("PostgreSQL vector schema initialization failed.") from error
 
@@ -153,67 +160,7 @@ class PostgresVectorRepository(VectorRepository):
         register_vector(connection)
         return connection
 
-    def _create_table_sql(self) -> str:
-        return f"""
-            CREATE TABLE IF NOT EXISTS conversation_chunks (
-                id TEXT PRIMARY KEY, content TEXT NOT NULL, authors TEXT[] NOT NULL,
-                source_message_ids TEXT[] NOT NULL, channel TEXT,
-                started_at TIMESTAMPTZ, ended_at TIMESTAMPTZ,
-                embedding_model TEXT NOT NULL, embedding vector({self.dimensions}) NOT NULL,
-                metadata JSONB NOT NULL DEFAULT '{{}}', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """
-
-    @staticmethod
-    def _create_index_sql() -> str:
-        return """
-            CREATE INDEX IF NOT EXISTS conversation_chunks_embedding_hnsw
-            ON conversation_chunks USING hnsw (embedding vector_cosine_ops)
-        """
-
-    @staticmethod
-    def _create_resume_indexes_sql() -> str:
-        return """
-            CREATE INDEX IF NOT EXISTS conversation_chunks_channel_id
-            ON conversation_chunks ((metadata->>'channel_id'));
-            CREATE INDEX IF NOT EXISTS conversation_chunks_channel_name
-            ON conversation_chunks (channel);
-            CREATE INDEX IF NOT EXISTS conversation_chunks_chat_scope
-            ON conversation_chunks (
-              (COALESCE(metadata->>'source_type','discord')),
-              (COALESCE(metadata->>'conversation_id',metadata->>'channel_id'))
-            )
-        """
-
-    @staticmethod
-    def _upsert_sql() -> str:
-        return """
-            INSERT INTO conversation_chunks
-            (id, content, authors, source_message_ids, channel, started_at, ended_at,
-             embedding_model, embedding, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content,
-              authors = EXCLUDED.authors, source_message_ids = EXCLUDED.source_message_ids,
-              channel = EXCLUDED.channel, started_at = EXCLUDED.started_at,
-              ended_at = EXCLUDED.ended_at, embedding = EXCLUDED.embedding,
-              embedding_model = EXCLUDED.embedding_model, metadata = EXCLUDED.metadata,
-              updated_at = NOW()
-        """
-
-    @staticmethod
-    def _search_sql() -> str:
-        return """
-            SELECT id,content, authors, channel, started_at,
-                   1 - (embedding <=> %s) AS similarity_score,
-                   source_message_ids, metadata->>'channel_id', metadata->>'guild_id',
-                   COALESCE(metadata->>'source_type','discord'),
-                   COALESCE(metadata->>'conversation_id',metadata->>'channel_id')
-            FROM conversation_chunks
-            WHERE (%s::text IS NULL OR COALESCE(metadata->>'source_type','discord')=%s)
-              AND (%s::text IS NULL OR COALESCE(metadata->>'conversation_id',
-                                           metadata->>'channel_id')=%s)
-            ORDER BY embedding <=> %s LIMIT %s
-        """
+    _upsert_sql = staticmethod(legacy_chunk_upsert_sql)
 
     @staticmethod
     def _search_parameters(vector, limit: int, scope: Optional[ChatScope]) -> tuple:
@@ -223,19 +170,6 @@ class PostgresVectorRepository(VectorRepository):
             vector, source_type, source_type, conversation_id, conversation_id,
             vector, limit,
         )
-
-    @staticmethod
-    def _oldest_source_message_sql() -> str:
-        return """
-            SELECT source_id FROM conversation_chunks,
-            LATERAL UNNEST(source_message_ids) AS source_id
-            WHERE source_id ~ '^[0-9]+$' AND (
-                metadata->>'channel_id' = %s OR (
-                    COALESCE(metadata->>'channel_id', '') = '' AND channel = %s
-                )
-            )
-            ORDER BY source_id::numeric ASC LIMIT 1
-        """
 
     @staticmethod
     def _to_row(item: EmbeddedChunk) -> tuple:

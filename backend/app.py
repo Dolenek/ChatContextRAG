@@ -1,3 +1,6 @@
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from inspect import isawaitable
 from typing import Optional
 
 from fastapi import FastAPI, Request
@@ -28,6 +31,10 @@ from backend.openai_gateway import (
 from backend.postgres_repository import PostgresVectorRepository
 from backend.provider_registry import ProviderRegistry
 from backend.raw_repository import PostgresRawMessageRepository
+from backend.read_models import (
+    PostgresReadModelReader, PostgresReadModelRefresher,
+    PostgresReadModelStore, ReadModelRefreshWorker,
+)
 from backend.services import DatabaseChatService, DatabaseOverviewService, MessageIngestionService
 from backend.settings import ApplicationSettings
 from backend.settings_routes import register_settings_routes
@@ -35,6 +42,19 @@ from backend.settings_service import ApplicationSettingsService
 from backend.source_context import SourceContextProjector
 from backend.whatsapp_import import WhatsAppImportCoordinator
 from backend.workspace_settings import PostgresWorkspaceSettingsRepository
+
+
+@dataclass(frozen=True)
+class RuntimeStorage:
+    raw_repository: PostgresRawMessageRepository
+    vector_repository: PostgresVectorRepository
+    read_model_store: PostgresReadModelStore
+    read_model_reader: PostgresReadModelReader
+    read_model_worker: ReadModelRefreshWorker
+    provider_registry: ProviderRegistry
+    index_repository: PostgresEmbeddingIndexRepository
+    hybrid_repository: PostgresHybridRepository
+    indexing_worker: PersistentIndexingWorker
 
 
 def create_app(
@@ -46,12 +66,15 @@ def create_app(
     discord_bot_service: Optional[DiscordBotService] = None,
     internal_token: Optional[str] = None,
 ) -> FastAPI:
-    application = FastAPI(title="Chat Context RAG API", version="0.5.0")
     services = _resolve_services(
         ingestion_service, chat_service, overview_service, settings_service,
         discord_bot_service, internal_token,
     )
     active_ingestion, active_chat, active_overview, active_settings, active_discord, token = services
+    application = FastAPI(
+        title="Chat Context RAG API", version="0.5.0",
+        lifespan=_background_service_lifespan(active_overview),
+    )
     application.add_middleware(InternalApiSecurityMiddleware, internal_token=token)
     _register_exception_handlers(application)
     register_ingestion_routes(
@@ -66,17 +89,29 @@ def create_app(
         register_settings_routes(application, active_settings, token)
     if active_discord:
         register_discord_bot_routes(application, active_discord)
-    _register_status_cache_lifecycle(application, active_overview)
     return application
 
 
-def _register_status_cache_lifecycle(application, overview_service) -> None:
-    warm = getattr(overview_service, "warm_status_cache", None)
-    close = getattr(overview_service, "close_status_cache", None)
-    if warm:
-        application.add_event_handler("startup", warm)
-    if close:
-        application.add_event_handler("shutdown", close)
+def _background_service_lifespan(overview_service):
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI):
+        start_services = getattr(overview_service, "start_background_services", None)
+        stop_services = getattr(overview_service, "close_background_services", None)
+        await _run_lifecycle_hook(start_services)
+        try:
+            yield
+        finally:
+            await _run_lifecycle_hook(stop_services)
+
+    return lifespan
+
+
+async def _run_lifecycle_hook(hook) -> None:
+    if not hook:
+        return
+    result = hook()
+    if isawaitable(result):
+        await result
 
 
 def _register_exception_handlers(application: FastAPI) -> None:
@@ -125,13 +160,8 @@ def _migration_exports(ingestion_service) -> Optional[MigrationExportService]:
 
 def _build_default_services() -> tuple:
     settings = ApplicationSettings.from_environment()
-    repository = PostgresVectorRepository(settings.postgres_dsn, settings.embedding_dimensions)
-    raw_repository = PostgresRawMessageRepository(
-        settings.postgres_dsn, settings.embedding_model, settings.embedding_dimensions,
-    )
-    raw_repository.ensure_schema()
-    model_stack = _build_model_stack(settings, raw_repository)
-    provider_registry, index_repository, hybrid_repository, indexing_worker = model_stack
+    storage = _build_storage(settings)
+    raw_repository = storage.raw_repository
     embedding_provider = OpenAIEmbeddingProvider(
         settings.openai_api_key, settings.embedding_model, settings.embedding_dimensions,
         settings.embedding_batch_size,
@@ -142,18 +172,22 @@ def _build_default_services() -> tuple:
         raw_repository.ensure_schema, raw_repository.open_connection,
     )
     chat = _build_default_chat(
-        settings, repository, raw_repository, embedding_provider, chat_provider,
-        hybrid_repository, provider_registry, index_repository, workspace_settings,
+        settings, storage.vector_repository, raw_repository, embedding_provider, chat_provider,
+        storage.hybrid_repository, storage.provider_registry, storage.index_repository,
+        workspace_settings, storage.read_model_reader,
     )
-    overview = DatabaseOverviewService(repository, raw_repository)
+    overview = DatabaseOverviewService(
+        storage.vector_repository, raw_repository, storage.read_model_store,
+        storage.read_model_worker,
+    )
     settings_service = ApplicationSettingsService(
-        provider_registry, index_repository, hybrid_repository, raw_repository,
-        indexing_worker, default_chat_model=settings.chat_model,
+        storage.provider_registry, storage.index_repository, storage.hybrid_repository,
+        raw_repository, storage.indexing_worker, default_chat_model=settings.chat_model,
         workspace_settings=workspace_settings,
     )
     discord_bot = DiscordBotService(
         DiscordBotRepository(raw_repository.ensure_schema, raw_repository.open_connection),
-        provider_registry, index_repository, hybrid_repository,
+        storage.provider_registry, storage.index_repository, storage.hybrid_repository,
         SourceContextProjector(raw_repository), raw_repository, workspace_settings,
     )
     return (
@@ -162,13 +196,37 @@ def _build_default_services() -> tuple:
     )
 
 
+def _build_storage(settings) -> RuntimeStorage:
+    read_model_store = PostgresReadModelStore(settings.postgres_dsn)
+    read_model_reader = PostgresReadModelReader(settings.postgres_dsn)
+    raw_repository = PostgresRawMessageRepository(
+        settings.postgres_dsn, settings.embedding_model, settings.embedding_dimensions,
+        read_model_store,
+    )
+    raw_repository.ensure_schema()
+    read_model_store.ensure_schema()
+    read_model_worker = ReadModelRefreshWorker(
+        read_model_store, PostgresReadModelRefresher(settings.postgres_dsn),
+    )
+    repository = PostgresVectorRepository(
+        settings.postgres_dsn, settings.embedding_dimensions,
+        read_model_reader, read_model_store,
+    )
+    model_stack = _build_model_stack(settings, raw_repository, read_model_store)
+    return RuntimeStorage(
+        raw_repository, repository, read_model_store, read_model_reader,
+        read_model_worker, *model_stack,
+    )
+
+
 def _build_default_chat(
     settings, repository, raw_repository, embedding_provider, chat_provider,
     hybrid_repository, provider_registry, index_repository, workspace_settings,
+    read_model_reader,
 ) -> DatabaseChatService:
     return DatabaseChatService(
         repository, embedding_provider, chat_provider, hybrid_repository,
-        PostgresChatScopeCatalog(settings.postgres_dsn),
+        PostgresChatScopeCatalog(settings.postgres_dsn, read_model_reader),
         provider_registry=provider_registry, index_repository=index_repository,
         default_chat_model=settings.chat_model,
         chat_session_repository=PostgresChatSessionRepository(
@@ -179,17 +237,17 @@ def _build_default_chat(
     )
 
 
-def _build_model_stack(settings, raw_repository):
+def _build_model_stack(settings, raw_repository, read_model_store):
     provider_registry = ProviderRegistry(
         settings.openai_api_key, settings.embedding_batch_size,
     )
     index_repository = PostgresEmbeddingIndexRepository(
         settings.postgres_dsn, provider_registry, settings.embedding_model,
-        settings.embedding_dimensions,
+        settings.embedding_dimensions, read_model_store,
     )
     index_repository.ensure_schema()
     hybrid_repository = PostgresHybridRepository(
-        settings.postgres_dsn, settings.embedding_dimensions,
+        settings.postgres_dsn, settings.embedding_dimensions, read_model_store,
     )
     hybrid_repository.ensure_schema()
     indexing_worker = PersistentIndexingWorker(

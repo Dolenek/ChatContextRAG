@@ -12,6 +12,7 @@ from backend.vector_models import EmbeddedChunk, RetrievedChunk
 from backend.models import ChatScope
 from backend.embedding_indexes import DEFAULT_INDEX_ID
 from backend.archive_time import ArchiveTimeRange
+from backend.read_models.store import PostgresReadModelStore
 
 
 def _metadata_indexes_sql() -> str:
@@ -32,12 +33,17 @@ def _metadata_indexes_sql() -> str:
 
 class PostgresHybridRepository:
     _create_metadata_indexes_sql = staticmethod(_metadata_indexes_sql)
-    def __init__(self, database_dsn: str, dimensions: int) -> None:
+    def __init__(
+        self, database_dsn: str, dimensions: int,
+        read_model_store: PostgresReadModelStore | None = None,
+    ) -> None:
         self.database_dsn = database_dsn
         self.dimensions = dimensions
         self._initialized = False
         self._lock = threading.Lock()
-        self.staging = PostgresIndexStaging(database_dsn, self.ensure_schema)
+        self.staging = PostgresIndexStaging(
+            database_dsn, self.ensure_schema, read_model_store,
+        )
         self.retrieval = PostgresHybridRetrieval(database_dsn, self.ensure_schema)
 
     def prepare_staging(

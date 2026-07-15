@@ -235,6 +235,9 @@
     getDatabaseOverview: (limit, offset) => api(`/database/overview?limit=${limit}&offset=${offset}`),
     getDatabaseStatus: ({ fresh = false } = {}) =>
       api(`/database/status${fresh ? "?fresh=true" : ""}`),
+    refreshReadModel: (scope = "active") => api("/database/read-model/refresh", {
+      method: "POST", body: { scope },
+    }),
     getDatabaseBreakdowns: () => api("/database/breakdowns"),
     getDatabaseBreakdownPage: (dimension, limit = 50, offset = 0) => {
       const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });

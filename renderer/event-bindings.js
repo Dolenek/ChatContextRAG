@@ -10,6 +10,12 @@ async function showDatabaseOverview() {
   await databaseLoad;
 }
 
+function showSourcesDrawer() {
+  window.shellController.openDrawerPanel("sources");
+  void window.runtimeCapabilitiesUi.refresh()
+    .catch((error) => window.appUi.showToast(error.message, true));
+}
+
 document.querySelector("#open-discord-button")
   .addEventListener("click", window.appUi.openDiscord);
 document.querySelector("#capture-button")
@@ -21,7 +27,7 @@ document.querySelector("#resume-scan-button")
 document.querySelector("#close-discord-button")
   .addEventListener("click", () => window.appUi.closeDiscordView());
 document.querySelector("#open-sources-button")
-  .addEventListener("click", () => window.shellController.openDrawerPanel("sources"));
+  .addEventListener("click", showSourcesDrawer);
 document.querySelector("#open-overview-button")
   .addEventListener("click", showDatabaseOverview);
 document.querySelector("#open-settings-button")
@@ -91,8 +97,6 @@ window.whatsappImportUi.bind({
 
 window.shellController.showScreen("chat");
 void Promise.all([
-  window.runtimeCapabilitiesUi.refresh()
-    .catch((error) => window.appUi.showToast(error.message, true)),
   window.appUi.refreshWorkspaceData(),
   window.modelSelector.prepare().catch((error) => window.appUi.showToast(error.message, true)),
   window.chatHistoryUi.refresh(),

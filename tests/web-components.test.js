@@ -168,6 +168,10 @@ test("API route allowlist normalizes identifiers and rejects unsupported methods
   assert.equal(matchBackendRoute("GET", "/api/chat/sessions"), "/chat/sessions");
   assert.equal(matchBackendRoute("GET", "/api/database/status"), "/database/status");
   assert.equal(
+    matchBackendRoute("POST", "/api/database/read-model/refresh"),
+    "/database/read-model/refresh",
+  );
+  assert.equal(
     matchBackendRoute("GET", "/api/database/breakdowns"), "/database/breakdowns",
   );
   assert.equal(

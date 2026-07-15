@@ -303,6 +303,10 @@ index with auto-sync enabled. The database
 overview shows raw, duplicate, indexed, and pending counts plus recent job state.
 Its full dashboard also groups conversation, author, and embedding-model counts
 and keeps the paginated stored-chunk detail below the summary cards.
+Expensive aggregates are persistent PostgreSQL projections. On the first start
+after this schema is introduced, FastAPI remains healthy while a background
+worker builds them; the UI shows **Připravuji souhrn…** until publication. See
+[Persistent UI read model](ui-read-model.md) for refresh and failure behavior.
 Failed jobs can be retried; active jobs can be cancelled. **Zaindexovat čekající**
 recovers raw messages not currently covered by an index or active job.
 
@@ -333,12 +337,13 @@ npm.cmd test
 py -3.12 -m pytest backend -q
 ```
 
-The optional atomic-publication test requires a dedicated empty PostgreSQL
-database:
+The optional atomic-publication and read-model tests require a dedicated empty
+PostgreSQL database:
 
 ```powershell
 $env:POSTGRES_TEST_DSN = "postgresql://user:password@127.0.0.1:5433/chat_context_test"
 py -3.12 -m pytest backend/test_postgres_integration.py `
+  backend/test_read_model_integration.py `
   backend/test_message_context_integration.py `
   backend/test_time_retrieval_integration.py -q
 ```
@@ -346,6 +351,7 @@ py -3.12 -m pytest backend/test_postgres_integration.py `
 Inspect infrastructure with `docker compose ps` and `docker compose logs postgres`;
 runtime health probes use lightweight `curl` checks every 15 seconds.
 
-The standard suite uses fakes for paid or machine-specific integrations. See
-[functions requiring external verification](funkce.md) for the current boundary
-between automated contract coverage and real-system verification.
+The standard suite uses fakes for paid or machine-specific integrations. The
+PostgreSQL integration commands above cover the database behavior that requires
+a real service; provider billing and live Discord behavior remain external
+verification boundaries.

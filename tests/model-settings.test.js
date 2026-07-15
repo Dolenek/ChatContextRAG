@@ -36,6 +36,8 @@ test("settings UI is isolated through preload and carries model selection to cha
   assert.match(modelSelector, /releaseSessionSelection/);
   assert.match(modelSelector, /model-provider-list/);
   assert.match(settingsUi, /index\.last_error && !index\.active_job_id/);
+  assert.match(settingsUi, /refreshReadModel\("all"\)/);
+  assert.match(settingsUi, /index\.summary_ready === false \? "—"/);
   assert.match(settingsUi, /Nastavit klíč pro indexing/);
   assert.match(settingsUi, /onClose: resetSettingsDrafts/);
   assert.match(read("renderer/chat-model-settings-ui.js"), /actionButton\("Upravit"/);

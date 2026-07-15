@@ -55,6 +55,10 @@ window.workspaceCache = (() => {
 
 window.archiveStatus = (() => {
   function render(status) {
+    if (status.summary_ready === false) {
+      renderPreparing(status);
+      return;
+    }
     const rawCount = Number(status.raw_message_count || 0);
     const indexedCount = Number(status.indexed_message_count || 0);
     const percent = rawCount ? Math.min(100, Math.floor(indexedCount / rawCount * 100)) : 0;
@@ -66,6 +70,15 @@ window.archiveStatus = (() => {
     document.querySelector("#index-last-update").textContent = indexStatusLabel(status);
     document.querySelector("#archive-status-label").textContent = archiveLabel(rawCount, percent);
     updateProgress(percent);
+  }
+
+  function renderPreparing(status) {
+    ["#index-percent", "#index-raw-count", "#indexed-count", "#index-chunk-count"]
+      .forEach((selector) => { document.querySelector(selector).textContent = "—"; });
+    document.querySelector("#database-size").textContent = status.database_size || "—";
+    document.querySelector("#index-last-update").textContent = "Připravuji souhrn…";
+    document.querySelector("#archive-status-label").textContent = "Připravuji archiv…";
+    updateProgress(0);
   }
 
   function updateProgress(percent) {

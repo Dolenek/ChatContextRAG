@@ -33,6 +33,9 @@ class OverviewService:
     def get_chunk_page(self, _limit, _cursor):
         return {"chunks": [], "has_more": False}
 
+    def refresh_read_model(self, scope):
+        return {"queued": True, "scope": scope}
+
 
 class IngestionService:
     def list_active_jobs(self):
@@ -50,12 +53,14 @@ def test_status_force_and_paginated_breakdown_routes() -> None:
     status = client.get("/database/status?fresh=true")
     page = client.get("/database/breakdowns/authors?limit=25&offset=50")
     invalid = client.get("/database/breakdowns/authors?limit=201")
+    refresh = client.post("/database/read-model/refresh", json={"scope": "all"})
 
     assert status.status_code == 200
     assert service.fresh is True
     assert page.status_code == 200
     assert service.page_request == ("authors", 25, 50)
     assert invalid.status_code == 422
+    assert refresh.json() == {"queued": True, "scope": "all"}
 
 
 def test_active_jobs_collection_route_precedes_job_identifier_route() -> None:
