@@ -144,6 +144,8 @@ test("tool timeline is persisted, collapsible, and rendered with textContent", (
   assert.match(view, /document\.createElement\("details"\)/);
   assert.match(view, /Archivní kroky \(\$\{activities\.length\}\)/);
   assert.match(view, /row\.textContent = describe\(activity\)/);
+  assert.match(view, /search_text_occurrences/);
+  assert.match(view, /Přímé hledání/);
   assert.doesNotMatch(view, /innerHTML/);
   assert.match(conversation, /message\.tool_activity \|\| \[\]/);
   assert.match(controller, /response\.tool_activity \|\| \[\]/);

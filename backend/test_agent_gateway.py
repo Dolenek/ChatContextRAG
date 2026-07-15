@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend.adaptive_chat import SEARCH_TOOL
+from backend.adaptive_chat import SEARCH_TOOL, TEXT_SEARCH_TOOL
 from backend.agent_gateway import (
     AgentProtocolError, ChatCompletionsAgentSession, ResponsesAgentSession,
 )
@@ -139,6 +139,29 @@ def test_chat_completions_preserves_tool_role_and_non_strict_schema():
         "role": "tool", "tool_call_id": "call-2", "content": "{}",
     }
     assert final.text == "Answer"
+
+
+def test_both_protocols_support_required_choice_between_retrieval_tools():
+    responses_client = FakeResponsesClient([response_turn([], "unused")])
+    chat_message = SimpleNamespace(content="unused", tool_calls=[])
+    chat_client = FakeChatClient([chat_turn(chat_message)])
+
+    response_session(responses_client).next_turn(
+        [SEARCH_TOOL, TEXT_SEARCH_TOOL], "required",
+    )
+    chat_session(chat_client).next_turn(
+        [SEARCH_TOOL, TEXT_SEARCH_TOOL], "required",
+    )
+
+    assert responses_client.requests[0]["tool_choice"] == "required"
+    assert chat_client.requests[0]["tool_choice"] == "required"
+    response_names = [tool["name"] for tool in responses_client.requests[0]["tools"]]
+    chat_names = [
+        tool["function"]["name"] for tool in chat_client.requests[0]["tools"]
+    ]
+    assert response_names == chat_names == [
+        "search_archive", "search_text_occurrences",
+    ]
 
 
 @pytest.mark.parametrize("session_factory,client", [

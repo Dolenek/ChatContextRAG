@@ -1,7 +1,10 @@
+import json
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from backend.agent_protocol import AgentToolCall, AgentTurn
+from backend.archive_text_search import ArchiveTextSearchResult
 from backend.chat_models import ChatSource
 from backend.discord_bot_models import (
     DiscordBotAnswerRequest, DiscordBotDeliveryUpdate, DiscordBotModelSettings,
@@ -11,6 +14,7 @@ from backend.discord_bot_models import (
 from backend.discord_bot_repository import DiscordBotRepository
 from backend.discord_bot_schema import discord_bot_schema_statements
 from backend.discord_bot_service import DiscordBotService
+from backend.vector_models import NormalizedMessage
 
 
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
@@ -121,6 +125,29 @@ def test_archive_retrieval_failure_keeps_recent_and_general_answer_available() -
 
     assert result.basis == "general_knowledge"
     assert "archive_retrieval_failed" in result.warnings
+
+
+def test_adaptive_direct_text_search_reads_raw_room_before_indexing() -> None:
+    repository = FakeDiscordRepository()
+    repository.model = repository.model.model_copy(update={"retrieval_mode": "adaptive"})
+    provider = DirectTextAgentProvider()
+    text_search = RecordingTextSearch()
+    service = DiscordBotService(
+        repository, FakeProviderRegistry(provider),
+        SimpleNamespace(active=lambda: None), FakeHybridRepository(),
+        SimpleNamespace(project_chunks=lambda _chunks: []), text_search,
+        archive_text_searcher=text_search,
+    )
+
+    result = service.answer(answer_request([]))
+
+    assert result.basis == "room_context"
+    assert result.answer == "First mention [E1]."
+    assert "archive_index_unavailable" in result.warnings
+    assert text_search.arguments["scope"].conversation_id == "room"
+    assert text_search.arguments["excluded_message_ids"] == ("trigger",)
+    assert text_search.arguments["maximum_timestamp"] == NOW
+    assert repository.completed[5][0]["tool_name"] == "search_text_occurrences"
 
 
 def test_generation_failure_persists_safe_warning_without_provider_payload() -> None:
@@ -279,3 +306,42 @@ class FakeHybridRepository:
 class FailingHybridRepository:
     def search_hybrid(self, *_arguments):
         raise RuntimeError("archive offline")
+
+
+class DirectTextAgentProvider:
+    def __init__(self):
+        self.turn = 0
+
+    def create_agent_session(self, *_arguments):
+        return self
+
+    def next_turn(self, _tools, _choice, _outputs=()):
+        self.turn += 1
+        if self.turn == 1:
+            arguments = json.dumps({
+                "patterns": ["deadlock"], "match_mode": "term_prefix",
+                "operator": "all", "sort": "oldest", "limit": 3,
+                "date_from": None, "date_to": None,
+            })
+            return AgentTurn("", [AgentToolCall(
+                "direct-1", "search_text_occurrences", arguments,
+            )])
+        return AgentTurn("First mention [E1].", [])
+
+
+class RecordingTextSearch:
+    def __init__(self):
+        self.arguments = None
+
+    def search_text_occurrences(self, **arguments):
+        self.arguments = arguments
+        message = NormalizedMessage(
+            external_id="raw-before-index", author="Ada", content="deadlocku",
+            timestamp=NOW - timedelta(days=1), channel="general",
+            channel_id="room", guild_id="guild", source_type="discord",
+            conversation_id="room", message_order=1,
+        )
+        return ArchiveTextSearchResult([message], True, "source_order")
+
+    def load_message_context(self, *_arguments):
+        return []

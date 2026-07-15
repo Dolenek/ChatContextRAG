@@ -67,4 +67,5 @@ test("adaptive mode is wired through both bridges with bounded proxy timeouts", 
   assert.match(read("web/api-router.js"), /timeoutMs: 130_000/);
   assert.match(read("renderer/chat-controller.js"), /askDatabaseStreaming/);
   assert.match(read("renderer/chat-sources.js"), /evidence_origin === "context"/);
+  assert.match(read("renderer/chat-sources.js"), /evidence_origin === "text_search"/);
 });

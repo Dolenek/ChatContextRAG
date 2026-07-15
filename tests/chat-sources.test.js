@@ -51,6 +51,26 @@ test("source score tooltip and chunk expansion use safe text", () => {
   assert.equal(toggle.attributes["aria-expanded"], "true");
 });
 
+test("direct text evidence uses an origin label instead of a similarity score", () => {
+  const document = {
+    createElement: (tag) => new FakeElement(tag),
+    createElementNS: (_namespace, tag) => new FakeElement(tag),
+  };
+  const context = { document, window: {} };
+  vm.runInNewContext(readSourceRenderer(), context);
+  const source = {
+    author: "Ada", content: "deadlocku", source_type: "whatsapp", channel: "team",
+    similarity_score: 0, match_score: 0, score_kind: "unknown",
+    evidence_origin: "text_search",
+  };
+
+  const card = context.window.chatSources.createChatSourceCard(source, { index: 1 });
+  const origin = findClass(card, "source-match-score");
+
+  assert.equal(origin.textContent, "Přímá textová shoda");
+  assert.doesNotMatch(origin.textContent, /Shoda 0/);
+});
+
 class FakeElement {
   constructor(tag) {
     this.tag = tag;

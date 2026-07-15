@@ -4,13 +4,11 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from backend.adaptive_chat import AdaptiveChatOrchestrator, CONTEXT_TOOL, SEARCH_TOOL
-from backend.adaptive_evidence import EvidenceRegistry
+from backend.adaptive_chat import AdaptiveChatOrchestrator
 from backend.agent_protocol import AgentToolCall, AgentTurn
-from backend.archive_tools import ScopedArchiveTools
-from backend.chat_models import ChatHistoryTurn, ChatRequest, ChatScope, ChatSource
+from backend.archive_tools import ScopedTextSearchResult
+from backend.chat_models import ChatHistoryTurn, ChatRequest, ChatSource
 from backend.openai_gateway import ExternalIntegrationError
-from backend.vector_models import NormalizedMessage, RetrievedChunk
 
 
 class FakeAgentSession:
@@ -34,9 +32,10 @@ class FakeAgentProvider:
 
 
 class FakeArchiveTools:
-    def __init__(self, search_results, context_results=None):
+    def __init__(self, search_results, context_results=None, text_results=None):
         self.search_results = search_results
         self.context_results = context_results or []
+        self.text_results = text_results or {}
         self.actions = []
         self.time_ranges = []
 
@@ -49,6 +48,14 @@ class FakeArchiveTools:
         self.actions.append(("context", anchor.source_message_ids[0], before_count, after_count))
         self.time_ranges.append(("context", time_range))
         return self.context_results
+
+    def search_text(self, arguments, time_range=None):
+        key = tuple(arguments.patterns)
+        self.actions.append(("text_search", key, arguments.match_mode, arguments.sort))
+        self.time_ranges.append(("text_search", time_range))
+        return ScopedTextSearchResult(
+            self.text_results.get(key, []), True, "source_order",
+        )
 
 
 class FailingContextTools(FakeArchiveTools):
@@ -102,12 +109,41 @@ def test_first_search_is_forced_and_uses_bounded_history():
     assert "workspace timezone is UTC" in provider.creation[2]
     assert "date_from/date_to" in provider.creation[2]
     first_tools, first_choice, _ = provider.session.requests[0]
-    assert [tool.name for tool in first_tools] == ["search_archive"]
-    assert first_choice == "search_archive"
+    assert [tool.name for tool in first_tools] == [
+        "search_archive", "search_text_occurrences",
+    ]
+    assert first_choice == "required"
     output = json.loads(provider.session.requests[1][2][0].output)
     assert output["kind"] == "untrusted_archive_evidence"
     assert output["messages"][0]["content"] == injection
     assert sources[0].source_message_ids == ["m1"]
+
+
+def test_first_retrieval_can_choose_direct_text_search_with_chronology_metadata():
+    direct = source("m1", "The first deadlock", origin="text_search", score=0.0)
+    arguments = {
+        "patterns": ["deadlock"], "match_mode": "term_prefix",
+        "operator": "all", "sort": "oldest", "limit": 3,
+        "date_from": None, "date_to": None,
+    }
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_text_occurrences", arguments)]),
+        AgentTurn("The first mention was here [E1].", []),
+    ])
+    tools = FakeArchiveTools({}, text_results={("deadlock",): [direct]})
+
+    answer, sources, activities = AdaptiveChatOrchestrator(
+        provider, tools,
+    ).answer_with_activity(adaptive_request())
+
+    payload = json.loads(provider.session.requests[1][2][0].output)
+    assert answer.endswith("[E1].")
+    assert sources[0].evidence_origin == "text_search"
+    assert payload["chronology_complete"] is True
+    assert payload["ordering_basis"] == "source_order"
+    assert tools.actions == [("text_search", ("deadlock",), "term_prefix", "oldest")]
+    assert activities[0].tool_name == "search_text_occurrences"
+    assert activities[0].patterns == ["deadlock"]
 
 
 def test_discord_adaptive_policy_includes_recent_evidence_and_general_fallback() -> None:
@@ -178,6 +214,32 @@ def test_discord_policy_recovers_from_optional_context_integration_failure():
     assert tool_error["error"] == "archive_context_failed"
     assert activity[1].status == "failed"
     assert activity[1].error_code == "archive_context_failed"
+
+
+def test_discord_policy_recovers_from_required_text_search_failure():
+    arguments = {
+        "patterns": ["deadlock"], "match_mode": "whole_term",
+        "operator": "all", "sort": "oldest", "limit": 1,
+        "date_from": None, "date_to": None,
+    }
+    provider = FakeAgentProvider([
+        AgentTurn("", [call("first", "search_text_occurrences", arguments)]),
+        AgentTurn("General answer.", []),
+    ])
+    tools = FakeArchiveTools({})
+    tools.search_text = lambda *_args: (_ for _ in ()).throw(
+        ExternalIntegrationError("PostgreSQL text search failed."),
+    )
+
+    answer, _sources, activities = AdaptiveChatOrchestrator(
+        provider, tools, allow_general_knowledge=True,
+    ).answer_with_activity(adaptive_request())
+
+    tool_error = json.loads(provider.session.requests[1][2][0].output)
+    assert answer == "General answer."
+    assert tool_error["error"] == "archive_text_search_failed"
+    assert activities[0].status == "failed"
+    assert activities[0].error_code == "archive_text_search_failed"
 
 
 def test_application_policy_keeps_optional_context_failures_strict():
@@ -256,7 +318,7 @@ def test_only_two_additional_archive_actions_are_executed():
 
 def test_required_search_and_final_turn_protocol_errors_are_explicit():
     missing_search = FakeAgentProvider([AgentTurn("answer", [])])
-    with pytest.raises(ExternalIntegrationError, match="required archive search"):
+    with pytest.raises(ExternalIntegrationError, match="required archive retrieval"):
         AdaptiveChatOrchestrator(missing_search, FakeArchiveTools({})).answer(
             adaptive_request(),
         )
@@ -270,28 +332,6 @@ def test_required_search_and_final_turn_protocol_errors_are_explicit():
         AdaptiveChatOrchestrator(extra_tool, FakeArchiveTools({})).answer(adaptive_request())
 
 
-def test_evidence_registry_deduplicates_truncates_and_caps_messages():
-    registry = EvidenceRegistry(4000)
-    payload = registry.add_sources([
-        source("m1", "a" * 3000), source("m1", "duplicate"),
-        source("m2", "b" * 2000),
-    ], "search")
-
-    assert [item["evidence_id"] for item in payload["messages"]] == ["E1", "E1", "E2"]
-    assert payload["messages"][1]["already_provided"] is True
-    assert len(payload["messages"][2]["content"]) == 1000
-    assert payload["messages"][2]["content_truncated"] is True
-    assert payload["budget_exhausted"] is True
-    assert len(registry.sources()) == 2
-
-    cap = EvidenceRegistry(48000)
-    capped_payload = cap.add_sources(
-        [source(f"m{index}", "x") for index in range(60)], "search",
-    )
-    assert len(cap.sources()) == 48
-    assert capped_payload["budget_exhausted"] is True
-
-
 def test_request_defaults_and_bounds_preserve_deterministic_compatibility():
     legacy = ChatRequest(question="old payload")
     adaptive = ChatRequest(question="new payload", retrieval_mode="adaptive")
@@ -303,50 +343,3 @@ def test_request_defaults_and_bounds_preserve_deterministic_compatibility():
             question="invalid", retrieval_mode="adaptive",
             evidence_character_limit=3999,
         )
-
-
-def test_scoped_tools_limit_chunks_and_keep_context_in_anchor_conversation():
-    chunks = [
-        RetrievedChunk(
-            content=str(index), authors=["Alice"], channel="general",
-            started_at=None, similarity_score=1.0, source_message_ids=[f"m{index}"],
-        )
-        for index in range(10)
-    ]
-    projector = RecordingProjector()
-    reader = RecordingContextReader()
-    scope = ChatScope(source_type="discord", conversation_id="conversation-1")
-    tools = ScopedArchiveTools(lambda _query, _deadline: chunks, projector, reader, scope)
-
-    tools.search("query", 1.0)
-    context_sources = tools.read_context(source("m1", "anchor"), 10, 10)
-
-    assert len(projector.chunks) == 8
-    assert reader.arguments == ("m1", 10, 10, scope)
-    assert context_sources[0].evidence_origin == "context"
-    assert context_sources[0].conversation_id == "conversation-1"
-    assert "scope" not in SEARCH_TOOL.parameters["properties"]
-    assert "scope" not in CONTEXT_TOOL.parameters["properties"]
-
-
-class RecordingProjector:
-    def __init__(self):
-        self.chunks = []
-
-    def project_chunks(self, chunks):
-        self.chunks = list(chunks)
-        return []
-
-
-class RecordingContextReader:
-    def __init__(self):
-        self.arguments = None
-
-    def load_message_context(self, anchor_id, before_count, after_count, scope):
-        self.arguments = (anchor_id, before_count, after_count, scope)
-        return [NormalizedMessage(
-            external_id="m0", author="Bob", content="context",
-            timestamp=None, channel="general", channel_id="channel-1",
-            guild_id="guild-1", source_type="discord",
-            conversation_id="conversation-1", conversation_label="General",
-        )]

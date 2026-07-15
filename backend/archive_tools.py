@@ -1,12 +1,22 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, List, Optional, Protocol, Sequence, Set
 
+from backend.archive_text_search import ArchiveTextSearchResult
+from backend.archive_tool_contracts import SearchTextArguments
 from backend.chat_models import ChatScope, ChatSource
 from backend.archive_time import ArchiveTimeRange
 from backend.source_context import SourceContextProjector
 from backend.vector_models import NormalizedMessage, RetrievedChunk
 
 MAX_SEARCH_CHUNKS = 8
+
+
+@dataclass(frozen=True)
+class ScopedTextSearchResult:
+    sources: List[ChatSource]
+    chronology_complete: bool
+    ordering_basis: str
 
 
 class ArchiveContextReader(Protocol):
@@ -26,6 +36,7 @@ class ScopedArchiveTools:
         scope: Optional[ChatScope],
         excluded_message_ids: Optional[Set[str]] = None,
         maximum_timestamp: Optional[datetime] = None,
+        search_text_messages: Optional[Callable[..., ArchiveTextSearchResult]] = None,
     ) -> None:
         self.search_chunks = search_chunks
         self.projector = projector
@@ -33,6 +44,7 @@ class ScopedArchiveTools:
         self.scope = scope
         self.excluded_message_ids = excluded_message_ids or set()
         self.maximum_timestamp = maximum_timestamp
+        self.search_text_messages = search_text_messages
 
     def search(
         self, query: str, deadline: float,
@@ -44,6 +56,29 @@ class ScopedArchiveTools:
         chunks = list(chunk_result)[:MAX_SEARCH_CHUNKS]
         sources = self.projector.project_chunks(chunks)
         return [source for source in sources if self._allowed(source, time_range)]
+
+    def search_text(
+        self, arguments: SearchTextArguments,
+        time_range: Optional[ArchiveTimeRange] = None,
+    ) -> ScopedTextSearchResult:
+        if not self.search_text_messages:
+            raise ValueError("Archive text search is not configured.")
+        result = self.search_text_messages(
+            patterns=arguments.patterns, match_mode=arguments.match_mode,
+            operator=arguments.operator, sort=arguments.sort, limit=arguments.limit,
+            scope=self.scope, time_range=time_range,
+            excluded_message_ids=tuple(self.excluded_message_ids),
+            maximum_timestamp=self.maximum_timestamp,
+        )
+        sources = [
+            source for message in result.messages
+            if self._allowed(
+                source := self._message_source(message, "text_search"), time_range,
+            )
+        ]
+        return ScopedTextSearchResult(
+            sources, result.chronology_complete, result.ordering_basis,
+        )
 
     def read_context(
         self, anchor_source: ChatSource, before_count: int, after_count: int,
@@ -59,7 +94,9 @@ class ScopedArchiveTools:
         ) if time_range else self.context_reader.load_message_context(*arguments)
         return [
             source for message in messages
-            if self._allowed(source := self._context_source(message), time_range)
+            if self._allowed(
+                source := self._message_source(message, "context"), time_range,
+            )
         ]
 
     def _allowed(
@@ -80,7 +117,7 @@ class ScopedArchiveTools:
         return value.astimezone(timezone.utc) < cutoff.astimezone(timezone.utc)
 
     @staticmethod
-    def _context_source(message: NormalizedMessage) -> ChatSource:
+    def _message_source(message: NormalizedMessage, origin: str) -> ChatSource:
         return ChatSource(
             author=message.author, content=message.content,
             timestamp=message.timestamp,
@@ -90,5 +127,5 @@ class ScopedArchiveTools:
             channel_id=message.channel_id, guild_id=message.guild_id,
             source_type=message.source_type,
             conversation_id=message.conversation_id,
-            evidence_origin="context",
+            evidence_origin=origin,
         )

@@ -83,7 +83,7 @@ class DiscordBotAnswerRequest(BaseModel):
 
 class DiscordAnswerEvidence(BaseModel):
     evidence_id: str = Field(pattern=r"^E[1-9][0-9]*$")
-    origin: Literal["recent", "search", "context"]
+    origin: Literal["recent", "search", "text_search", "context"]
     author: str
     content: str
     timestamp: Optional[datetime] = None

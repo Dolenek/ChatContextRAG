@@ -40,8 +40,11 @@ def test_tool_activity_is_stored_only_with_assistant_and_restored() -> None:
     repository = PostgresChatSessionRepository(lambda: None, lambda: connection)
     request = ChatRequest(question="Search", retrieval_mode="adaptive")
     activity = ChatToolActivity(
-        sequence=1, tool_name="search_archive", status="completed",
-        query="release", timezone_name="Europe/Prague", result_message_count=3,
+        sequence=1, tool_name="search_text_occurrences", status="completed",
+        patterns=["deadlock"], match_mode="term_prefix", operator="all",
+        sort="oldest", limit=3, timezone_name="Europe/Prague",
+        result_message_count=3, chronology_complete=True,
+        ordering_basis="source_order",
     )
     response = _response().model_copy(update={
         "retrieval_mode": "adaptive", "evidence_character_limit": 24000,
@@ -51,12 +54,15 @@ def test_tool_activity_is_stored_only_with_assistant_and_restored() -> None:
     repository.save_turn(request, response)
 
     assert connection.message_rows[0][5].obj == []
-    assert connection.message_rows[1][5].obj[0]["query"] == "release"
+    stored_activity = connection.message_rows[1][5].obj[0]
+    assert stored_activity["patterns"] == ["deadlock"]
+    assert stored_activity["chronology_complete"] is True
     detail = repository._detail(connection.session_row, [
         ("assistant", "Done", [], connection.timestamp,
          connection.message_rows[1][5].obj),
     ])
     assert detail.messages[0].tool_activity[0].timezone_name == "Europe/Prague"
+    assert detail.messages[0].tool_activity[0].match_mode == "term_prefix"
 
 
 def test_continuation_rejects_a_different_scope_or_model() -> None:

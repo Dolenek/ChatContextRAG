@@ -29,12 +29,14 @@ retrieval has no results, the legacy vector repository remains the fallback.
 
 Adaptive retrieval is a bounded three-turn agent loop:
 
-1. The first model turn is forced to call `search_archive`. Its prompt includes
-   the last eight history turns and requires a standalone query that resolves
-   people, events, topics, pronouns, and time references.
-2. The server executes the search against the same active index and source scope
-   as deterministic retrieval. The second model turn may answer or request up to
-   two more archive actions in their received order.
+1. The first model turn must choose exactly one retrieval call. It uses
+   `search_archive` for semantic relevance or `search_text_occurrences` for
+   direct terms, phrases, and first/last-occurrence questions. Its prompt includes
+   the last eight history turns and requires standalone arguments that resolve
+   references from chat history.
+2. The server attaches the selected source scope and executes the search. The
+   second model turn may answer or request up to two more archive actions in their
+   received order.
 3. If more actions were requested, the third and final model turn receives their
    outputs with tools disabled. A provider that returns another tool call or no
    final text fails with an explicit integration error.
@@ -45,6 +47,14 @@ The internal read-only tools are:
   resolves them to original messages before returning evidence. Dates are
   nullable `YYYY-MM-DD` values. They are inclusive calendar dates in the
   workspace timezone and remain separate from the semantic query.
+- `search_text_occurrences(patterns, match_mode, operator, sort, limit,
+  date_from, date_to)`: searches canonical raw messages without depending on the
+  active embedding index. One through eight patterns use whole tokens,
+  token-prefix matching, or tokenized phrases; patterns are combined with `all`
+  or `any`. Results are ordered oldest or newest and limited from 1 through 20.
+  Prefix matching is case-insensitive and uses the existing `simple` PostgreSQL
+  text-search index, so `deadlock` matches `deadlocku` and `deadlocky`. Diacritics
+  remain significant; the model may provide spelling variants with `any`.
 - `read_message_context(evidence_id, before_count, after_count)`: accepts only an
   evidence ID already issued in the loop and reads zero to ten messages on each
   side of its anchor. At least one neighbor is required. This read follows
@@ -52,8 +62,17 @@ The internal read-only tools are:
   anchor's source conversation.
 
 Scope is not a model-controlled tool argument. The executor always attaches the
-scope from `ChatRequest`. A global search can find any conversation, while every
-context read remains in the conversation of its selected anchor.
+scope from `ChatRequest`. Direct text search sees every stored raw message inside
+that scope, including messages not yet embedded; it cannot cross from a selected
+WhatsApp conversation into Discord. A global search can find any source and
+conversation, while every context read remains in the conversation of its
+selected anchor.
+
+Scoped text results follow canonical `message_order`. Global text results use
+`sent_at`, put undated matches last, and return `chronology_complete=false` when
+any matching raw message lacks a timestamp. The model is instructed not to claim
+a definitive global first or last occurrence in that case. A returned message
+without a timestamp cannot support a calendar date.
 
 The workspace timezone is loaded once for each adaptive request. The prompt
 receives its IANA name, the current local time, and instructions to express a
@@ -73,6 +92,7 @@ The interval is enforced in PostgreSQL at every evidence boundary:
 
 - vector candidates must have a chunk interval overlapping the requested range;
 - full-text candidates must have a canonical message timestamp inside it;
+- direct text occurrences must have a canonical message timestamp inside it;
 - messages projected from a matching chunk are filtered again by timestamp;
 - `read_message_context` inherits the anchor evidence's interval and cannot
   cross it, even though it ignores the ordinary 20-minute chunk boundary.
@@ -99,9 +119,10 @@ model configuration defaults to 24,000. At most 48 unique messages are exposed.
 The final fitting message may be shortened and carries `content_truncated`; later
 results carry `budget_exhausted`. The persisted and returned `sources` array
 contains every unique original message whose content was visible to the model,
-whether or not the answer cited it. Search results use
-`evidence_origin="search"`; neighboring messages use `"context"` and do not
-pretend to have an independent retrieval score.
+whether or not the answer cited it. Semantic results use
+`evidence_origin="search"`, direct occurrences use `"text_search"`, and
+neighboring messages use `"context"`. Direct and context evidence do not display
+a synthetic similarity score.
 
 Archive results are serialized only as JSON function outputs. They are never
 inserted as system, developer, or user messages. The controlling instruction
@@ -147,15 +168,15 @@ Each assistant message persists `tool_activity`; old rows migrate to `[]`.
 
 The audit contains only the tool order, name, status, typed safe arguments,
 workspace timezone, normalized UTC interval, result and new-evidence counts,
-budget state, safe error code, and duration. It never stores model reasoning,
-provider payloads, tool-output message content, credentials, or server-owned
-scope. A disconnected client aborts the proxy read; the backend loop remains
-bounded by its deadline.
+text-search ordering and chronology status, budget state, safe error code, and
+duration. It never stores model reasoning, provider payloads, tool-output message
+content, credentials, or server-owned scope. A disconnected client aborts the
+proxy read; the backend loop remains bounded by its deadline.
 
 The source projector resolves retrieved chunks into original messages, keeps
 retrieval order, deduplicates messages, and retains exact chunk context. Stored
 legacy chunk-shaped sources are expanded when their raw messages remain
 available. A missing raw record stays represented by its safe stored fallback.
 Raw retrieval scores remain in `similarity_score`; `match_score` normalizes
-search results for display. Context evidence is labeled as neighboring context
-instead of displaying a synthetic match score.
+semantic search results for display. Context and direct-text evidence use explicit
+origin labels instead of displaying a synthetic match score.

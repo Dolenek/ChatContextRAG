@@ -28,9 +28,13 @@ Electron Remote calls use its bearer token.
   read model.
 - `POST /chat` performs source-scoped deterministic or adaptive RAG with an
   optional provider, model, reasoning effort, mode, evidence limit, and
-  `session_id`.
+  `session_id`. Adaptive models choose between semantic active-index retrieval
+  and direct occurrence search over canonical raw messages inside the server-owned
+  scope; the complete tool contract is documented in
+  [Chat retrieval and archive tools](chat-retrieval.md).
 - `POST /chat/stream` performs the same operation and emits NDJSON tool activity
-  before the complete final response.
+  before the complete final response. Direct-search activity includes patterns,
+  match mode, boolean operator, ordering, result limit, and chronology status.
 - `GET /chat/sessions?limit=N` lists recent session summaries.
 - `GET /chat/sessions/{id}` returns context, ordered messages, and grounding
   sources. `PATCH` renames and `DELETE` removes one chat. Unknown IDs return

@@ -45,6 +45,13 @@ window.toolActivityView = (() => {
       const action = activity.status === "running" ? "Hledám v archivu" : "Hledání v archivu";
       return `${action}: ${activity.query || "bez dotazu"}${dateSuffix(activity)}${suffix}`;
     }
+    if (activity.tool_name === "search_text_occurrences") {
+      const action = activity.status === "running" ? "Hledám přímé výskyty" : "Přímé hledání";
+      const patterns = (activity.patterns || []).join(", ") || "bez vzoru";
+      const mode = activity.match_mode || "whole_term";
+      const order = activity.sort === "newest" ? "od nejnovějších" : "od nejstarších";
+      return `${action}: ${patterns} · ${mode} · ${order}${dateSuffix(activity)}${suffix}`;
+    }
     if (activity.tool_name === "read_message_context") {
       const action = activity.status === "running" ? "Načítám okolí" : "Okolí načteno";
       return `${action} ${activity.evidence_id || "?"}: `

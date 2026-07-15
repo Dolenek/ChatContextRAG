@@ -189,6 +189,7 @@ def _build_default_services() -> tuple:
         DiscordBotRepository(raw_repository.ensure_schema, raw_repository.open_connection),
         storage.provider_registry, storage.index_repository, storage.hybrid_repository,
         SourceContextProjector(raw_repository), raw_repository, workspace_settings,
+        archive_text_searcher=raw_repository,
     )
     return (
         ingestion, chat, overview, settings_service, discord_bot,
@@ -240,6 +241,7 @@ def _build_default_chat(
         ),
         source_context_projector=SourceContextProjector(raw_repository),
         archive_context_reader=raw_repository, workspace_settings=workspace_settings,
+        archive_text_searcher=raw_repository,
     )
 
 

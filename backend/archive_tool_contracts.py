@@ -1,7 +1,7 @@
 from datetime import date
-from typing import Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.agent_protocol import AgentTool
 
@@ -10,6 +10,32 @@ class SearchArchiveArguments(BaseModel):
     query: str = Field(min_length=2, max_length=1000)
     date_from: Optional[date] = None
     date_to: Optional[date] = None
+
+    @model_validator(mode="after")
+    def validate_date_order(self):
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from must not be after date_to")
+        return self
+
+
+class SearchTextArguments(BaseModel):
+    patterns: List[str] = Field(min_length=1, max_length=8)
+    match_mode: Literal["whole_term", "term_prefix", "token_phrase"]
+    operator: Literal["all", "any"]
+    sort: Literal["oldest", "newest"]
+    limit: int = Field(ge=1, le=20)
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+
+    @field_validator("patterns")
+    @classmethod
+    def validate_patterns(cls, patterns: List[str]) -> List[str]:
+        normalized = [pattern.strip() for pattern in patterns]
+        if any(not pattern or len(pattern) > 200 for pattern in normalized):
+            raise ValueError("Patterns must contain between 1 and 200 characters.")
+        if sum(len(pattern) for pattern in normalized) > 800:
+            raise ValueError("Combined pattern length must not exceed 800 characters.")
+        return list(dict.fromkeys(normalized))
 
     @model_validator(mode="after")
     def validate_date_order(self):
@@ -45,6 +71,38 @@ SEARCH_TOOL = AgentTool(
             "date_to": {"type": ["string", "null"], "format": "date"},
         },
         "required": ["query", "date_from", "date_to"],
+    },
+)
+
+
+TEXT_SEARCH_TOOL = AgentTool(
+    name="search_text_occurrences",
+    description=(
+        "Find direct text occurrences in canonical raw messages. Choose whole_term for "
+        "complete tokens, term_prefix for inflected suffixes, or token_phrase for adjacent "
+        "tokens. Use oldest/newest for chronology. Scope and timezone are server-owned."
+    ),
+    parameters={
+        "type": "object", "additionalProperties": False,
+        "properties": {
+            "patterns": {
+                "type": "array", "items": {"type": "string"},
+                "minItems": 1, "maxItems": 8,
+            },
+            "match_mode": {
+                "type": "string",
+                "enum": ["whole_term", "term_prefix", "token_phrase"],
+            },
+            "operator": {"type": "string", "enum": ["all", "any"]},
+            "sort": {"type": "string", "enum": ["oldest", "newest"]},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            "date_from": {"type": ["string", "null"], "format": "date"},
+            "date_to": {"type": ["string", "null"], "format": "date"},
+        },
+        "required": [
+            "patterns", "match_mode", "operator", "sort", "limit",
+            "date_from", "date_to",
+        ],
     },
 )
 

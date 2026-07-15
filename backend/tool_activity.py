@@ -2,6 +2,7 @@ import time
 from typing import Callable, List, Optional
 
 from backend.archive_time import ArchiveTimeRange
+from backend.archive_tool_contracts import SearchTextArguments
 from backend.chat_models import ChatToolActivity
 
 
@@ -43,6 +44,23 @@ class ToolActivityRecorder:
         )
         return self._start(activity)
 
+    def start_text_search(
+        self, arguments: SearchTextArguments,
+        time_range: Optional[ArchiveTimeRange], timezone_name: str,
+    ):
+        activity = ChatToolActivity(
+            sequence=len(self.activities) + 1,
+            tool_name="search_text_occurrences", status="running",
+            patterns=arguments.patterns, match_mode=arguments.match_mode,
+            operator=arguments.operator, sort=arguments.sort, limit=arguments.limit,
+            date_from=time_range.date_from if time_range else None,
+            date_to=time_range.date_to if time_range else None,
+            timezone_name=time_range.timezone_name if time_range else timezone_name,
+            normalized_start_at=time_range.start_at if time_range else None,
+            normalized_end_at=time_range.end_at if time_range else None,
+        )
+        return self._start(activity)
+
     def complete(self, activity, started_at: float, result_count: int, payload: dict):
         completed = activity.model_copy(update={
             "status": "completed", "result_message_count": result_count,
@@ -51,6 +69,8 @@ class ToolActivityRecorder:
                 if not item.get("already_provided")
             ),
             "budget_exhausted": bool(payload.get("budget_exhausted")),
+            "chronology_complete": payload.get("chronology_complete"),
+            "ordering_basis": payload.get("ordering_basis"),
             "duration_ms": max(0, round((time.monotonic() - started_at) * 1000)),
         })
         self._replace(activity, completed)
@@ -69,7 +89,7 @@ class ToolActivityRecorder:
         skipped = ChatToolActivity(
             sequence=len(self.activities) + 1,
             tool_name=tool_name if tool_name in {
-                "search_archive", "read_message_context",
+                "search_archive", "search_text_occurrences", "read_message_context",
             } else "unknown",
             status="skipped", error_code=error_code,
         )

@@ -115,10 +115,13 @@ content is sent to the selected AI provider even when the room is not synchroniz
 
 ## Retrieval and answer policy
 
-The bot never waits for indexing. Historical retrieval uses only the latest ready
-active index, is scoped to the current Discord room, has a strict cutoff at the
-trigger time, and explicitly excludes the trigger message. Missing or stale
-indexing therefore cannot remove the live snapshot from the request.
+The bot never waits for indexing. Semantic historical retrieval uses the latest
+ready active index. Adaptive direct text search instead reads every canonical raw
+message in the current Discord room, including messages not yet embedded. Both
+paths have a strict cutoff at the trigger time and explicitly exclude the trigger
+message before ordering and limiting results. Neither path can read another room
+or source. Missing or stale indexing therefore cannot remove the live snapshot
+or raw direct-text matches from the request.
 
 Both deterministic and adaptive bot requests treat room messages as untrusted
 evidence, never as instructions. The model decides whether evidence is relevant;
@@ -130,11 +133,12 @@ When no room evidence is relevant, the bot answers from the selected model's
 general knowledge without a prefix, badge, or fallback announcement. Evidence
 that was found but not cited remains visible in the audit as unused. A response
 without a valid linkable citation is internally classified as general knowledge.
-If an optional adaptive context read hits a known database integration failure,
-the model receives a bounded tool error and may still complete the response. The
-audit retains the failed tool step and an `archive_context_failed` warning instead
-of recording the whole answer as failed. Required application-chat retrieval
-remains strict.
+If adaptive direct text search or an optional context read hits a known database
+integration failure, the model receives a bounded tool error and may still
+complete the response. The audit retains the failed tool step and an
+`archive_text_search_failed` or `archive_context_failed` warning instead of
+recording the whole answer as failed. Required application-chat retrieval remains
+strict.
 
 This fallback policy belongs only to the Discord bot. `POST /chat` and the
 application composer remain strictly archive-grounded as documented in
@@ -193,8 +197,9 @@ in FastAPI.
 ## Verification
 
 Automated tests cover strict access, trigger detection, recent-context limits,
-room scope and cutoff, queue and cooldown behavior, citation links, splitting,
-model fallback, audit persistence, history operations, and transport parity.
+semantic and direct-text room scope and cutoff, queue and cooldown behavior,
+citation links, splitting, model fallback, audit persistence, history operations,
+and transport parity.
 For a real bot, verify Electron Local or the web gateway with:
 
 1. a synchronized and an unsynchronized room;

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from backend.archive_text_search import ArchiveTextSearchResult
 from backend.chunking import ConversationAwareChunker
 from backend.agent_protocol import AgentToolCall, AgentTurn
 from backend.models import ChatRequest, ChatScope, ChatSource, SourceMessageInput
@@ -153,6 +154,28 @@ def test_chat_service_runs_adaptive_search_and_returns_effective_configuration()
     assert response.sources[0].source_message_ids == ["123"]
 
 
+def test_chat_service_direct_search_uses_raw_messages_and_request_scope() -> None:
+    embedding = FakeEmbeddingProvider()
+    text_search = CapturingTextSearch()
+    scope = ChatScope(source_type="whatsapp", conversation_id="family")
+    service = DatabaseChatService(
+        CapturingVectorRepository([]), embedding, FakeDirectTextChatProvider(),
+        CapturingHybridRepository([]), source_context_projector=FakeSourceProjector(),
+        archive_context_reader=object(), archive_text_searcher=text_search,
+    )
+
+    response = service.answer(ChatRequest(
+        question="When was deadlock first mentioned?", scope=scope,
+        retrieval_mode="adaptive", evidence_character_limit=4000,
+    ))
+
+    assert embedding.inputs == []
+    assert text_search.arguments["scope"] == scope
+    assert text_search.arguments["patterns"] == ["deadlock"]
+    assert response.answer == "First raw mention [E1]"
+    assert response.sources[0].evidence_origin == "text_search"
+
+
 @pytest.mark.parametrize("active_index", [None, SimpleNamespace(status="building")])
 def test_chat_service_requires_a_ready_active_index(active_index) -> None:
     service = DatabaseChatService(
@@ -242,6 +265,42 @@ class FakeAdaptiveSession:
                 "call-1", "search_archive", '{"query":"Ada release plan date"}',
             )])
         return AgentTurn("Friday [E1]", [])
+
+
+class FakeDirectTextChatProvider:
+    def create_agent_session(self, *_arguments):
+        return FakeDirectTextSession()
+
+
+class FakeDirectTextSession:
+    def __init__(self):
+        self.turn = 0
+
+    def next_turn(self, _tools, _choice, _outputs=()):
+        self.turn += 1
+        if self.turn == 1:
+            return AgentTurn("", [AgentToolCall(
+                "direct-1", "search_text_occurrences",
+                '{"patterns":["deadlock"],"match_mode":"term_prefix",'
+                '"operator":"all","sort":"oldest","limit":3,'
+                '"date_from":null,"date_to":null}',
+            )])
+        return AgentTurn("First raw mention [E1]", [])
+
+
+class CapturingTextSearch:
+    def __init__(self):
+        self.arguments = None
+
+    def search_text_occurrences(self, **arguments):
+        self.arguments = arguments
+        message = NormalizedMessage(
+            external_id="wa-1", author="Ada", content="deadlocku",
+            timestamp=datetime(2026, 7, 1, tzinfo=timezone.utc), channel="Family",
+            channel_id=None, guild_id=None, source_type="whatsapp",
+            conversation_id="family", message_order=1,
+        )
+        return ArchiveTextSearchResult([message], True, "source_order")
 
 
 class FakeSourceProjector:

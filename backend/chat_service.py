@@ -33,7 +33,7 @@ class DatabaseChatService(ChatSessionAccess):
         chat_session_repository: Optional[ChatSessionRepository] = None,
         source_context_projector: Optional[SourceContextProjector] = None,
         archive_context_reader: Optional[ArchiveContextReader] = None,
-        workspace_settings=None,
+        workspace_settings=None, archive_text_searcher=None,
     ) -> None:
         self.repository = repository
         self.embedding_provider = embedding_provider
@@ -48,6 +48,7 @@ class DatabaseChatService(ChatSessionAccess):
         self.chat_session_repository = chat_session_repository
         self.source_context_projector = source_context_projector
         self.archive_context_reader = archive_context_reader
+        self.archive_text_searcher = archive_text_searcher or archive_context_reader
         self.workspace_settings = workspace_settings
 
     def list_scopes(self) -> ChatScopeList:
@@ -125,6 +126,7 @@ class DatabaseChatService(ChatSessionAccess):
         tools = ScopedArchiveTools(
             search_chunks, self.source_context_projector,
             self.archive_context_reader, request.scope,
+            search_text_messages=self._text_search_callable(),
         )
         orchestrator = AdaptiveChatOrchestrator(
             chat_provider, tools, self._workspace_timezone(), activity_callback,
@@ -137,6 +139,12 @@ class DatabaseChatService(ChatSessionAccess):
             evidence_character_limit=request.evidence_character_limit,
             tool_activity=activities,
         )
+
+    def _text_search_callable(self):
+        direct_callable = self.archive_text_searcher
+        if callable(direct_callable):
+            return direct_callable
+        return getattr(direct_callable, "search_text_occurrences", None)
 
     def _response(
         self, request, answer, chunks, provider_id, model, embedding_index_id,

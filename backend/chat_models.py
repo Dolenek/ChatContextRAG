@@ -8,7 +8,9 @@ ReasoningEffort = Literal[
     "none", "minimal", "low", "medium", "high", "xhigh", "max",
 ]
 RetrievalMode = Literal["deterministic", "adaptive"]
-ToolName = Literal["search_archive", "read_message_context", "unknown"]
+ToolName = Literal[
+    "search_archive", "search_text_occurrences", "read_message_context", "unknown",
+]
 ToolActivityStatus = Literal["running", "completed", "failed", "skipped"]
 
 DEFAULT_EVIDENCE_CHARACTER_LIMIT = 24_000
@@ -88,7 +90,9 @@ class ChatSource(BaseModel):
     guild_id: Optional[str] = None
     source_type: str = "discord"
     conversation_id: Optional[str] = None
-    evidence_origin: Literal["search", "context", "recent"] = "search"
+    evidence_origin: Literal[
+        "search", "text_search", "context", "recent",
+    ] = "search"
 
 
 class ChatToolActivity(BaseModel):
@@ -96,6 +100,13 @@ class ChatToolActivity(BaseModel):
     tool_name: ToolName
     status: ToolActivityStatus
     query: Optional[str] = Field(default=None, max_length=1000)
+    patterns: Optional[List[str]] = Field(default=None, max_length=8)
+    match_mode: Optional[Literal[
+        "whole_term", "term_prefix", "token_phrase",
+    ]] = None
+    operator: Optional[Literal["all", "any"]] = None
+    sort: Optional[Literal["oldest", "newest"]] = None
+    limit: Optional[int] = Field(default=None, ge=1, le=20)
     date_from: Optional[date] = None
     date_to: Optional[date] = None
     timezone_name: Optional[str] = Field(default=None, max_length=100)
@@ -107,6 +118,8 @@ class ChatToolActivity(BaseModel):
     result_message_count: Optional[int] = Field(default=None, ge=0)
     new_evidence_count: Optional[int] = Field(default=None, ge=0)
     budget_exhausted: bool = False
+    chronology_complete: Optional[bool] = None
+    ordering_basis: Optional[Literal["source_order", "timestamp"]] = None
     error_code: Optional[str] = Field(default=None, max_length=100)
     duration_ms: Optional[int] = Field(default=None, ge=0)
 

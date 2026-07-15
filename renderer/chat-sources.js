@@ -43,8 +43,9 @@ function createSourceHeading(source, index) {
 function createSourceFooter(source, chunk, onLayoutChange) {
   const footer = document.createElement("div");
   footer.className = "source-card-footer";
-  footer.append(source.evidence_origin === "context"
-    ? createContextOrigin() : createMatchScore(source));
+  if (source.evidence_origin === "context") footer.append(createContextOrigin());
+  else if (source.evidence_origin === "text_search") footer.append(createTextSearchOrigin());
+  else footer.append(createMatchScore(source));
   if (chunk) footer.append(createChunkToggle(chunk, onLayoutChange));
   return footer;
 }
@@ -54,6 +55,14 @@ function createContextOrigin() {
   origin.className = "source-match-score";
   origin.textContent = "Okolní kontext";
   origin.title = "Zpráva načtená jako okolí nalezeného výsledku; nemá vlastní skóre shody.";
+  return origin;
+}
+
+function createTextSearchOrigin() {
+  const origin = document.createElement("span");
+  origin.className = "source-match-score";
+  origin.textContent = "Přímá textová shoda";
+  origin.title = "Zpráva nalezená přímým hledáním textového výskytu; nemá similarity skóre.";
   return origin;
 }
 
