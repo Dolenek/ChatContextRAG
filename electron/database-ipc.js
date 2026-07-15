@@ -35,8 +35,16 @@ class DatabaseIpcController {
       const parameters = new URLSearchParams(pagination);
       return this.getJson(`/database/overview?${parameters}`);
     });
-    this.ipcMain.handle("database:status", () => this.getJson("/database/status"));
+    this.ipcMain.handle("database:status", (_event, options = {}) =>
+      this.getJson(`/database/status${options.fresh ? "?fresh=true" : ""}`));
     this.ipcMain.handle("database:breakdowns", () => this.getJson("/database/breakdowns"));
+    this.ipcMain.handle("database:breakdown-page", (_event, pagination) => {
+      const dimension = encodeURIComponent(pagination.dimension);
+      const parameters = new URLSearchParams({
+        limit: pagination.limit, offset: pagination.offset,
+      });
+      return this.getJson(`/database/breakdowns/${dimension}?${parameters}`);
+    });
     this.ipcMain.handle("database:chunks", (_event, pagination) => {
       const parameters = new URLSearchParams({ limit: pagination.limit });
       if (pagination.cursor) parameters.set("cursor", pagination.cursor);
@@ -53,6 +61,8 @@ class DatabaseIpcController {
       this.postJson(`/indexing/jobs/${jobId}/cancel`, {}));
     this.ipcMain.handle("indexing:get", (_event, jobId) =>
       this.getJson(`/indexing/jobs/${jobId}`));
+    this.ipcMain.handle("indexing:active", () =>
+      this.getJson("/indexing/jobs?status=active"));
     this.ipcMain.handle("indexing:pending", async () => {
       const job = await this.postJson("/indexing/jobs/pending", {});
       this.monitorIndexingJob(job.job_id);

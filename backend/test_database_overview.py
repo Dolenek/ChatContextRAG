@@ -89,6 +89,30 @@ def test_chunk_cursor_is_applied_as_timestamp_and_id_boundary() -> None:
     assert "(updated_at,id) < (%s,%s)" in connection.query
 
 
+def test_breakdown_page_limits_payload_and_reports_next_offset() -> None:
+    connection = ChunkConnection([
+        ("Ada", 20, 3), ("Bob", 10, 3),
+    ])
+
+    page = DatabaseDetailReader().read_breakdown_page(
+        connection, "authors", 2, 0,
+    )
+
+    assert [item.label for item in page.items] == ["Ada", "Bob"]
+    assert page.total == 3
+    assert page.has_more is True
+    assert page.next_offset == 2
+    assert connection.parameters == (2, 0)
+    assert "WITH counts AS MATERIALIZED" in connection.query
+
+
+def test_breakdown_page_rejects_unknown_dimension() -> None:
+    with pytest.raises(ValueError, match="Unsupported database breakdown"):
+        DatabaseDetailReader().read_breakdown_page(
+            ChunkConnection([]), "unknown", 50, 0,
+        )
+
+
 @pytest.mark.parametrize("cursor", ["not-base64", "e30", "WyJub3QiLCJhbiIsIm9iamVjdCJd"])
 def test_invalid_chunk_cursor_is_rejected(cursor) -> None:
     with pytest.raises(ValueError, match="Invalid database chunk cursor"):

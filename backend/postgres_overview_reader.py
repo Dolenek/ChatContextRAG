@@ -8,9 +8,11 @@ import psycopg
 
 from backend.models import (
     DatabaseBreakdowns, DatabaseChunkPage, DatabaseChunkView, DatabaseCount,
+    DatabaseCountPage,
     DatabaseOverview, DatabaseStatus, IndexingJobView,
 )
 from backend.openai_gateway import ExternalIntegrationError
+from backend.status_snapshot_cache import DatabaseSummaryCache
 
 
 ACTIVE_INDEX_SQL = """(SELECT active_embedding_index_id
@@ -19,16 +21,24 @@ ACTIVE_INDEX_SQL = """(SELECT active_embedding_index_id
 
 class DatabaseStatusReader:
     def read(self, connection: psycopg.Connection) -> DatabaseStatus:
+        return DatabaseStatus(
+            **self.read_summary(connection), **self.read_live(connection),
+        )
+
+    def read_summary(self, connection: psycopg.Connection) -> dict:
         summary = self._read_primary_summary(connection)
         if not summary["raw_message_count"] and summary["total_chunks"]:
             summary.update(self._read_chunk_fallback(connection))
+        return summary
+
+    def read_live(self, connection: psycopg.Connection) -> dict:
         database_size = connection.execute(
             "SELECT pg_size_pretty(pg_database_size(current_database()))"
         ).fetchone()[0]
-        return DatabaseStatus(
-            **summary, database_size=database_size,
-            indexing_jobs=self._read_jobs(connection),
-        )
+        return {
+            "database_size": database_size,
+            "indexing_jobs": self._read_jobs(connection),
+        }
 
     @staticmethod
     def _read_primary_summary(connection: psycopg.Connection) -> dict:
@@ -135,6 +145,30 @@ class DatabaseDetailReader:
             has_more=has_more, next_cursor=next_cursor,
         )
 
+    def read_breakdown_page(
+        self, connection: psycopg.Connection, dimension: str,
+        limit: int, offset: int,
+    ) -> DatabaseCountPage:
+        counts_sql = self._breakdown_counts_sql(dimension)
+        rows = connection.execute(f"""
+            WITH counts AS MATERIALIZED ({counts_sql}),
+            page AS (SELECT label,item_count FROM counts
+              ORDER BY item_count DESC,label LIMIT %s OFFSET %s),
+            total AS (SELECT COUNT(*) item_total FROM counts)
+            SELECT page.label,page.item_count,total.item_total
+            FROM total LEFT JOIN page ON TRUE
+            ORDER BY page.item_count DESC,page.label
+        """, (limit, offset)).fetchall()
+        total = rows[0][2] if rows else 0
+        items = [DatabaseCount(label=row[0], count=row[1])
+                 for row in rows if row[0] is not None]
+        next_offset = offset + len(items)
+        has_more = next_offset < total
+        return DatabaseCountPage(
+            items=items, total=total, limit=limit, offset=offset,
+            has_more=has_more, next_offset=next_offset if has_more else None,
+        )
+
     def read_offset_page(
         self, connection: psycopg.Connection, limit: int, offset: int,
     ) -> List[DatabaseChunkView]:
@@ -171,6 +205,23 @@ class DatabaseDetailReader:
             GROUP BY embedding_model ORDER BY COUNT(*) DESC,embedding_model"""
 
     @staticmethod
+    def _breakdown_counts_sql(dimension: str) -> str:
+        queries = {
+            "channels": f"""SELECT COALESCE(channel,'Bez kanálu') label,
+                COUNT(*) item_count FROM rag_chunks
+                WHERE embedding_index_id={ACTIVE_INDEX_SQL} GROUP BY channel""",
+            "authors": f"""SELECT author_name label,COUNT(*) item_count
+                FROM rag_chunks,LATERAL UNNEST(authors) author_name
+                WHERE embedding_index_id={ACTIVE_INDEX_SQL} GROUP BY author_name""",
+            "embedding-models": f"""SELECT embedding_model label,COUNT(*) item_count
+                FROM rag_chunks WHERE embedding_index_id={ACTIVE_INDEX_SQL}
+                GROUP BY embedding_model""",
+        }
+        if dimension not in queries:
+            raise ValueError("Unsupported database breakdown dimension.")
+        return queries[dimension]
+
+    @staticmethod
     def _to_chunk(row: tuple) -> DatabaseChunkView:
         return DatabaseChunkView(
             chunk_id=row[0], content=row[1], authors=row[2], source_message_ids=row[3],
@@ -180,16 +231,35 @@ class DatabaseDetailReader:
 
 
 class PostgresOverviewReader:
-    def __init__(self, database_dsn: str) -> None:
+    def __init__(
+        self, database_dsn: str,
+        summary_cache: Optional[DatabaseSummaryCache] = None,
+    ) -> None:
         self.database_dsn = database_dsn
         self.status_reader = DatabaseStatusReader()
         self.detail_reader = DatabaseDetailReader()
+        self.summary_cache = summary_cache or DatabaseSummaryCache(
+            self._load_summary, ttl_seconds=60, force_coalesce_seconds=5,
+        )
 
-    def get_status(self) -> DatabaseStatus:
-        return self._read(lambda connection: self.status_reader.read(connection))
+    def get_status(self, fresh: bool = False) -> DatabaseStatus:
+        summary = self.summary_cache.get(force=fresh)
+        live = self._read(self.status_reader.read_live)
+        return DatabaseStatus(
+            **summary.value, **live, summary_generated_at=summary.generated_at,
+            summary_is_stale=summary.is_stale,
+            summary_refreshing=summary.refreshing,
+        )
 
     def get_breakdowns(self) -> DatabaseBreakdowns:
         return self._read(lambda connection: self.detail_reader.read_breakdowns(connection))
+
+    def get_breakdown_page(
+        self, dimension: str, limit: int, offset: int,
+    ) -> DatabaseCountPage:
+        return self._read(lambda connection: self.detail_reader.read_breakdown_page(
+            connection, dimension, limit, offset,
+        ))
 
     def get_chunk_page(self, limit: int, cursor: Optional[str]) -> DatabaseChunkPage:
         decoded_cursor = decode_chunk_cursor(cursor) if cursor else None
@@ -208,6 +278,18 @@ class PostgresOverviewReader:
                 has_more=offset + len(chunks) < status.total_chunks,
             )
         return self._read(assemble)
+
+    def warm_status_cache(self) -> None:
+        self.summary_cache.start_refresh()
+
+    def drop_status_cache(self) -> None:
+        self.summary_cache.drop()
+
+    def close_status_cache(self) -> None:
+        self.summary_cache.close()
+
+    def _load_summary(self) -> dict:
+        return self._read(self.status_reader.read_summary)
 
     def _read(self, operation):
         try:

@@ -125,6 +125,7 @@ function matchBackendRoute(method, pathname) {
     ["GET /api/database/resume-point", "/database/resume-point"],
     ["DELETE /api/database", "/database"],
     ["POST /api/indexing/jobs/pending", "/indexing/jobs/pending"],
+    ["GET /api/indexing/jobs", "/indexing/jobs"],
     ["POST /api/ingestion/sessions", "/ingestion/sessions"],
     ["POST /api/messages/import", "/messages/import"],
   ]);
@@ -134,6 +135,12 @@ function matchBackendRoute(method, pathname) {
 }
 
 function matchParameterizedRoute(method, pathname) {
+  const breakdown = pathname.match(
+    /^\/api\/database\/breakdowns\/(channels|authors|embedding-models)$/,
+  );
+  if (breakdown && method === "GET") {
+    return `/database/breakdowns/${breakdown[1]}`;
+  }
   const chatSession = pathname.match(/^\/api\/chat\/sessions\/([^/]+)$/);
   if (chatSession && ["GET", "PATCH", "DELETE"].includes(method)) {
     return `/chat/sessions/${encodeURIComponent(decodeURIComponent(chatSession[1]))}`;

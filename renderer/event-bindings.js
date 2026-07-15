@@ -48,8 +48,9 @@ document.querySelector("#confirm-clear-button")
 window.indexingControls.bind({
   refreshOverview: async () => {
     window.overviewController.markDatabaseChanged();
-    await window.overviewController.refreshStatus(true);
+    await window.overviewController.refreshStatus({ forceClient: true });
   },
+  refreshTerminal: window.overviewController.refreshAfterTerminal,
   showToast: window.appUi.showToast,
 });
 window.chatController.bind({ showToast: window.appUi.showToast });
@@ -90,6 +91,8 @@ window.whatsappImportUi.bind({
 
 window.shellController.showScreen("chat");
 void Promise.all([
+  window.runtimeCapabilitiesUi.refresh()
+    .catch((error) => window.appUi.showToast(error.message, true)),
   window.appUi.refreshWorkspaceData(),
   window.modelSelector.prepare().catch((error) => window.appUi.showToast(error.message, true)),
   window.chatHistoryUi.refresh(),

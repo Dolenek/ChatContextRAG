@@ -55,11 +55,28 @@ test("HTTP response helpers apply security headers and safe static paths", () =>
   const staticResponse = fakeResponse();
   const traversalResponse = fakeResponse();
 
-  assert.equal(sendStatic(staticResponse, directory, "/page.html"), true);
-  assert.equal(sendStatic(traversalResponse, directory, "/../secret.txt"), false);
+  assert.equal(sendStatic({ headers: {} }, staticResponse, directory, "/page.html"), true);
+  assert.equal(sendStatic(
+    { headers: {} }, traversalResponse, directory, "/../secret.txt",
+  ), false);
   assert.equal(staticResponse.statusCode, 200);
   assert.match(staticResponse.headers["Content-Type"], /text\/html/);
   assert.equal(staticResponse.headers["X-Frame-Options"], "DENY");
+  const cachedResponse = fakeResponse();
+  sendStatic({
+    headers: { "if-none-match": staticResponse.headers.ETag },
+  }, cachedResponse, directory, "/page.html");
+  assert.equal(cachedResponse.statusCode, 304);
+  assert.equal(cachedResponse.body, "");
+
+  fs.writeFileSync(path.join(directory, "page.html"), "<h1>deployed version</h1>");
+  const changedResponse = fakeResponse();
+  sendStatic({
+    headers: { "if-none-match": staticResponse.headers.ETag },
+  }, changedResponse, directory, "/page.html");
+  assert.equal(changedResponse.statusCode, 200);
+  assert.equal(changedResponse.body, "<h1>deployed version</h1>");
+  assert.notEqual(changedResponse.headers.ETag, staticResponse.headers.ETag);
 
   const jsonResponse = fakeResponse();
   sendJson(jsonResponse, 201, { created: true });
@@ -153,6 +170,11 @@ test("API route allowlist normalizes identifiers and rejects unsupported methods
   assert.equal(
     matchBackendRoute("GET", "/api/database/breakdowns"), "/database/breakdowns",
   );
+  assert.equal(
+    matchBackendRoute("GET", "/api/database/breakdowns/authors"),
+    "/database/breakdowns/authors",
+  );
+  assert.equal(matchBackendRoute("GET", "/api/indexing/jobs"), "/indexing/jobs");
   assert.equal(matchBackendRoute("GET", "/api/database/chunks"), "/database/chunks");
   assert.equal(
     matchBackendRoute("PATCH", "/api/chat/sessions/chat%20one"),

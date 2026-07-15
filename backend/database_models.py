@@ -27,6 +27,15 @@ class DatabaseCount(BaseModel):
     count: int
 
 
+class DatabaseCountPage(BaseModel):
+    items: List[DatabaseCount] = Field(default_factory=list)
+    total: int = 0
+    limit: int
+    offset: int
+    has_more: bool = False
+    next_offset: Optional[int] = None
+
+
 class DatabaseChunkView(BaseModel):
     chunk_id: str
     content: str
@@ -54,6 +63,9 @@ class DatabaseStatus(BaseModel):
     pending_message_count: int = 0
     database_size: str = "0 bytes"
     indexing_jobs: List[IndexingJobView] = Field(default_factory=list)
+    summary_generated_at: Optional[datetime] = None
+    summary_is_stale: bool = False
+    summary_refreshing: bool = False
 
 
 class DatabaseBreakdowns(BaseModel):

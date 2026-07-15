@@ -4,7 +4,8 @@
 }
 
 .overview-heading { padding-bottom: 22px; }
-.overview-actions { display: flex; gap: 9px; }
+.overview-actions { display: flex; align-items: center; gap: 9px; }
+.overview-summary-state { min-width: 112px; color: var(--muted); font-size: 10px; text-align: right; }
 .overview-actions svg { width: 16px; height: 16px; }
 .overview-actions .danger-button { display: inline-flex; align-items: center; gap: 7px; }
 .overview-actions .loading svg { animation: overview-spin 900ms linear infinite; }
@@ -115,6 +116,7 @@
 .overview-count-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overview-count-row strong { font-size: 10px; }
 .overview-count-list > .empty-label { padding: 28px 4px; text-align: center; }
+.overview-load-more { width: 100%; min-height: 32px; margin-top: 5px; padding: 6px; font-size: 10px; }
 
 .overview-chunks-section { margin-top: 18px; border-radius: 15px; padding: 18px; }
 .chunks-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }

@@ -2,7 +2,7 @@
 
 The application opens in the chat workspace. The expanded navigation rail can
 be changed to a compact icon-only mode, and the desktop preference is restored
-on the next start. Narrow windows and embedded Discord use a temporary compact
+on the next start. Narrow windows and the local Discord scanner use a temporary compact
 layout without overwriting that preference.
 
 **New chat** retains the selected source and model, then chooses Adaptive only
@@ -19,12 +19,14 @@ adopts later model-setting changes.
 ## Settings and workspace timezone
 
 **Settings** contains provider keys, chat models, embedding indexes, indexing
-history, and workspace configuration. Electron additionally selects its Local
-or Remote backend target. Closing the modal discards unfinished form values.
-Remote non-loopback HTTP displays a transport warning and cannot be tested or
-saved until it is acknowledged. The acknowledgement applies only to the exact
-normalized origin; changing the scheme, host, or port requires a new one.
-Loopback HTTP targets do not show the warning.
+history, and workspace configuration. Electron additionally selects either the
+local workspace or **Vzdálený Chat Context server**. Selecting the server reveals
+its URL and desktop API token fields; Local keeps them hidden. Electron tests a
+Remote target before saving it and restarting, and a failed test leaves the
+saved target unchanged. Remote non-loopback HTTP displays a transport warning
+and cannot be tested or saved until it is acknowledged. The acknowledgement
+applies only to the exact normalized origin; changing the scheme, host, or port
+requires a new one. Loopback HTTP targets do not show the warning.
 
 The searchable IANA timezone field defaults to `UTC` for new and migrated
 workspaces. Set it to the archive's intended calendar zone, for example
@@ -34,8 +36,11 @@ Changing it affects future tool calls; it does not rewrite persisted chat
 sessions or message timestamps.
 
 **Sources and imports** opens the source and connector drawer independently of
-Settings. Selecting another scope starts a clean conversation. The renderer
-never sends scope as a model-controlled tool argument.
+Settings. **Lokální Discord scanner** is available in Electron Local and Electron
+Remote, keeps its Discord login in an isolated local `BrowserView`, and writes
+through the active workspace backend. It is separate from the Discord bot.
+Selecting another scope starts a clean conversation. The renderer never sends
+scope as a model-controlled tool argument.
 
 ## Grounding and live archive steps
 

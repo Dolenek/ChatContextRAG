@@ -48,11 +48,18 @@ function loadControls(jobResponse = null) {
     ["#overview-screen", new FakeElement()],
   ]);
   const scheduledCallbacks = [];
+  const documentListeners = {};
+  const document = {
+    hidden: false,
+    createElement: () => new FakeElement(),
+    querySelector: (selector) => elements.get(selector),
+    addEventListener: (name, callback) => { documentListeners[name] = callback; },
+  };
   const context = {
     window: {
       chatContext: {
-        getIndexingJob: async (jobId) => typeof jobResponse === "function"
-          ? jobResponse(jobId) : jobResponse,
+        getActiveIndexingJobs: async () => typeof jobResponse === "function"
+          ? jobResponse() : jobResponse,
       },
       clearTimeout: () => {},
       setTimeout: (callback) => {
@@ -60,16 +67,16 @@ function loadControls(jobResponse = null) {
         return scheduledCallbacks.length;
       },
     },
-    document: {
-      createElement: () => new FakeElement(),
-      querySelector: (selector) => elements.get(selector),
-    },
+    document,
   };
   const source = fs.readFileSync(
     path.join(__dirname, "..", "renderer", "indexing-controls.js"), "utf8",
   );
   vm.runInNewContext(source, context);
-  return { controls: context.window.indexingControls, elements, scheduledCallbacks };
+  return {
+    controls: context.window.indexingControls, document, documentListeners,
+    elements, scheduledCallbacks,
+  };
 }
 
 test("pending indexing action reflects uncovered messages and active jobs", () => {
@@ -243,18 +250,20 @@ test("pushed progress updates the rendered row without an overview reload", () =
     total_messages: 100, stored_chunks: 2,
   }], 90);
 
+  const originalRow = elements.get("#indexing-jobs").children[0];
   controls.applyProgress({
     job_id: "job-1", status: "running", processed_messages: 57,
     total_messages: 100, stored_chunks: 12,
   });
 
   const row = elements.get("#indexing-jobs").children[0];
+  assert.equal(row, originalRow);
   assert.equal(row.children[0].children[0].textContent, "Indexuji · 57 %");
   assert.equal(row.children[0].children[1].textContent, "12 chunků");
 });
 
-test("polling refreshes every active job when a queued row is first", async () => {
-  const requested = [];
+test("fallback polling reconciles all active jobs in one batch", async () => {
+  let requestCount = 0;
   const responses = {
     queued: {
       job_id: "queued", status: "queued", processed_messages: 0,
@@ -265,9 +274,9 @@ test("polling refreshes every active job when a queued row is first", async () =
       total_messages: 100, stored_chunks: 15,
     },
   };
-  const { controls, elements, scheduledCallbacks } = loadControls((jobId) => {
-    requested.push(jobId);
-    return responses[jobId];
+  const { controls, elements, scheduledCallbacks } = loadControls(() => {
+    requestCount += 1;
+    return [responses.queued, responses.running];
   });
   controls.bind({ refreshOverview: async () => {}, showToast: () => {} });
   controls.render([responses.queued, {
@@ -276,18 +285,52 @@ test("polling refreshes every active job when a queued row is first", async () =
 
   await scheduledCallbacks[0]();
 
-  assert.deepEqual(requested, ["queued", "running"]);
+  assert.equal(requestCount, 1);
   const runningRow = elements.get("#indexing-jobs").children[0];
   assert.equal(runningRow.children[0].children[0].textContent, "Indexuji · 50 %");
   assert.equal(runningRow.children[0].children[1].textContent, "15 chunků");
 });
 
-test("active job polling refreshes the overview after completion", async () => {
-  const completedJob = {
-    job_id: "job-1", status: "completed", processed_messages: 84,
-    total_messages: 84, stored_chunks: 7,
+test("recent pushed progress suppresses the fallback request", async () => {
+  let requestCount = 0;
+  const job = {
+    job_id: "running", status: "running", processed_messages: 10,
+    total_messages: 100, stored_chunks: 2,
   };
-  const { controls, scheduledCallbacks } = loadControls(completedJob);
+  const { controls, scheduledCallbacks } = loadControls(() => {
+    requestCount += 1;
+    return [job];
+  });
+  controls.bind({ refreshOverview: async () => {}, showToast: () => {} });
+  controls.render([job], 90);
+  controls.applyProgress({ ...job, processed_messages: 11 });
+
+  await scheduledCallbacks.at(-1)();
+
+  assert.equal(requestCount, 0);
+});
+
+test("fallback pauses while hidden and reconciles on visibility recovery", async () => {
+  let requestCount = 0;
+  const job = {
+    job_id: "running", status: "running", processed_messages: 10,
+    total_messages: 100, stored_chunks: 2,
+  };
+  const harness = loadControls(() => { requestCount += 1; return [job]; });
+  harness.controls.bind({ refreshOverview: async () => {}, showToast: () => {} });
+  harness.document.hidden = true;
+  harness.controls.render([job], 90);
+  assert.equal(harness.scheduledCallbacks.length, 0);
+
+  harness.document.hidden = false;
+  harness.documentListeners.visibilitychange();
+  await harness.scheduledCallbacks[0]();
+
+  assert.equal(requestCount, 1);
+});
+
+test("fallback polling refreshes the overview when an active job disappears", async () => {
+  const { controls, scheduledCallbacks } = loadControls([]);
   let refreshCount = 0;
   controls.bind({
     refreshOverview: async () => { refreshCount += 1; },

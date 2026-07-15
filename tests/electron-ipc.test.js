@@ -39,6 +39,7 @@ const { BackendProcess } = require("../electron/backend-process");
 const { RotatingBackendLog } = require("../electron/backend-log");
 const { ArchiveMigrationIpcController } = require("../electron/archive-migration-ipc");
 const { ConnectionIpcController } = require("../electron/connection-ipc");
+const { DatabaseIpcController } = require("../electron/database-ipc");
 const { DiscordBotTokenStore } = require("../electron/discord-bot-token-store");
 const { IntegrationIpcController } = require("../electron/integration-ipc");
 const { LocalInfrastructure } = require("../electron/local-infrastructure");
@@ -77,6 +78,55 @@ test("connection IPC registers get, test, and save with restart after validation
   const input = { mode: "remote", baseUrl: "https://server", token: "token" };
   assert.deepEqual(await handlers.get("connection:save")(null, input), input);
   assert.deepEqual(calls, [["test", input], ["save", input], ["restart"]]);
+});
+
+test("failed remote connection test does not save, restart, or switch targets", async () => {
+  handlers.clear();
+  const calls = [];
+  const controller = new ConnectionIpcController({
+    store: {
+      getPublic: () => ({ mode: "remote", baseUrl: "https://saved.example" }),
+      save: () => calls.push("save"),
+    },
+    restart: () => calls.push("restart"),
+  });
+  controller.test = async () => { throw new Error("Remote server is unavailable."); };
+  controller.register();
+
+  await assert.rejects(
+    handlers.get("connection:save")(null, {
+      mode: "remote", baseUrl: "https://offline.example", token: "token",
+    }),
+    /unavailable/,
+  );
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await handlers.get("connection:get")(), {
+    mode: "remote", baseUrl: "https://saved.example",
+  });
+});
+
+test("database IPC forwards fresh summaries, breakdown pages, and active jobs", async () => {
+  handlers.clear();
+  const paths = [];
+  const controller = new DatabaseIpcController({
+    ipcMain: electronMock.ipcMain,
+    getJson: async (requestPath) => { paths.push(requestPath); return {}; },
+    postJson: async () => ({}), patchJson: async () => ({}),
+    deleteJson: async () => ({}), monitorIndexingJob: () => {},
+  });
+  controller.register();
+
+  await handlers.get("database:status")(null, { fresh: true });
+  await handlers.get("database:breakdown-page")(null, {
+    dimension: "authors", limit: 50, offset: 100,
+  });
+  await handlers.get("indexing:active")();
+
+  assert.deepEqual(paths, [
+    "/database/status?fresh=true",
+    "/database/breakdowns/authors?limit=50&offset=100",
+    "/indexing/jobs?status=active",
+  ]);
 });
 
 test("archive migration IPC exposes lifecycle operations", async () => {

@@ -102,6 +102,9 @@ class PostgresRawMessageRepository:
     def list_jobs(self, limit: int = 10) -> List[IndexingJobView]:
         return self.job_repository.list(limit)
 
+    def list_active_jobs(self) -> List[IndexingJobView]:
+        return self.job_repository.list_active()
+
     def retry_job(self, job_id: str) -> IndexingJobView:
         return self.job_repository.retry(job_id)
 

@@ -118,4 +118,3 @@ input::placeholder, textarea::placeholder { color: #70809d; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #2a3852; background-clip: padding-box; }
-.web-runtime #open-discord-button, .web-runtime #discord-drawer-panel, .web-runtime #connection-settings-card { display: none !important; }

@@ -94,7 +94,8 @@ test("settings overlay traps keyboard focus and declares responsive web behavior
   assert.equal(fixture.document.activeElement, fixture.closeButton);
   const css = read("renderer/settings-overlay.css");
   assert.match(css, /@media \(max-width: 700px\)/);
-  assert.match(css, /web-runtime .*data-settings-section="workspace"/);
+  assert.doesNotMatch(css, /web-runtime .*data-settings-section="workspace"/);
+  assert.match(css, /\.remote-connection-fields \{ display: contents; \}/);
 });
 
 function createOverlayFixture() {

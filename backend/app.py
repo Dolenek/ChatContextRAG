@@ -66,7 +66,17 @@ def create_app(
         register_settings_routes(application, active_settings, token)
     if active_discord:
         register_discord_bot_routes(application, active_discord)
+    _register_status_cache_lifecycle(application, active_overview)
     return application
+
+
+def _register_status_cache_lifecycle(application, overview_service) -> None:
+    warm = getattr(overview_service, "warm_status_cache", None)
+    close = getattr(overview_service, "close_status_cache", None)
+    if warm:
+        application.add_event_handler("startup", warm)
+    if close:
+        application.add_event_handler("shutdown", close)
 
 
 def _register_exception_handlers(application: FastAPI) -> None:

@@ -122,9 +122,12 @@ also requires the original `CHAT_CONTEXT_SERVER_KEY`.
 
 Electron starts in **Local** mode by default. In that mode it starts the
 loopback PostgreSQL service and FastAPI before opening the workspace. Open
-**Settings > Workspace** to select **Remote**, enter the web server origin and
-`CHAT_CONTEXT_DESKTOP_TOKEN`, test the connection, and save. Electron encrypts
-the token with `safeStorage` and restarts; the renderer never receives it.
+**Settings > Workspace** to select **Vzdálený Chat Context server**, enter the
+server origin and `CHAT_CONTEXT_DESKTOP_TOKEN`, test the connection, and save.
+The URL and token fields are shown only for this selection. Electron connects to
+the server API, never directly to its PostgreSQL database. It encrypts the token
+with `safeStorage` and restarts after a successful test and save; the renderer
+never receives the persisted token.
 The server value must be a bare `http://` or `https://` origin without embedded
 credentials, a path, query parameters, or a fragment.
 
@@ -134,12 +137,13 @@ acknowledgement. `localhost`, IPv4 addresses in `127.0.0.0/8`, and IPv6 `::1`
 are exempt. A saved legacy HTTP target is treated as unacknowledged, and Electron
 asks for confirmation in a native dialog before starting it.
 
-Remote mode uses the Linux server for chat, overview, settings, WhatsApp import,
-Discord bot control, and indexing. The embedded signed-in Discord browser still
-runs locally, but captured or scanned messages are written directly to the
-server and indexed there. Remote mode does not start local Python, PostgreSQL,
-or Docker. A connection failure is reported and never falls back to the local
-database silently. Switching targets does not copy existing local messages.
+Remote mode uses the Chat Context server for chat, overview, settings, WhatsApp
+import, Discord bot control, and indexing. The signed-in **Lokální Discord
+scanner** still runs in Electron, but captured or scanned messages are written
+through the authenticated server API and indexed there. Remote mode does not
+start local Python, PostgreSQL, or Docker. A connection failure is reported and
+does not change the saved target or fall back to the local database silently.
+Switching targets does not copy existing local messages.
 
 Existing messages move only when the explicit archive migration described below
 is started. Merely saving a Local or Remote target never copies or dual-writes
@@ -151,8 +155,8 @@ the server are not on an entirely trusted network.
 ### Migrate a Local archive to the server
 
 Keep Electron in **Local** mode and make sure the Linux gateway is reachable
-from the desktop. In **Settings > Workspace**, select **Remote**, enter the
-server origin and desktop token, then choose **Transfer local archive to
+from the desktop. In **Settings > Workspace**, select **Vzdálený Chat Context
+server**, enter the server origin and desktop token, then choose **Transfer local archive to
 server** (**Přenést lokální archiv na server** in the UI). This remembers the
 encrypted remote credential without changing the active workspace. The
 confirmation reports the stable local snapshot size and the current server
@@ -246,18 +250,22 @@ are documented in [Desktop operation](desktop-operation.md).
 Provider profiles, managed chat models, reasoning effort, and embedding-index
 configuration are documented in [Model and API settings](model-settings.md).
 
-## Embedded Discord import
+## Local Discord scanner
 
-Open **Sources and imports**, choose **Embedded Discord**, sign in, and open a
-channel. **Načíst poslední 4** performs a small import. **Procházet do databáze** traverses loaded history
-upward and writes raw batches. **Zastavit** flushes the current batch and queues
+In Electron Local or Electron Remote, open **Sources and imports**, choose
+**Lokální Discord scanner**, sign in, and open a channel. The option is not
+available in the Web runtime. **Načíst poslední 4** performs a small import.
+**Procházet do databáze** traverses loaded history upward and writes raw batches
+to the active workspace. **Zastavit** flushes the current batch and queues
 indexing. **Pokračovat od poslední načtené** opens the oldest stored Discord
 message and continues into older history.
 
-The embedded workflow is independent from the optional bot. Its Discord login,
-scan controls, progress, and source deep links retain their original behavior.
-While Discord is visible, the source drawer stays open and the embedded browser
-is laid out beside it so the scan controls remain accessible.
+The scanner is independent from the optional Discord bot. Its isolated login
+and `BrowserView` stay local even when the active workspace is Remote. In Local
+mode its normalized batches go to loopback FastAPI; in Remote mode they go to
+the selected Chat Context server. While Discord is visible, the source drawer
+stays open and the browser is laid out beside it so scan controls remain
+accessible.
 
 ## Discord bot
 

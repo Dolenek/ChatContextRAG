@@ -44,8 +44,8 @@ test("renderer exposes the three-panel shell and responsive context drawer", () 
   const panelCss = read("renderer/panels.css");
   assert.match(html, /id="primary-navigation" class="navigation-rail"/);
   assert.match(html, /class="sidebar-brand"/);
-  assert.match(html, /src="assets\/chat-context-mark\.png"/);
-  assert.doesNotMatch(html, /sidebar-brand-name/);
+  assert.match(html, /class="brand-wordmark"[^>]+src="assets\/chat-context-wordmark\.png"/);
+  assert.match(html, /class="brand-symbol"[^>]+src="assets\/chat-context-mark\.png"/);
   assert.match(html, /class="app-header"/);
   assert.match(html, /id="archive-header-status"/);
   assert.match(html, /id="chat-scope-select"/);
@@ -83,24 +83,25 @@ test("shell keeps navigation compact and themes native selection menus", () => {
   assert.match(shellCss, /\.rail-button \{[\s\S]*?min-height: 44px/);
   assert.match(shellCss, /\.navigation-rail\.navigation-rollout-visible \.navigation-toggle/);
   assert.match(shellCss, /grid-template-columns: minmax\(34px, 1fr\) 42px minmax\(34px, 1fr\)/);
-  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) 190px minmax\(0, 1fr\)/);
-  assert.match(shellCss, /\.archive-header-status \{ position: fixed; top: 0; left: 50%/);
-  assert.match(shellCss, /transform: translateX\(-50%\)/);
+  assert.match(shellCss, /body:not\(\.navigation-expanded\) \.brand-wordmark \{ display: none; \}/);
+  assert.match(shellCss, /body:not\(\.navigation-expanded\) \.brand-symbol \{[^}]*display: block/);
+  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: end/);
   assert.match(shellCss, /\.archive-header-progress \{ width: 100%;[\s\S]*?margin-left: 0/);
   assert.match(shellCss, /width: min\(414px, calc\(100vw - var\(--rail-width\)\)\)/);
 });
 
-test("header centers archive status in the viewport beside the scope picker", () => {
+test("header aligns scope and archive status to the composer edges", () => {
   const html = read("renderer/index.html");
   const baseCss = read("renderer/styles.css");
   const shellCss = read("renderer/shell.css");
   const chatCss = read("renderer/chat.css");
   assert.match(html, /class="app-header-content"[\s\S]*?class="scope-picker"/);
   assert.match(baseCss, /--chat-content-max-width: 784px/);
-  assert.match(shellCss, /grid-template-columns: minmax\(0, 1fr\) 190px minmax\(0, 1fr\)/);
+  assert.match(shellCss, /width: min\(calc\(100% - var\(--chat-horizontal-gutter\) - var\(--chat-horizontal-gutter\)\), var\(--chat-content-max-width\)\)/);
   assert.match(shellCss, /\.scope-picker:focus-within/);
   assert.match(shellCss, /\.scope-picker select:focus-visible \{ outline: 0; \}/);
-  assert.match(shellCss, /\.archive-header-status \{ position: fixed; top: 0; left: 50%/);
+  assert.match(shellCss, /\.archive-header-status \{ grid-column: 2; justify-self: end/);
   assert.match(chatCss, /padding: 0 var\(--chat-horizontal-gutter\) 38px/);
   assert.match(chatCss, /\.chat-form \{[\s\S]*?var\(--chat-content-max-width\)/);
 });
@@ -258,7 +259,7 @@ test("right panel fitting calculation adapts from three to five cards", () => {
   assert.match(read("renderer/context-panel.js"), /expandedCardCount/);
 });
 
-test("embedded Discord reserves the expanded import drawer", () => {
+test("local Discord scanner reserves the expanded import drawer", () => {
   const { calculateDiscordBounds } = require("../electron/discord-view");
   assert.deepEqual(calculateDiscordBounds(1240, 820), {
     x: 392, y: 82, width: 848, height: 738,

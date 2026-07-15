@@ -165,6 +165,8 @@ test("connection target validates URLs and keeps the token encrypted", () => {
     insecureHttpAcknowledged: false,
   });
   assert.equal(store.getActive().token, "secret");
+  store.save({ mode: "remote", baseUrl: "https://server.example" });
+  assert.equal(store.getActive().token, "secret");
   store.save({ mode: "local" });
   store.rememberRemote({ baseUrl: "https://server.example", token: "replacement" });
   assert.equal(store.getPublic().mode, "local");
@@ -177,6 +179,7 @@ test("connection target validates URLs and keeps the token encrypted", () => {
     path.join(directory, "chat-context", "connection.json"), "utf8",
   );
   assert.equal(persisted.includes("secret"), false);
+  assert.throws(() => normalizeServerUrl(""), /URL is invalid/);
   assert.throws(() => normalizeServerUrl("file:///tmp/server"));
   assert.throws(
     () => store.save({ mode: "remote", baseUrl: "http://archive.example", token: "token" }),
@@ -263,9 +266,12 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   const bridge = fs.readFileSync(
     path.join(__dirname, "..", "renderer", "runtime-bridge.js"), "utf8",
   );
-  const styles = fs.readFileSync(path.join(__dirname, "..", "renderer", "styles.css"), "utf8");
+  const capabilitiesUi = fs.readFileSync(
+    path.join(__dirname, "..", "renderer", "runtime-capabilities-ui.js"), "utf8",
+  );
 
   assert.ok(html.indexOf('src="runtime-bridge.js"') < html.indexOf('src="shell-controller.js"'));
+  assert.ok(html.indexOf('src="runtime-capabilities-ui.js"') < html.indexOf('src="shell-controller.js"'));
   assert.ok(html.indexOf('src="archive-migration-ui.js"') < html.indexOf('src="settings-ui.js"'));
   assert.ok(html.indexOf('src="indexing-api-key-ui.js"') < html.indexOf('src="settings-ui.js"'));
   assert.ok(html.indexOf('src="indexing-job-history-ui.js"') < html.indexOf('src="settings-ui.js"'));
@@ -276,7 +282,9 @@ test("renderer loads the runtime bridge before controllers and hides desktop-onl
   assert.match(html, /id="archive-migration-diagnostic"/);
   assert.match(bridge, /mode: "web", hasToken: false/);
   assert.doesNotMatch(bridge, /openDiscordSource|discord\.com\/channels/);
-  assert.match(styles, /\.web-runtime #open-discord-button/);
+  assert.match(html, /id="open-discord-button" class="source-action hidden"/);
+  assert.match(html, /id="connection-settings-card" class="settings-card hidden"/);
+  assert.match(capabilitiesUi, /desktopModes\.has\(capabilities\.mode\)/);
 });
 
 test("web and Electron bridges expose the shared workspace contract", () => {
@@ -294,6 +302,7 @@ test("web and Electron bridges expose the shared workspace contract", () => {
     "onIndexingProgress", "hideDiscord", "askDatabase", "askDatabaseStreaming", "getChatScopes",
     "listChatSessions", "getChatSession", "renameChatSession", "deleteChatSession",
     "getDatabaseOverview", "getDatabaseStatus", "getDatabaseBreakdowns",
+    "getDatabaseBreakdownPage", "getActiveIndexingJobs",
     "getDatabaseChunkPage", "clearDatabase", "retryIndexingJob", "cancelIndexingJob",
     "getIndexingJob", "indexPendingMessages", "getDiscordBotStatus", "connectDiscordBot",
     "pauseDiscordBot", "resumeDiscordBot", "disconnectDiscordBot",

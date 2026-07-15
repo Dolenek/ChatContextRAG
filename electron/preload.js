@@ -72,8 +72,10 @@ contextBridge.exposeInMainWorld("chatContext", {
   deleteChatSession: (sessionId) => ipcRenderer.invoke("chat-sessions:delete", sessionId),
   getDatabaseOverview: (limit, offset) =>
     ipcRenderer.invoke("database:overview", { limit, offset }),
-  getDatabaseStatus: () => ipcRenderer.invoke("database:status"),
+  getDatabaseStatus: (options = {}) => ipcRenderer.invoke("database:status", options),
   getDatabaseBreakdowns: () => ipcRenderer.invoke("database:breakdowns"),
+  getDatabaseBreakdownPage: (dimension, limit = 50, offset = 0) =>
+    ipcRenderer.invoke("database:breakdown-page", { dimension, limit, offset }),
   getDatabaseChunkPage: (limit, cursor = null) =>
     ipcRenderer.invoke("database:chunks", { limit, cursor }),
   clearDatabase: (confirmation) =>
@@ -81,6 +83,7 @@ contextBridge.exposeInMainWorld("chatContext", {
   retryIndexingJob: (jobId) => ipcRenderer.invoke("indexing:retry", jobId),
   cancelIndexingJob: (jobId) => ipcRenderer.invoke("indexing:cancel", jobId),
   getIndexingJob: (jobId) => ipcRenderer.invoke("indexing:get", jobId),
+  getActiveIndexingJobs: () => ipcRenderer.invoke("indexing:active"),
   indexPendingMessages: () => ipcRenderer.invoke("indexing:pending"),
   getDiscordBotStatus: () => ipcRenderer.invoke("discord-bot:status"),
   connectDiscordBot: (token) => ipcRenderer.invoke("discord-bot:connect", token),

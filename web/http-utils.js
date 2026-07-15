@@ -8,6 +8,7 @@ const securityHeaders = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 };
+const staticFileCache = new Map();
 
 function sendJson(response, statusCode, body, headers = {}) {
   const payload = JSON.stringify(body);
@@ -47,18 +48,46 @@ async function readBody(request, maximumBytes) {
   return Buffer.concat(chunks);
 }
 
-function sendStatic(response, root, requestPath) {
+function sendStatic(request, response, root, requestPath) {
   const filePath = safeStaticPath(root, requestPath);
   if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
-  const content = fs.readFileSync(filePath);
+  const resource = loadStaticResource(filePath);
+  const headers = {
+    ...securityHeaders, "Cache-Control": "no-cache",
+    ETag: resource.etag, "Last-Modified": resource.lastModified,
+  };
+  if (isNotModified(request, resource)) {
+    response.writeHead(304, headers);
+    response.end();
+    return true;
+  }
   response.writeHead(200, {
-    ...securityHeaders,
-    "Cache-Control": "no-cache",
-    "Content-Length": content.length,
+    ...headers, "Content-Length": resource.content.length,
     "Content-Type": contentType(filePath),
   });
-  response.end(content);
+  response.end(resource.content);
   return true;
+}
+
+function loadStaticResource(filePath) {
+  const stats = fs.statSync(filePath);
+  const signature = `${stats.size}:${stats.mtimeMs}`;
+  const cached = staticFileCache.get(filePath);
+  if (cached?.signature === signature) return cached;
+  const resource = {
+    signature, content: fs.readFileSync(filePath),
+    etag: `"${stats.size.toString(16)}-${Math.trunc(stats.mtimeMs).toString(16)}"`,
+    lastModified: stats.mtime.toUTCString(),
+  };
+  staticFileCache.set(filePath, resource);
+  return resource;
+}
+
+function isNotModified(request, resource) {
+  const headers = request?.headers || {};
+  if (headers["if-none-match"]) return headers["if-none-match"] === resource.etag;
+  if (!headers["if-modified-since"]) return false;
+  return Date.parse(headers["if-modified-since"]) >= Date.parse(resource.lastModified);
 }
 
 function safeStaticPath(root, requestPath) {

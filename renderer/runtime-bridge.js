@@ -210,10 +210,10 @@
     indexArchiveMigration: () => Promise.reject(new Error("Migraci lze spustit jen z Electronu.")),
     forgetArchiveMigration: () => Promise.resolve({ available: false, phase: "unavailable" }),
     onArchiveMigrationProgress: () => () => {},
-    openDiscord: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
-    captureDiscord: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
-    startDiscordScan: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
-    resumeDiscordScan: () => Promise.reject(new Error("Vestavěný Discord je dostupný jen v Electronu.")),
+    openDiscord: () => Promise.reject(new Error("Lokální Discord scanner je dostupný jen v Electronu.")),
+    captureDiscord: () => Promise.reject(new Error("Lokální Discord scanner je dostupný jen v Electronu.")),
+    startDiscordScan: () => Promise.reject(new Error("Lokální Discord scanner je dostupný jen v Electronu.")),
+    resumeDiscordScan: () => Promise.reject(new Error("Lokální Discord scanner je dostupný jen v Electronu.")),
     stopDiscordScan: () => Promise.resolve({ stopping: false }),
     onDiscordScanProgress: () => () => {},
     onIndexingProgress: (callback) => subscribe("indexing", callback),
@@ -233,8 +233,13 @@
       method: "DELETE", body: {},
     }),
     getDatabaseOverview: (limit, offset) => api(`/database/overview?limit=${limit}&offset=${offset}`),
-    getDatabaseStatus: () => api("/database/status"),
+    getDatabaseStatus: ({ fresh = false } = {}) =>
+      api(`/database/status${fresh ? "?fresh=true" : ""}`),
     getDatabaseBreakdowns: () => api("/database/breakdowns"),
+    getDatabaseBreakdownPage: (dimension, limit = 50, offset = 0) => {
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      return api(`/database/breakdowns/${encodeURIComponent(dimension)}?${query}`);
+    },
     getDatabaseChunkPage: (limit, cursor = null) => api(
       `/database/chunks?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     ),
@@ -242,6 +247,7 @@
     retryIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}/retry`, { method: "POST", body: {} }),
     cancelIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: {} }),
     getIndexingJob: (id) => api(`/indexing/jobs/${encodeURIComponent(id)}`),
+    getActiveIndexingJobs: () => api("/indexing/jobs?status=active"),
     indexPendingMessages: () => api("/indexing/jobs/pending", { method: "POST", body: {} }),
     getDiscordBotStatus: () => api("/discord-bot/status"),
     connectDiscordBot: (token) => api("/discord-bot/connect", { method: "POST", body: { token } }),

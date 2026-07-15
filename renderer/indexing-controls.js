@@ -1,19 +1,25 @@
 window.indexingControls = (() => {
   let refreshOverview;
+  let refreshTerminal;
   let showToast;
   let latestPendingCount = 0;
   let latestJobs = [];
   let pollHandle = null;
   let pollInFlight = false;
-  const pollIntervalMs = 1500;
+  const jobRows = new Map();
+  const lastPushAt = new Map();
+  const pollIntervalMs = 10000;
+  const pushFreshnessMs = 12000;
 
   function bind(options) {
     refreshOverview = options.refreshOverview;
+    refreshTerminal = options.refreshTerminal || options.refreshOverview;
     showToast = options.showToast;
     document.querySelector("#indexing-jobs").addEventListener("click", handleJobAction);
     document.querySelector("#index-pending-button").addEventListener(
       "click", queuePendingMessages,
     );
+    document.addEventListener?.("visibilitychange", handleVisibilityChange);
   }
 
   function render(jobs, pendingCount) {
@@ -25,9 +31,22 @@ window.indexingControls = (() => {
   }
 
   function renderJobList() {
-    const rows = visibleJobs().map(createJobRow);
+    const visible = visibleJobs();
+    const visibleIds = new Set(visible.map((job) => job.job_id));
+    const rows = visible.map((job) => stableJobRow(job));
+    [...jobRows.keys()].filter((jobId) => !visibleIds.has(jobId))
+      .forEach((jobId) => jobRows.delete(jobId));
     if (!rows.length) rows.push(createEmptyLabel());
+    const focusedJobId = document.activeElement?.dataset?.jobId;
     document.querySelector("#indexing-jobs").replaceChildren(...rows);
+    jobRows.get(focusedJobId)?.jobParts.button.focus?.();
+  }
+
+  function stableJobRow(job) {
+    const row = jobRows.get(job.job_id) || createJobRow(job.job_id);
+    jobRows.set(job.job_id, row);
+    updateJobRow(row, job);
+    return row;
   }
 
   function visibleJobs() {
@@ -40,7 +59,7 @@ window.indexingControls = (() => {
     return job.status === "running" ? 0 : 1;
   }
 
-  function createJobRow(job) {
+  function createJobRow(jobId) {
     const row = document.createElement("div");
     const header = document.createElement("div");
     const summary = document.createElement("span");
@@ -49,28 +68,33 @@ window.indexingControls = (() => {
     const phase = document.createElement("small");
     const progress = document.createElement("div");
     const progressBar = document.createElement("span");
-    const active = ["queued", "running"].includes(job.status);
-    const percent = progressPercent(job);
     row.className = "indexing-job";
     header.className = "indexing-job-header";
-    summary.textContent = jobStatusLabel(job, percent);
-    chunks.textContent = `${formatNumber(job.stored_chunks)} chunků`;
     button.className = "job-action";
-    button.dataset.jobId = job.job_id;
-    button.dataset.action = active ? "cancel" : "retry";
-    button.textContent = active ? "Zrušit" : "Opakovat";
+    button.dataset.jobId = jobId;
     button.type = "button";
-    phase.textContent = withSource(jobSourceLabel(job), jobPhaseLabel(job));
     progress.className = "indexing-progress";
     progress.setAttribute("role", "progressbar");
-    progress.setAttribute("aria-valuenow", String(percent));
     progress.setAttribute("aria-valuemin", "0");
     progress.setAttribute("aria-valuemax", "100");
-    progressBar.style.width = `${percent}%`;
     progress.append(progressBar);
     header.append(summary, chunks, button);
     row.append(header, phase, progress);
+    row.jobParts = { summary, chunks, button, phase, progress, progressBar };
     return row;
+  }
+
+  function updateJobRow(row, job) {
+    const parts = row.jobParts;
+    const active = ["queued", "running"].includes(job.status);
+    const percent = progressPercent(job);
+    parts.summary.textContent = jobStatusLabel(job, percent);
+    parts.chunks.textContent = `${formatNumber(job.stored_chunks)} chunků`;
+    parts.button.dataset.action = active ? "cancel" : "retry";
+    parts.button.textContent = active ? "Zrušit" : "Opakovat";
+    parts.phase.textContent = withSource(jobSourceLabel(job), jobPhaseLabel(job));
+    parts.progress.setAttribute("aria-valuenow", String(percent));
+    parts.progressBar.style.width = `${percent}%`;
   }
 
   function progressPercent(job) {
@@ -98,7 +122,7 @@ window.indexingControls = (() => {
     if (job.status === "running" && job.processed_messages === 0) {
       return `Připravuji ${formatNumber(job.total_messages)} zpráv a první embedding dávku…`;
     }
-    if (job.status === "running" || job.status === "completed") {
+    if (["running", "completed"].includes(job.status)) {
       return `${formatNumber(job.processed_messages)} z ${formatNumber(job.total_messages)} zpráv`;
     }
     return job.last_error || "Úlohu lze spustit znovu.";
@@ -131,8 +155,7 @@ window.indexingControls = (() => {
   }
 
   function queuedMessageCount(job) {
-    return job.total_messages
-      ? `${formatNumber(job.total_messages)} zpráv` : "Úloha";
+    return job.total_messages ? `${formatNumber(job.total_messages)} zpráv` : "Úloha";
   }
 
   function sourceTypeLabel(sourceType) {
@@ -169,11 +192,11 @@ window.indexingControls = (() => {
     else button.textContent = `Zaindexovat čekající (${latestPendingCount})`;
   }
 
-  function schedulePoll() {
+  function schedulePoll(delay = pollIntervalMs) {
     if (pollHandle) window.clearTimeout(pollHandle);
     pollHandle = null;
-    if (!refreshOverview || !findActiveJobs().length) return;
-    pollHandle = window.setTimeout(pollActiveJobs, pollIntervalMs);
+    if (!refreshOverview || !findActiveJobs().length || document.hidden) return;
+    pollHandle = window.setTimeout(pollActiveJobs, delay);
   }
 
   function findActiveJobs() {
@@ -182,31 +205,45 @@ window.indexingControls = (() => {
 
   async function pollActiveJobs() {
     pollHandle = null;
-    const activeJobs = findActiveJobs();
-    if (!activeJobs.length || pollInFlight) return;
+    const previousJobs = findActiveJobs();
+    if (!previousJobs.length || pollInFlight) return;
+    if (!needsFallbackPoll(previousJobs)) return schedulePoll();
     pollInFlight = true;
-    let reachedTerminalState = false;
     try {
-      const results = await Promise.allSettled(activeJobs.map((job) =>
-        window.chatContext.getIndexingJob(job.job_id)));
-      const currentJobs = results
-        .filter((result) => result.status === "fulfilled")
-        .map((result) => result.value);
-      reachedTerminalState = currentJobs.some((job) =>
-        !["queued", "running"].includes(job.status));
-      mergeJobUpdates(currentJobs);
+      const currentJobs = await window.chatContext.getActiveIndexingJobs();
+      const currentIds = new Set(currentJobs.map((job) => job.job_id));
+      const reachedTerminal = previousJobs.some((job) => !currentIds.has(job.job_id));
+      replaceActiveJobs(currentJobs);
+      if (reachedTerminal && refreshTerminal) refreshTerminal();
+    } catch {
+      // Push remains primary; a later fallback attempt will reconcile the state.
     } finally {
       pollInFlight = false;
+      schedulePoll();
     }
-    if (reachedTerminalState) await refreshOverview();
-    else schedulePoll();
+  }
+
+  function needsFallbackPoll(activeJobs) {
+    const now = Date.now();
+    return activeJobs.some((job) =>
+      now - (lastPushAt.get(job.job_id) || 0) >= pushFreshnessMs);
   }
 
   function applyProgress(job) {
     if (!job?.job_id) return;
+    lastPushAt.set(job.job_id, Date.now());
     mergeJobUpdates([job]);
     if (["queued", "running"].includes(job.status)) schedulePoll();
-    else if (refreshOverview) void refreshOverview();
+    else if (refreshTerminal) refreshTerminal();
+  }
+
+  function replaceActiveJobs(activeJobs) {
+    latestJobs = [
+      ...activeJobs,
+      ...latestJobs.filter((job) => !["queued", "running"].includes(job.status)),
+    ];
+    renderJobList();
+    renderPendingButton();
   }
 
   function mergeJobUpdates(updates) {
@@ -240,16 +277,21 @@ window.indexingControls = (() => {
     if (!button) return;
     button.disabled = true;
     try {
-      if (button.dataset.action === "cancel") {
-        await window.chatContext.cancelIndexingJob(button.dataset.jobId);
-      } else {
-        await window.chatContext.retryIndexingJob(button.dataset.jobId);
-      }
+      const operation = button.dataset.action === "cancel"
+        ? window.chatContext.cancelIndexingJob : window.chatContext.retryIndexingJob;
+      await operation(button.dataset.jobId);
       await refreshOverview();
     } catch (error) {
       showToast(error.message, true);
       button.disabled = false;
     }
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      if (pollHandle) window.clearTimeout(pollHandle);
+      pollHandle = null;
+    } else schedulePoll(0);
   }
 
   return { applyProgress, bind, render, sourceLabel: jobSourceLabel };

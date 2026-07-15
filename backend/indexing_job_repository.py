@@ -127,6 +127,15 @@ class PostgresIndexingJobRepository:
             ).fetchall()
         return [self._to_view(row) for row in rows]
 
+    def list_active(self) -> List[IndexingJobView]:
+        self.ensure_schema()
+        with self.connect() as connection:
+            rows = connection.execute(
+                select_jobs_sql("status IN ('queued','running')")
+                + " ORDER BY created_at,id LIMIT 200"
+            ).fetchall()
+        return [self._to_view(row) for row in rows]
+
     def retry(self, job_id: str) -> IndexingJobView:
         self.ensure_schema()
         with self.connect() as connection:

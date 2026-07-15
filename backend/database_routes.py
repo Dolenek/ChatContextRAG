@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 
 from backend.models import (
     ChannelResumePoint, ClearDatabaseRequest, ClearDatabaseResponse,
-    DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
+    DatabaseBreakdowns, DatabaseChunkPage, DatabaseCountPage,
+    DatabaseOverview, DatabaseStatus,
 )
 
 
@@ -22,12 +23,24 @@ def _register_overview_routes(application: FastAPI, overview_service) -> None:
         return overview_service.get_overview(limit, offset)
 
     @application.get("/database/status", response_model=DatabaseStatus)
-    def database_status() -> DatabaseStatus:
-        return overview_service.get_status()
+    def database_status(
+        fresh: bool = Query(default=False),
+    ) -> DatabaseStatus:
+        return overview_service.get_status(fresh)
 
     @application.get("/database/breakdowns", response_model=DatabaseBreakdowns)
     def database_breakdowns() -> DatabaseBreakdowns:
         return overview_service.get_breakdowns()
+
+    @application.get(
+        "/database/breakdowns/{dimension}", response_model=DatabaseCountPage,
+    )
+    def database_breakdown_page(
+        dimension: Literal["channels", "authors", "embedding-models"],
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+    ) -> DatabaseCountPage:
+        return overview_service.get_breakdown_page(dimension, limit, offset)
 
 
 def _register_chunk_routes(application: FastAPI, overview_service) -> None:

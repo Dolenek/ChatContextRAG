@@ -117,6 +117,12 @@ def _register_session_routes(application: FastAPI, ingestion_service) -> None:
 
 
 def _register_job_routes(application: FastAPI, ingestion_service) -> None:
+    @application.get("/indexing/jobs", response_model=list[IndexingJobView])
+    def active_indexing_jobs(
+        status: str = Query(default="active", pattern="^active$"),
+    ) -> list[IndexingJobView]:
+        return ingestion_service.list_active_jobs()
+
     @application.get("/indexing/jobs/{job_id}", response_model=IndexingJobView)
     def indexing_job(job_id: str) -> IndexingJobView:
         return ingestion_service.get_job(job_id)

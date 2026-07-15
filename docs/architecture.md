@@ -11,8 +11,12 @@ for retrieval.
 The same renderer runs in three explicit runtime modes: Electron Local,
 Electron Remote, and Web. `window.chatContext` is the stable renderer boundary.
 Electron supplies it through preload IPC; the browser supplies an HTTP/SSE
-adapter before the UI controllers load. Runtime capabilities control whether
-the embedded Discord browser is visible.
+adapter before the UI controllers load. At renderer startup, runtime
+capabilities expose `electron-local`, `electron-remote`, or `web` plus the
+`embeddedDiscord` flag. Desktop-only controls start hidden and are exposed only
+after those capabilities confirm that the current runtime supports them. Web
+therefore exposes neither the connection-target card nor the local Discord
+scanner.
 
 The Electron renderer is restricted by a Content Security Policy, cannot
 navigate away from its packaged entry point or create child windows, and every
@@ -33,6 +37,12 @@ so a different loopback process cannot impersonate the managed backend. Browser-
 cross-site fetches are rejected before request-body parsing. FastAPI remains the
 canonical ingestion, retrieval, indexing, and database service.
 
+The gateway caches static file bytes in memory together with file size and
+modification time. It returns `ETag` and `Last-Modified` validators, answers
+matching conditional requests with `304`, and reloads a file after deployment
+when its metadata changes. Renderer assets still revalidate, while frequently
+referenced resources such as the shared SVG sprite avoid repeated transfers.
+
 One admin account authenticates browser sessions. Sessions are time limited and
 use an HttpOnly SameSite cookie plus a per-session CSRF token. Mutations also
 require a same-origin request. Password checks use asynchronous scrypt with at
@@ -47,12 +57,15 @@ origin checks require the exact forwarded HTTPS scheme and host.
 Electron stores a Local or Remote `ConnectionTarget`. Local mode starts the
 loopback PostgreSQL and FastAPI processes and retains the existing encrypted
 desktop provider store. Remote mode skips local infrastructure and routes the
-entire workspace through the gateway. The local Discord `BrowserView` remains
-available in Remote mode, so its normalized ingestion batches are written
-directly to the server. Target changes never migrate or dual-write existing raw
-messages automatically, and a failed remote connection never falls back to
-Local implicitly. Electron Local additionally offers an explicit, resumable
-archive migration to a compatible gateway.
+entire workspace through the authenticated Chat Context gateway. Electron never
+connects directly to the remote PostgreSQL service. **Settings > Workspace**
+shows the target selector only in Electron; remote URL and desktop-token fields
+appear only for a Remote selection. A Remote save first verifies the gateway,
+then persists the encrypted token and restarts the application. A failed test
+does not change the stored target or fall back to Local. Target changes never
+migrate or dual-write existing raw messages automatically. Electron Local
+additionally offers an explicit, resumable archive migration to a compatible
+gateway.
 
 Electron requires an explicit acknowledgement before connecting to a remote
 non-loopback HTTP origin. The acknowledgement is stored for that exact
@@ -108,12 +121,14 @@ configuration and persisted chat sessions are outside the migration contract.
 
 ## Source connectors
 
-The original embedded Discord importer remains available under **Nahrát pomocí
-Discordu**. It uses an isolated, persistent Discord web partition and extracts
-only the currently selected channel. Manual capture, continuous upward scan,
-resume, and cancellation retain their existing behavior. Renderer source cards
-do not navigate back to Discord; internal message navigation remains available
-only to the importer and resume workflow.
+The desktop-only importer is available in **Sources and imports** as **Lokální
+Discord scanner** in both Electron Local and Electron Remote. Its isolated,
+persistent Discord `BrowserView` and login always remain on the desktop. It
+extracts only the selected channel and sends normalized ingestion batches
+through the active backend client: loopback FastAPI in Local, or the
+authenticated gateway in Remote. Manual capture, continuous upward scan,
+resume, and cancellation retain their existing behavior. This scanner is
+separate from the Discord bot described below.
 
 In an Electron Local workspace, the optional Discord bot runs in the main
 process only while the desktop application is running. Its token is encrypted with Electron
@@ -182,7 +197,7 @@ The migration and schema creation execute in one database transaction. A failure
 therefore prevents application startup without leaving a partially migrated
 schema. Clearing the database removes messages, vectors, jobs, and integration
 cursors while preserving embedding-index definitions, provider profiles,
-encrypted secrets, the Discord bot token, and the embedded Discord login.
+encrypted secrets, the Discord bot token, and the local Discord scanner login.
 Discord bot model settings, guild permissions, and answer audits are also
 independent of raw-archive clearing.
 
@@ -291,7 +306,9 @@ Electron Remote calls use its bearer token.
   contract is documented in [Discord bot](discord-bot.md).
 - `POST /imports/whatsapp/preview` validates and previews a multipart export.
 - `POST /imports/whatsapp` imports a validated multipart export and queues it.
-- `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints manage jobs.
+- `GET /indexing/jobs?status=active` returns every queued and running job in one
+  bounded query. `GET /indexing/jobs/{id}`, retry, cancel, and pending endpoints
+  manage individual jobs.
   Job views include source type plus conversation and container labels so the
   progress UI identifies the imported channel or index-wide maintenance task.
 - `GET /chat/scopes` lists source conversations searchable through the active
@@ -314,11 +331,18 @@ Electron Remote calls use its bearer token.
   sync, rebuild, and deletion.
 - `GET` and `PUT /settings/workspace` read or update the validated IANA timezone
   used to interpret structured archive dates.
-- `GET /database/resume-point` remains the embedded Discord resume endpoint.
-- `GET /database/status` reports exact raw, active-index, source, size, and
-  recent-job metrics without loading breakdowns or chunk content.
-- `GET /database/breakdowns` reports active-index counts by conversation,
-  author, and embedding model.
+- `GET /database/resume-point` remains the local Discord scanner resume endpoint.
+- `GET /database/status` combines cheap live fields, including database size
+  and indexing jobs, with an exact aggregate snapshot cached for 60 seconds.
+  Stale snapshots are served while one background calculation refreshes them.
+  `fresh=true` requests an exact refresh, coalesced for five seconds, and the
+  response exposes `summary_generated_at`, `summary_is_stale`, and
+  `summary_refreshing`. Database deletion invalidates the snapshot.
+- `GET /database/breakdowns/{dimension}?limit=N&offset=N` pages counts for
+  `channels`, `authors`, or `embedding-models`, with limits from 1 through 200.
+  It returns `items`, `total`, `limit`, `offset`, `has_more`, and `next_offset`.
+- `GET /database/breakdowns` retains the combined active-index counts by
+  conversation, author, and embedding model for compatibility.
 - `GET /database/chunks?limit=N&cursor=...` returns active-index chunks ordered
   by `(updated_at, id)` with an opaque keyset cursor for the next page.
 - `GET /database/overview` retains the combined offset-paginated status,

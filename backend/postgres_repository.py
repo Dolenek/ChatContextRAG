@@ -7,7 +7,8 @@ from pgvector.psycopg import register_vector
 from psycopg.types.json import Jsonb
 
 from backend.models import (
-    ChatScope, DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
+    ChatScope, DatabaseBreakdowns, DatabaseChunkPage, DatabaseCountPage,
+    DatabaseOverview, DatabaseStatus,
 )
 from backend.openai_gateway import ExternalIntegrationError
 from backend.postgres_overview_reader import PostgresOverviewReader
@@ -57,13 +58,29 @@ class PostgresVectorRepository(VectorRepository):
         self._ensure_schema()
         return self.overview_reader.get_overview(limit, offset)
 
-    def get_database_status(self) -> DatabaseStatus:
+    def get_database_status(self, fresh: bool = False) -> DatabaseStatus:
         self._ensure_schema()
-        return self.overview_reader.get_status()
+        return self.overview_reader.get_status(fresh)
 
     def get_database_breakdowns(self) -> DatabaseBreakdowns:
         self._ensure_schema()
         return self.overview_reader.get_breakdowns()
+
+    def get_database_breakdown_page(
+        self, dimension: str, limit: int, offset: int,
+    ) -> DatabaseCountPage:
+        self._ensure_schema()
+        return self.overview_reader.get_breakdown_page(dimension, limit, offset)
+
+    def warm_database_status_cache(self) -> None:
+        self._ensure_schema()
+        self.overview_reader.warm_status_cache()
+
+    def drop_database_status_cache(self) -> None:
+        self.overview_reader.drop_status_cache()
+
+    def close_database_status_cache(self) -> None:
+        self.overview_reader.close_status_cache()
 
     def get_database_chunk_page(
         self, limit: int, cursor: Optional[str],

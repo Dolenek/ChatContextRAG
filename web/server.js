@@ -81,14 +81,16 @@ class WebApplication {
       return this.handleLogin(request, response);
     }
     if (request.method === "GET" && url.pathname === "/login") {
-      return sendStatic(response, __dirname, "/login.html");
+      return sendStatic(request, response, __dirname, "/login.html");
     }
     if (request.method === "GET" && ["/login.js", "/login.css"].includes(url.pathname)) {
-      return sendStatic(response, __dirname, url.pathname);
+      return sendStatic(request, response, __dirname, url.pathname);
     }
     if (request.method === "GET" && url.pathname.startsWith("/assets/")) {
       const assetRoot = path.join(this.config.projectRoot, "renderer", "assets");
-      return sendStatic(response, assetRoot, url.pathname.slice("/assets".length));
+      return sendStatic(
+        request, response, assetRoot, url.pathname.slice("/assets".length),
+      );
     }
     return false;
   }
@@ -104,7 +106,7 @@ class WebApplication {
       return this.api.handle(request, response, url, identity);
     }
     if (request.method !== "GET") return false;
-    return this.serveRenderer(response, url.pathname);
+    return this.serveRenderer(request, response, url.pathname);
   }
 
   async handleHealth(response) {
@@ -149,10 +151,10 @@ class WebApplication {
     return true;
   }
 
-  serveRenderer(response, pathname) {
+  serveRenderer(request, response, pathname) {
     const rendererRoot = path.join(this.config.projectRoot, "renderer");
     const requestedFile = pathname === "/" ? "/index.html" : pathname;
-    return sendStatic(response, rendererRoot, requestedFile);
+    return sendStatic(request, response, rendererRoot, requestedFile);
   }
 }
 

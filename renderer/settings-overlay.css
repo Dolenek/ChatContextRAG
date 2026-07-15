@@ -140,15 +140,13 @@
 .mutation-pending { cursor: progress; }
 .settings-form-grid > button { grid-column: 4; }
 .settings-form-grid .settings-form-actions { grid-column: 1 / -1; }
+.remote-connection-fields { display: contents; }
 .connection-security-warning { grid-column: 1 / -1; display: flex; gap: 10px; padding: 12px; border: 1px solid #d89a35; border-radius: 10px; background: rgb(216 154 53 / 12%); }
 .connection-security-warning input { margin-top: 3px; }
 .connection-security-warning label { display: grid; gap: 3px; }
 .connection-security-warning span { color: var(--muted); }
 .compact-toggle { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-strong); font-size: 9px; }
 .compact-toggle input { width: auto; }
-
-.web-runtime .settings-nav-item[data-settings-section="workspace"],
-.web-runtime #settings-workspace-panel { display: none !important; }
 
 @media (max-width: 900px) {
   .settings-dialog { grid-template-columns: 190px minmax(0, 1fr); }

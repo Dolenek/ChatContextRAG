@@ -11,8 +11,8 @@ test("sidebar exposes branded navigation, dated recent chats, and expandable his
   const history = read("renderer/chat-history-ui.js");
 
   assert.match(html, /id="new-chat-button"[^>]+aria-label="Nový chat"/);
-  assert.doesNotMatch(html, /sidebar-brand-name|>Chat Context<\/strong>/);
-  assert.match(html, /class="brand-mark"[\s\S]*chat-context-mark\.png/);
+  assert.match(html, /class="brand-wordmark"[^>]+chat-context-wordmark\.png/);
+  assert.match(html, /class="brand-symbol"[^>]+chat-context-mark\.png/);
   assert.match(html, /id="recent-chats-heading">Nedávné chaty/);
   assert.match(html, /id="recent-chat-list"/);
   assert.match(html, /id="show-more-chats-button"/);

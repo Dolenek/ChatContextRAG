@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.database_models import (
     DatabaseBreakdowns, DatabaseChunkPage, DatabaseChunkView, DatabaseCount,
+    DatabaseCountPage,
     DatabaseOverview, DatabaseStatus, IndexingJobView,
 )
 from backend.chat_models import (

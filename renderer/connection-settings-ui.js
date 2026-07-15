@@ -16,8 +16,6 @@
   async function refresh() {
     try {
       const target = await window.chatContext.getConnectionTarget();
-      const card = document.querySelector("#connection-settings-card");
-      card.classList.toggle("hidden", target.mode === "web");
       if (target.mode === "web") return;
       renderTarget(target);
       await window.archiveMigrationUi.refresh(target);
@@ -38,7 +36,8 @@
     tokenInput.placeholder = target.hasToken
       ? "Token je uložený; prázdné pole jej zachová" : "Vložte desktop API token";
     document.querySelector("#connection-status").textContent = target.mode === "remote"
-      ? `Aktivní vzdálený workspace: ${target.baseUrl}` : "Aktivní lokální workspace";
+      ? `Aktivní vzdálený Chat Context server: ${target.baseUrl}`
+      : "Aktivní lokální workspace na tomto počítači";
     updateFields();
   }
 
@@ -55,9 +54,16 @@
 
   function updateFields() {
     const remote = document.querySelector("#connection-mode").value === "remote";
+    const remoteFields = document.querySelector("#remote-connection-fields");
+    remoteFields.classList.toggle("hidden", !remote);
+    remoteFields.setAttribute("aria-hidden", String(!remote));
     document.querySelector("#connection-url").disabled = !remote;
     document.querySelector("#connection-token").disabled = !remote;
-    document.querySelector("#test-connection-button").disabled = !remote;
+    const testButton = document.querySelector("#test-connection-button");
+    testButton.classList.toggle("hidden", !remote);
+    testButton.disabled = !remote;
+    document.querySelector("#save-connection-button").textContent = remote
+      ? "Připojit a restartovat" : "Použít lokální workspace a restartovat";
     updateInsecureHttpWarning(remote);
     window.archiveMigrationUi.connectionSelectionChanged();
   }

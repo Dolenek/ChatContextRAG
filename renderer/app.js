@@ -108,8 +108,7 @@ function renderIndexingProgress(job) {
   document.querySelector("#scan-progress").textContent =
     `RAG index: ${job.status} · zprávy ${job.processed_messages}/${job.total_messages} · chunky ${job.stored_chunks}${error}`;
   if (!["queued", "running"].includes(job.status)) {
-    window.overviewController.markDatabaseChanged();
-    void window.overviewController.refreshStatus(true);
+    window.overviewController.refreshAfterTerminal();
     void window.settingsUi.refreshIndexState();
   }
 }

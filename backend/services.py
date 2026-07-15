@@ -3,7 +3,8 @@ from typing import Optional
 from backend.chat_service import DatabaseChatService
 from backend.indexing_worker import PersistentIndexingWorker
 from backend.models import (
-    ChannelResumePoint, DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview,
+    ChannelResumePoint, DatabaseBreakdowns, DatabaseChunkPage, DatabaseCountPage,
+    DatabaseOverview,
     DatabaseStatus, FinishIngestionRequest, ImportRequest, ImportResponse,
     IndexingJobView, IngestionSessionRequest, IngestionSessionView,
 )
@@ -61,6 +62,9 @@ class MessageIngestionService:
     def get_job(self, job_id: str) -> IndexingJobView:
         return self.raw_repository.get_job(job_id)
 
+    def list_active_jobs(self) -> list[IndexingJobView]:
+        return self.raw_repository.list_active_jobs()
+
     def retry_job(self, job_id: str) -> IndexingJobView:
         job = self.raw_repository.retry_job(job_id)
         self.indexing_worker.wake()
@@ -109,11 +113,16 @@ class DatabaseOverviewService:
     def get_overview(self, limit: int, offset: int) -> DatabaseOverview:
         return self.repository.get_overview(limit, offset)
 
-    def get_status(self) -> DatabaseStatus:
-        return self.repository.get_database_status()
+    def get_status(self, fresh: bool = False) -> DatabaseStatus:
+        return self.repository.get_database_status(fresh)
 
     def get_breakdowns(self) -> DatabaseBreakdowns:
         return self.repository.get_database_breakdowns()
+
+    def get_breakdown_page(
+        self, dimension: str, limit: int, offset: int,
+    ) -> DatabaseCountPage:
+        return self.repository.get_database_breakdown_page(dimension, limit, offset)
 
     def get_chunk_page(
         self, limit: int, cursor: Optional[str],
@@ -126,7 +135,20 @@ class DatabaseOverviewService:
         if self.raw_repository:
             raw_chunks, deleted_messages = self.raw_repository.delete_all()
             deleted_chunks += raw_chunks
+        drop_cache = getattr(self.repository, "drop_database_status_cache", None)
+        if drop_cache:
+            drop_cache()
         return deleted_chunks, deleted_messages
+
+    def warm_status_cache(self) -> None:
+        warm_cache = getattr(self.repository, "warm_database_status_cache", None)
+        if warm_cache:
+            warm_cache()
+
+    def close_status_cache(self) -> None:
+        close_cache = getattr(self.repository, "close_database_status_cache", None)
+        if close_cache:
+            close_cache()
 
     def get_resume_point(
         self, channel_id: str, channel_name: Optional[str],

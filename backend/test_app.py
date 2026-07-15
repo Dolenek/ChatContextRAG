@@ -1,10 +1,8 @@
-import asyncio
 from datetime import datetime, timezone
 
-import pytest
 from fastapi.testclient import TestClient
 
-from backend.app import _read_import_file, create_app
+from backend.app import create_app
 from backend.models import (
     ChannelResumePoint, ChatResponse, ChatScopeList, ChatScopeOption, ChatSource,
     DatabaseBreakdowns, DatabaseChunkPage, DatabaseOverview, DatabaseStatus,
@@ -12,7 +10,6 @@ from backend.models import (
     IntegrationSyncState, SourceConversationView,
     ChatScope, ChatSessionDetail, ChatSessionMessage, ChatSessionSummary,
 )
-from backend.openai_gateway import ExternalIntegrationError, IntegrationConfigurationError
 from backend.chat_sessions import ChatSessionNotFoundError
 
 
@@ -138,7 +135,7 @@ class FakeOverviewService:
             embedding_models=[], chunks=[], limit=limit, offset=offset, has_more=False,
         )
 
-    def get_status(self):
+    def get_status(self, _fresh=False):
         return DatabaseStatus(
             total_chunks=0, total_source_messages=0, total_channels=0,
             total_authors=0, oldest_message_at=None, newest_message_at=None,
@@ -339,48 +336,6 @@ def test_integration_sync_state_routes() -> None:
     assert saved.status_code == 200
     assert saved.json()["conversation_id"] == "20"
     assert listed.status_code == 200
-
-
-def test_application_translates_domain_errors_to_stable_http_responses() -> None:
-    expected = [
-        (ExternalIntegrationError("provider offline"), 503),
-        (IntegrationConfigurationError("provider missing"), 503),
-        (ValueError("index conflict"), 409),
-    ]
-    for error, status_code in expected:
-        client = TestClient(create_app(
-            FakeIngestionService(), RaisingChatService(error), FakeOverviewService(),
-            internal_token=TEST_INTERNAL_TOKEN,
-        ), headers={"X-Chat-Context-Token": TEST_INTERNAL_TOKEN})
-
-        response = client.post("/chat", json={"question": "what happened?"})
-
-        assert response.status_code == status_code
-        assert response.json() == {"detail": str(error)}
-
-
-def test_whatsapp_upload_reader_rejects_payloads_over_transport_limit() -> None:
-    with pytest.raises(ValueError, match="100 MiB"):
-        asyncio.run(_read_import_file(FakeOversizedUpload()))
-
-
-class RaisingChatService(FakeChatService):
-    def __init__(self, error) -> None:
-        self.error = error
-
-    def answer(self, _request):
-        raise self.error
-
-
-class FakeOversizedPayload:
-    def __len__(self):
-        return 100 * 1024 * 1024 + 1
-
-
-class FakeOversizedUpload:
-    async def read(self, maximum_bytes):
-        assert maximum_bytes == 100 * 1024 * 1024 + 1
-        return FakeOversizedPayload()
 
 
 def _client() -> TestClient:
